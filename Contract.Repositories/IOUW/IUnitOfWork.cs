@@ -1,4 +1,4 @@
-﻿namespace NTC.Contract.Repositories.IUOW
+﻿namespace Contract.Repositories.IUOW
 {
     public interface IUnitOfWork : IDisposable
     {

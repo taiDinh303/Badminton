@@ -1,10 +1,11 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
-using NTC.Contract.Repositories.IUOW;
-using NTC.Core.Base;
-using NTC.Repositories.Context;
+using Contract.Repositories.IUOW;
+using Core.Base;
+using Repositories.Context;
+using Core;
 
-namespace NTC.Repositories.UOW
+namespace Repositories.UOW
 {
     public class GenericRepository<T> : IGenericRepository<T> where T : class
     {

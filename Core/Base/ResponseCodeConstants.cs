@@ -1,4 +1,4 @@
-﻿namespace BadmintonBooking.Core.Base
+﻿namespace Core.Base
 {
     public class ResponseCodeConstants
     {

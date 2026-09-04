@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace BadmintonBooking.ModelViews.CourtModelViews;
+namespace ModelViews.CourtModelViews;
 
 public class UpdateCourtModelView
 {

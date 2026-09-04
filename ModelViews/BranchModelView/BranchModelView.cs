@@ -1,4 +1,4 @@
-﻿namespace BadmintonBooking.ModelViews.BranchModelViews;
+﻿namespace ModelViews.BranchModelViews;
 
 public class BranchModelView
 {

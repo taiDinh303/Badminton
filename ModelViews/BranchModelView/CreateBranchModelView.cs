@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace BadmintonBooking.ModelViews.BranchModelViews;
+namespace ModelViews.BranchModelViews;
 
 public class CreateBranchModelView
 {

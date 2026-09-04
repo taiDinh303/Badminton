@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace BadmintonBooking.ModelViews.BookingDetailModelViews;
+namespace ModelViews.BookingDetailModelViews;
 
 public class CreateBookingDetailModelView
 {

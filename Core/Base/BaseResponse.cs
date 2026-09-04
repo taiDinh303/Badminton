@@ -1,7 +1,7 @@
-﻿using BadmintonBooking.Core.Constants;
-using BadmintonBooking.Core.Utils;
+﻿using Core.Constants;
+using Core.Utils;
 
-namespace BadmintonBooking.Core.Base
+namespace Core.Base
 {
     public class BaseResponse<T>
     {

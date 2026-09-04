@@ -1,7 +1,7 @@
-﻿using NTC.Contract.Repositories.IUOW;
-using NTC.Repositories.Context;
+﻿using Contract.Repositories.IUOW;
+using Repositories.Context;
 
-namespace NTC.Repositories.UOW
+namespace Repositories.UOW
 {
     public class UnitOfWork(DatabaseContext dbContext) : IUnitOfWork
     {

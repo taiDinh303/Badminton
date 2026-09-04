@@ -1,10 +1,10 @@
-﻿using BadmintonBooking.Core.Base;
+﻿using Core.Base;
 using Contract.Repositories.BookingEntity;
 using Contract.Repositories.Entity;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace BadmintonBooking.Contract.Repositories.BookingEntity
+namespace Contract.Repositories.BookingEntity
 {
     public class UserInfo : BaseEntity
     {

@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace BadmintonBooking.ModelViews.CalendarTypeModelViews;
+namespace ModelViews.CalendarTypeModelViews;
 
 public class CreateCalendarTypeModelView
 {

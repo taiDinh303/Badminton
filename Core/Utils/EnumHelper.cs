@@ -1,6 +1,6 @@
 ﻿using System.Reflection;
 
-namespace BadmintonBooking.Core.Utils
+namespace Core.Utils
 {
     public static class EnumHelper
     {

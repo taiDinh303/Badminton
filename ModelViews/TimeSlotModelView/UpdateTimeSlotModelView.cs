@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace BadmintonBooking.ModelViews.TimeSlotModelViews;
+namespace ModelViews.TimeSlotModelViews;
 
 public class UpdateTimeSlotModelView
 {

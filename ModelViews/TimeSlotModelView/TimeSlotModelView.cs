@@ -1,4 +1,4 @@
-﻿namespace BadmintonBooking.ModelViews.TimeSlotModelViews;
+﻿namespace ModelViews.TimeSlotModelViews;
 
 public class TimeSlotModelView
 {

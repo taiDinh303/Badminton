@@ -5,7 +5,7 @@ namespace BadmintonBE.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class BookingController : ControllerBase
+    public class BookingDetailController : ControllerBase
     {
     }
 }

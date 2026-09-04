@@ -1,23 +1,18 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using ModelViews.BookingDetailModelViews;
+using System.ComponentModel.DataAnnotations;
 
-namespace BadmintonBooking.ModelViews.BookingModelViews;
+namespace ModelViews.Booking;
 
 public class CreateBookingModelView
 {
-    [Required]
     public DateTime BookingDate { get; set; }
-
     public DateTime? BookingDeadline { get; set; }
 
-    [Range(0, double.MaxValue)]
     public decimal Price { get; set; }
-
     public string Status { get; set; } = "Pending";
-
     public bool PaymentStatus { get; set; }
 
-    [Required]
-    public string UserInfoId { get; set; } = string.Empty;
+    public Guid? UserId { get; set; }
 
     [Required]
     public string UserName { get; set; } = string.Empty;
@@ -25,5 +20,7 @@ public class CreateBookingModelView
     [Required]
     public string PhoneNumber { get; set; } = string.Empty;
 
-    public string BankAccountID { get; set; } = string.Empty;
+    public string? BankAccountID { get; set; }
+
+    public ICollection<CreateBookingDetailModelView> BookingDetails { get; set; } = new List<CreateBookingDetailModelView>();
 }

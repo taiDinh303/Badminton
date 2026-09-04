@@ -1,6 +1,6 @@
-﻿using BadmintonBooking.Core.Constants;
+﻿using Core.Constants;
 
-namespace BadmintonBooking.Core.Base
+namespace Core.Base
 {
     public class BaseException : Exception
     {

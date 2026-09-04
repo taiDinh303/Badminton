@@ -1,4 +1,4 @@
-﻿using BadmintonBooking.Core.Base;
+﻿using Core.Base;
 
 namespace Contract.Repositories.BookingEntity;
 

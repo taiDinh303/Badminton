@@ -1,4 +1,4 @@
-﻿namespace BadmintonBooking.ModelViews.BookingDetailModelViews;
+﻿namespace ModelViews.BookingDetailModelViews;
 
 public class BookingDetailModelView
 {

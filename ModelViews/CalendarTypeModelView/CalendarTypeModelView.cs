@@ -1,4 +1,4 @@
-﻿namespace BadmintonBooking.ModelViews.CalendarTypeModelViews;
+﻿namespace ModelViews.CalendarTypeModelViews;
 
 public class CalendarTypeModelView
 {

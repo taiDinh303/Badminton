@@ -1,8 +1,8 @@
 ﻿using System.Linq.Expressions;
-using NTC.Core.Base;
+using Core.Base;
 
 
-namespace NTC.Contract.Repositories.IUOW
+namespace Contract.Repositories.IUOW
 {
     public interface IGenericRepository<T> where T : class
     {

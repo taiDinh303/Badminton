@@ -1,7 +1,7 @@
-﻿using BadmintonBooking.Core.Utils;
+﻿using Core.Utils;
 using System.ComponentModel.DataAnnotations;
 
-namespace BadmintonBooking.Core.Base
+namespace Core.Base
 {
     public abstract class BaseEntity
     {

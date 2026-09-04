@@ -1,4 +1,4 @@
-﻿namespace BadmintonBooking.Core
+﻿namespace Core.Base
 {
     public class BasePaginatedList<T>
     {

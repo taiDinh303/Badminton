@@ -1,4 +1,4 @@
-﻿namespace BadmintonBooking.Core.Utils
+﻿namespace Core.Utils
 {
     public class CoreHelper
     {

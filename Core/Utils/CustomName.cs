@@ -1,4 +1,4 @@
-﻿namespace BadmintonBooking.Core.Utils
+﻿namespace Core.Utils
 {
     [AttributeUsage(AttributeTargets.All)]
     public class CustomName : Attribute

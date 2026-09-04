@@ -1,6 +1,6 @@
-﻿using BadmintonBooking.Core.Utils;
+﻿using Core.Utils;
 
-namespace BadmintonBooking.Core.Constants
+namespace Core.Constants
 {
     public enum StatusCodeHelper
     {
