@@ -9,6 +9,13 @@
   <ItemGroup>
     <Folder Include="BookingModelView\" />
     <Folder Include="CourtModelView\" />
+    <Folder Include="BookingDetailModelView\" />
+    <Folder Include="CourTypeModelView\" />
+    <Folder Include="BranchModelView\" />
+    <Folder Include="BankAccountModelView\" />
+    <Folder Include="CalendarTypeModelView\" />
+    <Folder Include="TimeSlotModelView\" />
+    <Folder Include="PaymentModelView\" />
   </ItemGroup>
 
 </Project>

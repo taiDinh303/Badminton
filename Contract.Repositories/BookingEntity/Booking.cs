@@ -1,4 +1,5 @@
-﻿using BadmintonBooking.Core.Base;
+﻿using BadmintonBooking.Contract.Repositories.BookingEntity;
+using BadmintonBooking.Core.Base;
 using System.Text.Json.Serialization;
 
 namespace Contract.Repositories.BookingEntity;
