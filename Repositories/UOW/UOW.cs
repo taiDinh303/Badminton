@@ -1,6 +1,5 @@
 ﻿using Contract.Repositories.IOUW;
 using Repositories.Context;
-using Repositories.Repository;
 
 namespace Repositories.UOW
 {
@@ -22,6 +21,12 @@ namespace Repositories.UOW
 
         public IBankAccountRepository BankAccounts { get; }
 
+        public IBranchRepository Branches { get; }
+
+        public ICourtTypeRepository CourtTypes { get; }
+
+        public ICalendarTypeRepository CalendarTypes { get; }
+
         public IVerificationCodeRepository VerificationCodes { get; }
 
         public UOW(
@@ -33,6 +38,9 @@ namespace Repositories.UOW
             ITimeSlotRepository timeSlots,
             IPaymentRepository paymentRepository,
             IBankAccountRepository bankAccounts,
+            IBranchRepository branches,
+            ICourtTypeRepository courtTypes,
+            ICalendarTypeRepository calendarTypes,
             IVerificationCodeRepository verificationCodes)
         {
             _context = context;
@@ -43,6 +51,9 @@ namespace Repositories.UOW
             TimeSlots = timeSlots;
             Payments = paymentRepository;
             BankAccounts = bankAccounts;
+            Branches = branches;
+            CourtTypes = courtTypes;
+            CalendarTypes = calendarTypes;
             VerificationCodes = verificationCodes;
         }
 

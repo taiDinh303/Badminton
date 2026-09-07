@@ -1,4 +1,6 @@
-﻿namespace Contract.Repositories.IOUW
+﻿using Contract.Repositories.IOUW;
+
+namespace Contract.Repositories.IOUW
 {
     public interface IUOW
     {
@@ -9,8 +11,10 @@
         IBookingDetailRepository BookingDetails { get; }
         IPaymentRepository Payments { get; }
         ITimeSlotRepository TimeSlots { get; }
-
         IBankAccountRepository BankAccounts { get; }
+        IBranchRepository Branches { get; }
+        ICourtTypeRepository CourtTypes { get; }
+        ICalendarTypeRepository CalendarTypes { get; }
 
         Task<int> SaveChangesAsync();
     }

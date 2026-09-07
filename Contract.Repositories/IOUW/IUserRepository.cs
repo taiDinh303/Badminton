@@ -16,5 +16,7 @@ namespace Contract.Repositories.IOUW
         Task<User> CreateAsync(User user);
 
         Task<User?> GetByIdAsync(int userId);
+
+        Task<bool> UpdateRoleAsync(int userId, int roleId);
     }
 }
