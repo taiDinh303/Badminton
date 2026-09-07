@@ -18,6 +18,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Contract.Repositories\Contract.Repositories.csproj" />
+    <ProjectReference Include="..\Core\Core.csproj" />
+    <ProjectReference Include="..\ModelViews\ModelViews.csproj" />
   </ItemGroup>
 
 </Project>

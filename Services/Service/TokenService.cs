@@ -1,4 +1,4 @@
-﻿using Contract.Repositories.Entity;
+﻿using Contract.Repositories.AuthEntity;
 using Contract.Services.Interface;
 using Core.Store;
 using Microsoft.Extensions.Options;

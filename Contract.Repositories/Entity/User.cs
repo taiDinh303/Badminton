@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Contract.Repositories.Entity
+namespace Contract.Repositories.AuthEntity
 {
     public class User
     {

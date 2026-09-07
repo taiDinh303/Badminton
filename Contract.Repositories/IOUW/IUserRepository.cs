@@ -1,4 +1,4 @@
-﻿using Contract.Repositories.Entity;
+﻿using Contract.Repositories.AuthEntity;
 using System;
 using System.Collections.Generic;
 using System.Linq;

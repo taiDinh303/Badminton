@@ -1,5 +1,5 @@
 ﻿using BCrypt.Net;
-using Contract.Repositories.Entity;
+using Contract.Repositories.AuthEntity;
 using Contract.Repositories.IOUW;
 using Contract.Services.Interface;
 

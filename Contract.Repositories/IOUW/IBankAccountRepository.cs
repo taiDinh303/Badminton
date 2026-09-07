@@ -1,4 +1,4 @@
-﻿using Contract.Repositories.Entity;
+﻿using Contract.Repositories.AuthEntity;
 
 namespace Contract.Repositories.IOUW
 {

@@ -1,4 +1,4 @@
-﻿namespace Contract.Repositories.Entity
+﻿namespace Contract.Repositories.AuthEntity
 {
     public class Booking
     {
