@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/1. SERVER/">
+    <Project Path="Badminton/BadmintonBE.API.csproj" />
+  </Folder>
+  <Folder Name="/2. SERVICES/">
+    <Project Path="Contract.Services/Contract.Services.csproj" />
+    <Project Path="Services/Services.csproj" />
+  </Folder>
+  <Folder Name="/3. REPOSITORY/">
+    <Project Path="Contract.Repositories/Contract.Repositories.csproj" />
+    <Project Path="ModelViews/ModelViews.csproj" />
+    <Project Path="Repositories/Repositories.csproj" />
+  </Folder>
+  <Folder Name="/4. CORE/">
+    <Project Path="Core/Core.csproj" />
+  </Folder>
+</Solution>
