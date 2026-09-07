@@ -6,8 +6,6 @@
 
         public int CourtTypeId { get; set; }
 
-        public int? BranchId { get; set; }
-
         public string CourtCode { get; set; } = string.Empty;
 
         public string CourtName { get; set; } = string.Empty;
@@ -28,8 +26,7 @@
 
         public DateTime? UpdatedAt { get; set; }
 
-        public Branch? Branch { get; set; }
-
-        public ICollection<BookingDetail> BookingDetails { get; set; } = new List<BookingDetail>();
+        public ICollection<BookingDetail> BookingDetails { get; set; }
+            = new List<BookingDetail>();
     }
 }
