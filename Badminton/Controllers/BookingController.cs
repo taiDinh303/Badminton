@@ -1,8 +1,8 @@
 ﻿using Contract.Services.Interface;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 using ModelViews.Booking;
+using System.Security.Claims;
 
 namespace BadmintonBE.API.Controllers
 {

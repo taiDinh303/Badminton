@@ -1,19 +1,19 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Contract.Repositories.AuthEntity;
+using Contract.Repositories.IUnitOfWork;
+using Contract.Services.Interface;
+using Core.Base;
+using Core.Utils;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using System.Data;
-using System.Text;
-using Contract.Repositories.AuthEntity;
-using Contract.Services.Interface;
-using Core.Base;
-using Core.Utils;
 using ModelViews.UserInfoModelView;
 using ModelViews.UserModelView;
 using Services.Mappings;
+using System.Data;
+using System.Text;
 using static Core.Base.BaseException;
-using Contract.Repositories.IUnitOfWork;
 
 namespace Services.Service
 {

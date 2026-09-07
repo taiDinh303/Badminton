@@ -1,15 +1,14 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Contract.Repositories.AuthEntity;
+﻿using Contract.Repositories.AuthEntity;
+using Contract.Repositories.IUnitOfWork;
 using Contract.Services.Interface;
 using Core.Base;
 using Core.Utils;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using ModelViews.RoleModelView;
 using Services.Mappings;
 using static Core.Base.BaseException;
-using Contract.Repositories.IUnitOfWork;
-using Contract.Repositories.AuthEntity;
 
 namespace Services.Service
 {

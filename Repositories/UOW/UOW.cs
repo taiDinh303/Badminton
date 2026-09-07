@@ -1,6 +1,5 @@
 ﻿using Contract.Repositories.IOUW;
 using Repositories.Context;
-using Repositories.Repository;
 
 namespace Repositories.UOW
 {

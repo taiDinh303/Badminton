@@ -1,6 +1,6 @@
 ﻿using Core.Utils;
 
-namespace Core.Constants
+namespace Core.Store
 {
     public enum StatusCodeHelper
     {

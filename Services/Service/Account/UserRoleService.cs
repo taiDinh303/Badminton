@@ -1,9 +1,9 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Contract.Repositories.AuthEntity;
+﻿using Contract.Repositories.AuthEntity;
 using Contract.Services.Interface;
 using Core.Base;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using static Core.Base.BaseException;
 
 namespace Services.Service
