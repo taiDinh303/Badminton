@@ -1,18 +1,20 @@
-﻿//using Contract.Repositories.AuthEntity;
+﻿
 
-//namespace Contract.Services.Interface
-//{
-//    public interface IEmailService
-//    {
-//        Task SendVerificationCodeAsync(string email, string code);
+using Contract.Repositories.Entity;
 
-//        Task SendChangeEmailConfirmationAsync(ApplicationUser user, string token, string newEmail);
+namespace Contract.Services.Interface
+{
+    public interface IEmailService
+    {
+        Task SendVerificationCodeAsync(string email, string code);
 
-//        Task SendSetPasswordLinkAsync(ApplicationUser user, string token);
+        Task SendChangeEmailConfirmationAsync(ApplicationUser user, string token, string newEmail);
 
-//        Task SendForgotPasswordLinkAsync(ApplicationUser user, string token);
+        Task SendSetPasswordLinkAsync(ApplicationUser user, string token);
+
+        Task SendForgotPasswordLinkAsync(ApplicationUser user, string token);
 
 
-//    }
+    }
 
-//}
+}
