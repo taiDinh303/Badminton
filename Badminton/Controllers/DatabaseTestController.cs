@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Repositories.Context;
 using Microsoft.EntityFrameworkCore;
+using Repositories.Context;
 
 namespace BadmintonBE.API.Controllers
 {

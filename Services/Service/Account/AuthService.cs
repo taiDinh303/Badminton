@@ -1,4 +1,5 @@
-﻿using Contract.Repositories.AuthEntity;
+﻿using Contract.Repositories.Entity;
+using Contract.Repositories.IUnitOfWork;
 using Contract.Services.Interface;
 using Core.Base;
 using Google.Apis.Auth;
@@ -9,14 +10,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using ModelViews.AuthModelView;
 using ModelViews.UserInfoModelView;
-
-
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using static Core.Base.BaseException;
-
-using Contract.Repositories.IUnitOfWork;
 
 namespace Services.Service.Account
 {

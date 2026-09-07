@@ -1,5 +1,5 @@
-﻿using Microsoft.Extensions.Caching.Memory;
-using Contract.Services.Interface;
+﻿using Contract.Services.Interface;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Services.Infrastructure
 {

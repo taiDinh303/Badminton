@@ -1,4 +1,4 @@
-﻿using Contract.Repositories.AuthEntity;
+﻿using Contract.Repositories.Entity;
 using Microsoft.EntityFrameworkCore;
 
 namespace Repositories.Context

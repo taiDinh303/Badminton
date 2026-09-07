@@ -1,5 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
-using Contract.Repositories.AuthEntity;
+﻿using Contract.Repositories.Entity;
+using System.ComponentModel.DataAnnotations;
 
 namespace ModelViews.UserInfoModelView
 {

@@ -1,7 +1,7 @@
 ﻿using Core.Utils;
 using Microsoft.AspNetCore.Identity;
 
-namespace Contract.Repositories.AuthEntity
+namespace Contract.Repositories.Entity
 {
     public class ApplicationUser : IdentityUser<Guid>
     {

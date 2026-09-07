@@ -1,15 +1,15 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Contract.Repositories.Entity;
+using Contract.Services.Interface;
+using Core.Base;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using System.Text;
-using Contract.Services.Interface;
 using Repositories.Context;
-using Core.Base;
-using System.Reflection;
-using Contract.Repositories.AuthEntity;
 using Services.Service.Account;
+using System.Reflection;
+using System.Text;
 
 
 namespace API

@@ -1,4 +1,4 @@
-﻿using Contract.Repositories.AuthEntity;
+﻿using Contract.Repositories.Entity;
 using Contract.Repositories.IOUW;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Context;

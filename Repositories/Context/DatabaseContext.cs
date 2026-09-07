@@ -1,5 +1,5 @@
 ﻿
-using Contract.Repositories.AuthEntity;
+using Contract.Repositories.Entity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 

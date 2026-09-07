@@ -1,8 +1,8 @@
-﻿using Core.Base;
-using Repositories.Context;
+﻿using Contract.Repositories.IUnitOfWork;
+using Core.Base;
 using Microsoft.EntityFrameworkCore;
+using Repositories.Context;
 using System.Linq.Expressions;
-using Contract.Repositories.IUnitOfWork;
 
 namespace Repositories.UnitOfWork
 {

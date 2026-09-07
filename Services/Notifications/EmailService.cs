@@ -1,10 +1,10 @@
-﻿using Microsoft.AspNetCore.WebUtilities;
+﻿using Contract.Repositories.Entity;
+using Contract.Services.Interface;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Configuration;
+using Services.Infrastructure;
 using System.Net;
 using System.Text;
-using Contract.Repositories.AuthEntity;
-using Contract.Services.Interface;
-using Services.Infrastructure;
 
 namespace Services.Notifications
 {

@@ -1,7 +1,7 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Contract.Services.Interface;
+using Microsoft.Extensions.Configuration;
 using System.Net;
 using System.Net.Mail;
-using Contract.Services.Interface;
 
 namespace Services.Infrastructure
 {

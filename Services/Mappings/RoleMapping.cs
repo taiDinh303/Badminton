@@ -1,4 +1,4 @@
-﻿using Contract.Repositories.AuthEntity;
+﻿using Contract.Repositories.Entity;
 using Core.Utils;
 using ModelViews.RoleModelView;
 

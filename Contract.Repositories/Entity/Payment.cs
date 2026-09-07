@@ -1,4 +1,4 @@
-﻿namespace Contract.Repositories.AuthEntity
+﻿namespace Contract.Repositories.Entity
 {
     public class Payment
     {

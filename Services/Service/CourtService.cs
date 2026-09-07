@@ -31,7 +31,7 @@ namespace Services.Service
         }
 
         private static CourtResponse MapToResponse(
-            Contract.Repositories.AuthEntity.Court court)
+            Contract.Repositories.Entity.Court court)
         {
             return new CourtResponse
             {
