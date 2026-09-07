@@ -29,6 +29,12 @@ namespace Repositories.Context
 
         public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
 
+        public DbSet<Branch> Branches => Set<Branch>();
+
+        public DbSet<CourtType> CourtTypes => Set<CourtType>();
+
+        public DbSet<CalendarType> CalendarTypes => Set<CalendarType>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -250,6 +256,13 @@ namespace Repositories.Context
 
                 entity.HasIndex(x => x.CourtCode)
                     .IsUnique();
+
+                entity.HasIndex(x => x.BranchId);
+
+                entity.HasOne(x => x.Branch)
+                    .WithMany(x => x.Courts)
+                    .HasForeignKey(x => x.BranchId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<TimeSlot>(entity =>
@@ -341,6 +354,80 @@ namespace Repositories.Context
                     .WithMany()
                     .HasForeignKey(x => x.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<Branch>(entity =>
+            {
+                entity.ToTable("Branches");
+
+                entity.HasKey(x => x.BranchId);
+
+                entity.Property(x => x.BranchName)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(x => x.Address)
+                    .HasMaxLength(255)
+                    .IsRequired();
+
+                entity.Property(x => x.PhoneNumber)
+                    .HasMaxLength(15)
+                    .IsUnicode(false);
+
+                entity.Property(x => x.Description)
+                    .HasMaxLength(500);
+
+                entity.Property(x => x.IsActive)
+                    .HasDefaultValue(true);
+
+                entity.Property(x => x.CreatedAt)
+                    .HasDefaultValueSql("SYSUTCDATETIME()");
+            });
+
+            modelBuilder.Entity<CourtType>(entity =>
+            {
+                entity.ToTable("CourtTypes");
+
+                entity.HasKey(x => x.CourtTypeId);
+
+                entity.Property(x => x.Name)
+                    .HasMaxLength(50)
+                    .IsRequired();
+
+                entity.HasIndex(x => x.Name)
+                    .IsUnique();
+
+                entity.Property(x => x.Description)
+                    .HasMaxLength(255);
+
+                entity.Property(x => x.IsActive)
+                    .HasDefaultValue(true);
+
+                entity.Property(x => x.CreatedAt)
+                    .HasDefaultValueSql("SYSUTCDATETIME()");
+            });
+
+            modelBuilder.Entity<CalendarType>(entity =>
+            {
+                entity.ToTable("CalendarTypes");
+
+                entity.HasKey(x => x.CalendarTypeId);
+
+                entity.Property(x => x.Name)
+                    .HasMaxLength(50)
+                    .IsRequired();
+
+                entity.HasIndex(x => x.Name)
+                    .IsUnique();
+
+                entity.Property(x => x.Description)
+                    .HasMaxLength(255);
+
+                entity.Property(x => x.IsActive)
+                    .HasDefaultValue(true);
+
+                entity.Property(x => x.CreatedAt)
+                    .HasDefaultValueSql("SYSUTCDATETIME()");
             });
         }
     }
