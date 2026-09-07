@@ -7,7 +7,6 @@ using Microsoft.IdentityModel.Tokens;
 using Repositories.Context;
 using Repositories.UOW;
 using Services.Service;
-using Services.Service.Account;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
