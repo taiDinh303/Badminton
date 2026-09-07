@@ -1,7 +1,7 @@
-﻿using Contract.Repositories.Interface;
+﻿using Contract.Repositories.IUnitOfWork;
 using Repositories.Context;
 
-namespace Repositories.UOW
+namespace Repositories.UnitOfWork
 {
     public class UnitOfWork(DatabaseContext dbContext) : IUnitOfWork
     {

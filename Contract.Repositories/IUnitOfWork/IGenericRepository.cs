@@ -1,7 +1,7 @@
-﻿using Core;
+﻿using Core.Base;
 using System.Linq.Expressions;
 
-namespace Contract.Repositories.Interface
+namespace Contract.Repositories.IUnitOfWork
 {
     public interface IGenericRepository<T> where T : class
     {

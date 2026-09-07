@@ -1,10 +1,10 @@
-﻿using Contract.Repositories.Interface;
-using Core;
+﻿using Core.Base;
 using Repositories.Context;
 using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
+using Contract.Repositories.IUnitOfWork;
 
-namespace Repositories.UOW
+namespace Repositories.UnitOfWork
 {
     public class GenericRepository<T> : IGenericRepository<T> where T : class
     {

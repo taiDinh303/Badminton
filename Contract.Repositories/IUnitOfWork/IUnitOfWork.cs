@@ -1,4 +1,4 @@
-﻿namespace Contract.Repositories.Interface
+﻿namespace Contract.Repositories.IUnitOfWork
 {
     public interface IUnitOfWork : IDisposable
     {
