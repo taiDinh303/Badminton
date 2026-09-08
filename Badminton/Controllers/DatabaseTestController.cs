@@ -8,9 +8,9 @@ namespace BadmintonBE.API.Controllers
     [Route("api/test")]
     public class DatabaseTestController : ControllerBase
     {
-        private readonly BadmintonBookingDbContext _context;
+        private readonly DatabaseContext _context;
 
-        public DatabaseTestController(BadmintonBookingDbContext context)
+        public DatabaseTestController(DatabaseContext context)
         {
             _context = context;
         }

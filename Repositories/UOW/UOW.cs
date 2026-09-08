@@ -5,7 +5,7 @@ namespace Repositories.UOW
 {
     public class UOW : IUOW
     {
-        private readonly BadmintonBookingDbContext _context;
+        private readonly DatabaseContext _context;
 
         public IUserRepository Users { get; }
 
@@ -30,7 +30,7 @@ namespace Repositories.UOW
         public IVerificationCodeRepository VerificationCodes { get; }
 
         public UOW(
-            BadmintonBookingDbContext context,
+            DatabaseContext context,
             IUserRepository users,
             IBookingRepository bookings,
             ICourtRepository courts,

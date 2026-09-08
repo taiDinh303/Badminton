@@ -7,9 +7,9 @@ namespace Repositories.UOW
 {
     public class TimeSlotRepository : ITimeSlotRepository
     {
-        private readonly BadmintonBookingDbContext _context;
+        private readonly DatabaseContext _context;
 
-        public TimeSlotRepository(BadmintonBookingDbContext context)
+        public TimeSlotRepository(DatabaseContext context)
         {
             _context = context;
         }
