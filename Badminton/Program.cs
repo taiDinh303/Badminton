@@ -1,110 +1,78 @@
-using Contract.Repositories.IOUW;
 using Contract.Services.Interface;
 using Core.Store;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Repositories.Context;
-using Repositories.UOW;
-using Services.Service;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<ICourtRepository, CourtRepository>();
-builder.Services.AddScoped<IVerificationCodeRepository, VerificationCodeRepository>();
-builder.Services.AddScoped<IBookingRepository, BookingRepository>();
-builder.Services.AddScoped<IBookingDetailRepository, BookingDetailRepository>();
-builder.Services.AddScoped<ITimeSlotRepository, TimeSlotRepository>();
-builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
-builder.Services.AddScoped<IBankAccountRepository, BankAccountRepository>();
-builder.Services.AddScoped<IBranchRepository, BranchRepository>();
-builder.Services.AddScoped<ICourtTypeRepository, CourtTypeRepository>();
-builder.Services.AddScoped<ICalendarTypeRepository, CalendarTypeRepository>();
-
-builder.Services.AddScoped<IUOW, UOW>();
-
-//builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IBookingService, BookingService>();
-builder.Services.AddScoped<IBookingDetailService, BookingDetailService>();
-builder.Services.AddScoped<ITimeSlotService, TimeSlotService>();
-builder.Services.AddScoped<ICourtService, CourtService>();
-builder.Services.AddScoped<IPaymentService, PaymentService>();
-builder.Services.AddScoped<IBankAccountService, BankAccountService>();
-builder.Services.AddScoped<IBranchService, BranchService>();
-builder.Services.AddScoped<ICourtTypeService, CourtTypeService>();
-builder.Services.AddScoped<ICalendarTypeService, CalendarTypeService>();
-
 builder.Services.AddControllers();
 
-builder.Services.Configure<JwtSettings>(
-    builder.Configuration.GetSection("JwtSettings"));
+var jwtKey = builder.Configuration["JwtSettings:Key"]
+    ?? throw new InvalidOperationException("JWT Key not found");
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+builder.Services
+    .AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
     .AddJwtBearer(options =>
     {
-        var jwtSettings = builder.Configuration
-            .GetSection("JwtSettings")
-            .Get<JwtSettings>()!;
-
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
+            ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
+
             ValidateAudience = true,
+            ValidAudience = builder.Configuration["JwtSettings:Audience"],
+
             ValidateLifetime = true,
+
             ValidateIssuerSigningKey = true,
-
-            ValidIssuer = jwtSettings.Issuer,
-            ValidAudience = jwtSettings.Audience,
-
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtSettings.Key))
+                Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
 builder.Services.AddAuthorization();
 
-builder.Services.AddDbContext<BadmintonBookingDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("BadmintonBooking")));
-
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSwaggerGen(options =>
 {
-    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-    {
-        Name = "Authorization",
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-        Scheme = "Bearer",
-        BearerFormat = "JWT",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Nhập: Bearer {token}"
-    });
-
-    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
-    {
+    options.AddSecurityDefinition("Bearer",
+        new Microsoft.OpenApi.Models.OpenApiSecurityScheme
         {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            Name = "Authorization",
+            Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+            Scheme = "Bearer",
+            BearerFormat = "JWT",
+            In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+            Description = "Nhập: Bearer {token}"
+        });
+
+    options.AddSecurityRequirement(
+        new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+        {
             {
-                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                new Microsoft.OpenApi.Models.OpenApiSecurityScheme
                 {
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
+                    Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                    {
+                        Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
 });
 
 var app = builder.Build();
 
-
 app.UseSwagger();
 app.UseSwaggerUI();
-
 
 app.UseHttpsRedirection();
 

@@ -1,35 +1,24 @@
-﻿namespace Contract.Repositories.Entity
+﻿using Core.Base;
+using System.ComponentModel.DataAnnotations;
+
+namespace Contract.Repositories.Entity
 {
-    public class Court
+    public class Court : BaseEntity
     {
-        public int CourtId { get; set; }
-
-        public int CourtTypeId { get; set; }
-
-        public int? BranchId { get; set; }
-
-        public string CourtCode { get; set; } = string.Empty;
-
+        //Tên sân
+        [StringLength(50)]
         public string CourtName { get; set; } = string.Empty;
 
-        public string? Description { get; set; }
+        //Thời gian mở
+        public int OpenTime { get; set; }
 
-        public string? Location { get; set; }
+        //Thời gian đóng
+        public int CloseTime { get; set; }
 
-        public decimal PricePerHour { get; set; }
+        //Đơn giá
+        public int UnitPrice { get; set; }
 
-        public string Status { get; set; } = "Available";
+        public virtual ICollection<TimeFrame> TimeFrames { get; set; } = new HashSet<TimeFrame>();
 
-        public string? ImageUrl { get; set; }
-
-        public bool IsActive { get; set; }
-
-        public DateTime CreatedAt { get; set; }
-
-        public DateTime? UpdatedAt { get; set; }
-
-        public Branch? Branch { get; set; }
-
-        public ICollection<BookingDetail> BookingDetails { get; set; } = new List<BookingDetail>();
     }
 }

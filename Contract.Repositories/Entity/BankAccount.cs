@@ -1,23 +1,21 @@
-﻿namespace Contract.Repositories.Entity
+﻿using Core.Base;
+using System.Text.Json.Serialization;
+
+namespace Contract.Repositories.Entity
 {
-    public class BankAccount
+    public class BankAccount : BaseEntity
     {
-        public int BankAccountId { get; set; }
+        // Số tài khoản
+        public string AccountNumber { get; set; }
 
-        public int UserId { get; set; }
+        // Tên tài khoản
+        public string AccountName { get; set; } = string.Empty;
 
-        public string BankName { get; set; } = string.Empty;
+        // Ngân hàng giao dịch
+        public string Bank { get; set; }
 
-        public string AccountNumber { get; set; } = string.Empty;
-
-        public string AccountHolder { get; set; } = string.Empty;
-
-        public string AccountType { get; set; } = string.Empty;
-
-        public bool IsDefault { get; set; }
-
-        public DateTime CreatedAt { get; set; }
-
-        public DateTime? UpdatedAt { get; set; }
+        // Liên kết giữa bank account với nhiều booking
+        [JsonIgnore]
+        public virtual ICollection<Booking> Bookings { get; set; } = new HashSet<Booking>();
     }
 }

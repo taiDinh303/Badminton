@@ -1,14 +1,15 @@
-﻿using Contract.Services.Interface;
+﻿using Contract.Services.Interface.Booking;
+using Core.Base;
+using Core.Store;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using ModelViews.Booking;
-using System.Security.Claims;
+using ModelViews.BookingModelView;
 
-namespace BadmintonBE.API.Controllers
+namespace API.Controllers
 {
+    [Route("api/bookings")]
     [ApiController]
-    [Route("api/[controller]")]
-    [Authorize]
+    //[Authorize]
     public class BookingController : ControllerBase
     {
         private readonly IBookingService _bookingService;
@@ -18,182 +19,86 @@ namespace BadmintonBE.API.Controllers
             _bookingService = bookingService;
         }
 
-        [HttpPost]
-        [Authorize(Roles = "Customer,Admin")]
-        public async Task<IActionResult> Create(CreateBookingRequest request)
-        {
-            var userId = GetUserId();
-
-            try
-            {
-                var result = await _bookingService.CreateAsync(request, userId);
-
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new
-                {
-                    message = ex.Message
-                });
-            }
-        }
-
-        [HttpGet("{bookingId:int}")]
-        public async Task<IActionResult> GetById(int bookingId)
-        {
-            var userId = GetUserId();
-            var role = User.FindFirstValue(ClaimTypes.Role);
-
-            var result = await _bookingService
-                .GetByIdAsync(bookingId, userId, role!);
-
-            if (result == null)
-            {
-                return NotFound(new
-                {
-                    message = "Booking not found."
-                });
-            }
-
-            return Ok(result);
-        }
-
-        [HttpGet("user/{userId:int}")]
-        public async Task<IActionResult> GetByUserId(int userId)
-        {
-            var currentUserId = GetUserId();
-
-            var role = User.FindFirstValue(ClaimTypes.Role);
-
-            if (role != "Admin" && role != "Staff" &&
-                currentUserId != userId)
-            {
-                return Forbid();
-            }
-
-            var result = await _bookingService
-                .GetByUserIdAsync(userId);
-
-            return Ok(result);
-        }
-
-        private int GetUserId()
-        {
-            return int.Parse(
-                User.FindFirstValue("UserId")!);
-        }
-
-        [HttpGet("available")]
-        public async Task<IActionResult> GetAvailable(DateTime bookingDate)
-        {
-            try
-            {
-                var result = await _bookingService.GetAvailableAsync(bookingDate);
-
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-        }
-
-        [HttpPut("{bookingId:int}/confirm")]
-        [Authorize(Roles = "Customer,Admin")]
-        public async Task<IActionResult> Confirm(int bookingId)
-        {
-            var userId = GetUserId();
-            var role = User.FindFirstValue(ClaimTypes.Role);
-
-            var result = await _bookingService.ConfirmAsync(
-                bookingId,
-                userId,
-                role!);
-
-            if (!result)
-                return BadRequest(new
-                {
-                    message = "Booking cannot be confirmed."
-                });
-
-            return Ok(new
-            {
-                message = "Booking confirmed successfully."
-            });
-        }
-
-        [HttpPut("{bookingId:int}/cancel")]
-        [Authorize(Roles = "Customer,Admin")]
-        public async Task<IActionResult> Cancel(int bookingId)
-        {
-            var userId = GetUserId();
-            var role = User.FindFirstValue(ClaimTypes.Role);
-
-            var result = await _bookingService.CancelAsync(
-                bookingId,
-                userId,
-                role!);
-
-            if (!result)
-            {
-                return BadRequest(new
-                {
-                    message = "Booking cannot be cancelled."
-                });
-            }
-
-            return Ok(new
-            {
-                message = "Booking cancelled successfully."
-            });
-        }
-
-        [HttpPut("{bookingId:int}/complete")]
-        [Authorize(Roles = "Staff,Admin")]
-        public async Task<IActionResult> Complete(int bookingId)
-        {
-            var userId = GetUserId();
-            var role = User.FindFirstValue(ClaimTypes.Role);
-
-            var result = await _bookingService.CompleteAsync(
-                bookingId,
-                userId,
-                role!);
-
-            if (!result)
-            {
-                return BadRequest(new
-                {
-                    message = "Booking cannot be completed."
-                });
-            }
-
-            return Ok(new
-            {
-                message = "Booking completed successfully."
-            });
-        }
-
-        [HttpGet("my-bookings")]
-        [Authorize(Roles = "Customer")]
-        public async Task<IActionResult> GetMyBookings()
-        {
-            var userId = GetUserId();
-
-            var result = await _bookingService
-                .GetMyBookingsAsync(userId);
-
-            return Ok(result);
-        }
-
-        [HttpGet]
-        [Authorize(Roles = "Staff,Admin")]
+        [HttpGet("get-all")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetAll()
         {
             var result = await _bookingService.GetAllAsync();
+            return Ok(new BaseResponse<List<BookingResponseModelView>>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: result));
+        }
 
-            return Ok(result);
+        [HttpGet("get-by-id/{id}")]
+        //[Authorize(Roles = "User,Admin")]
+        public async Task<IActionResult> GetById(Guid id)
+        {
+            var result = await _bookingService.GetByIdAsync(id);
+            return Ok(new BaseResponse<BookingResponseModelView>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: result));
+        }
+
+        [HttpGet("my-bookings")]
+        //[Authorize(Roles = "User,Admin")]
+        public async Task<IActionResult> GetMyBookings()
+        {
+            var userId = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var result = await _bookingService.GetByUserIdAsync(userId);
+            return Ok(new BaseResponse<List<BookingResponseModelView>>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: result));
+        }
+
+        [HttpGet("get-by-user/{userInfoId}")]
+        //[Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetByUser(string userInfoId)
+        {
+            var result = await _bookingService.GetByUserIdAsync(userInfoId);
+            return Ok(new BaseResponse<List<BookingResponseModelView>>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: result));
+        }
+
+        [HttpPost("create")]
+        //[Authorize(Roles = "User,Admin")]
+        public async Task<IActionResult> Create([FromBody] CreateBookingModelView model)
+        {
+            await _bookingService.CreateAsync(model);
+            return Ok(new BaseResponse<string>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: "Booking created successfully!"));
+        }
+
+        [HttpPut("update")]
+        //[Authorize(Roles = "User,Admin")]
+        public async Task<IActionResult> Update([FromBody] UpdateBookingModelView model)
+        {
+            await _bookingService.UpdateAsync(model);
+            return Ok(new BaseResponse<string>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: "Booking updated successfully!"));
+        }
+
+        [HttpDelete("delete/{id}")]
+        //[Authorize(Roles = "User,Admin")]
+        public async Task<IActionResult> Delete(Guid id)
+        {
+            await _bookingService.DeleteAsync(id);
+            return Ok(new BaseResponse<string>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: "Booking deleted successfully!"));
         }
     }
 }
