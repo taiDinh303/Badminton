@@ -1,12 +1,10 @@
-﻿
-using Contract.Repositories.Entity;
+﻿using Contract.Repositories.Entity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Repositories.Context
 {
-    public class DatabaseContext : IdentityDbContext<
-        ApplicationUser,
+    public class DatabaseContext : IdentityDbContext<ApplicationUser,
         ApplicationRole,
         Guid,
         ApplicationUserClaim,
@@ -15,7 +13,8 @@ namespace Repositories.Context
         ApplicationRoleClaim,
         ApplicationUserToken>
     {
-        public DatabaseContext(DbContextOptions<DatabaseContext> options)
+        public DatabaseContext(
+            DbContextOptions<DatabaseContext> options)
             : base(options)
         {
         }
@@ -32,9 +31,6 @@ namespace Repositories.Context
         // User information
         public virtual DbSet<UserInfo> UserInfos => Set<UserInfo>();
 
-        protected override void OnModelCreating(ModelBuilder builder)
-        {
-            base.OnModelCreating(builder);
-        }
+        
     }
 }
