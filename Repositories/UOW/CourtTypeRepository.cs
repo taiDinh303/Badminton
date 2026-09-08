@@ -7,9 +7,9 @@ namespace Repositories.UOW
 {
     public class CourtTypeRepository : ICourtTypeRepository
     {
-        private readonly BadmintonBookingDbContext _context;
+        private readonly DatabaseContext _context;
 
-        public CourtTypeRepository(BadmintonBookingDbContext context)
+        public CourtTypeRepository(DatabaseContext context)
         {
             _context = context;
         }

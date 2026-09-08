@@ -7,9 +7,9 @@ namespace Repositories.UOW
 {
     public class BranchRepository : IBranchRepository
     {
-        private readonly BadmintonBookingDbContext _context;
+        private readonly DatabaseContext _context;
 
-        public BranchRepository(BadmintonBookingDbContext context)
+        public BranchRepository(DatabaseContext context)
         {
             _context = context;
         }

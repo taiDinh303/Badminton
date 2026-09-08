@@ -7,10 +7,10 @@ namespace Repositories.UOW
 {
     public class VerificationCodeRepository : IVerificationCodeRepository
     {
-        private readonly BadmintonBookingDbContext _context;
+        private readonly DatabaseContext _context;
 
         public VerificationCodeRepository(
-            BadmintonBookingDbContext context)
+            DatabaseContext context)
         {
             _context = context;
         }

@@ -7,9 +7,9 @@ namespace Repositories.UOW
 {
     public class PaymentRepository : IPaymentRepository
     {
-        private readonly BadmintonBookingDbContext _context;
+        private readonly DatabaseContext _context;
 
-        public PaymentRepository(BadmintonBookingDbContext context)
+        public PaymentRepository(DatabaseContext context)
         {
             _context = context;
         }

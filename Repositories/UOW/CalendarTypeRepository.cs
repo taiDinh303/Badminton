@@ -7,9 +7,9 @@ namespace Repositories.UOW
 {
     public class CalendarTypeRepository : ICalendarTypeRepository
     {
-        private readonly BadmintonBookingDbContext _context;
+        private readonly DatabaseContext _context;
 
-        public CalendarTypeRepository(BadmintonBookingDbContext context)
+        public CalendarTypeRepository(DatabaseContext context)
         {
             _context = context;
         }

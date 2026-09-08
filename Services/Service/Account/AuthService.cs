@@ -16,7 +16,7 @@ using System.Security.Claims;
 using System.Text;
 using static Core.Base.BaseException;
 
-namespace Services.Service.Account
+namespace Services.Service
 {
     public class AuthService : IAuthService
     {
