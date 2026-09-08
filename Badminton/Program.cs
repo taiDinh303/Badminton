@@ -1,6 +1,5 @@
 using API;
 using API.Middleware;
-using Contract.Repositories.IOUW;
 using Contract.Services.Interface;
 using Core.Store;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -13,10 +12,6 @@ builder.Services.AddControllers();
 
 var jwtKey = builder.Configuration["JwtSettings:Key"]
     ?? throw new InvalidOperationException("JWT Key not found");
-
-//builder.Services.AddDbContext<DatabaseContext>(options =>
-//    options.UseSqlServer(
-//        builder.Configuration.GetConnectionString("BadmintonBooking")));
 
 builder.Services.AddEndpointsApiExplorer();
 
