@@ -88,6 +88,8 @@ namespace API
                 .AddScoped<IOtpService, OtpService>()
 
 
+                .AddScoped<ISmsSender, SmsSender>()
+
 
                 .AddHttpContextAccessor();
         }

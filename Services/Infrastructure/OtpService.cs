@@ -18,28 +18,25 @@ namespace Services.Infrastructure
             return random.Next(100000, 999999).ToString();
         }
 
-        public Task StoreAsync(string email, string code, DateTime expiration)
+        public Task StoreAsync(string key, string code, DateTime expiration)
         {
-            // Tính khoảng thời gian tồn tại của OTP
             var ttl = expiration - DateTime.UtcNow;
 
             if (ttl <= TimeSpan.Zero)
-                ttl = TimeSpan.FromMinutes(5); // default fallback
+                ttl = TimeSpan.FromMinutes(5);
 
-            // Lưu OTP vào cache
-            _cache.Set(email, code, ttl);
+            _cache.Set(key, code, ttl);
 
             return Task.CompletedTask;
         }
 
-        public Task<bool> ValidateAsync(string email, string code)
+        public Task<bool> ValidateAsync(string key, string code)
         {
-            if (!_cache.TryGetValue(email, out string storedCode))
+            if (!_cache.TryGetValue(key, out string? storedCode))
                 return Task.FromResult(false);
 
-            // Nếu đúng OTP, xóa luôn để không dùng lại
             if (storedCode == code)
-                _cache.Remove(email);
+                _cache.Remove(key);
 
             return Task.FromResult(storedCode == code);
         }

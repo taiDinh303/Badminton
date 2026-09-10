@@ -1,5 +1,4 @@
-﻿
-using Contract.Repositories.Entity;
+﻿using Contract.Repositories.Entity;
 using Contract.Services.Interface;
 using Core.Base;
 using Core.Store;
@@ -44,6 +43,36 @@ namespace API.Controllers
         public async Task<IActionResult> RegisterAsync([FromBody] RegisterModelView model)
         {
             await _authService.RegisterAsync(model);
+
+            return Ok(new BaseResponse<string>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: "Register successfully!"
+            ));
+        }
+
+        /// <summary>
+        /// Send phone confirmation code
+        /// </summary>
+        [HttpPost("send-phone-confirmation")]
+        public async Task<IActionResult> SendPhoneConfirmation([FromBody] string phoneNumber)
+        {
+            await _authService.SendPhoneConfirmationAsync(phoneNumber);
+
+            return Ok(new BaseResponse<string>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: "Confirmation code sent"
+            ));
+        }
+
+        /// <summary>
+        /// Register with phone number
+        /// </summary>
+        [HttpPost("register-phone")]
+        public async Task<IActionResult> RegisterPhone([FromBody] RegisterPhoneModelView model)
+        {
+            await _authService.RegisterByPhoneAsync(model);
 
             return Ok(new BaseResponse<string>(
                 statusCode: StatusCodeHelper.OK,
@@ -108,9 +137,6 @@ namespace API.Controllers
             ));
         }
 
-
-
-
         /// <summary>
         /// Send email forgot password link
         /// </summary>
@@ -125,9 +151,5 @@ namespace API.Controllers
                 data: "forgot password link sent"
             ));
         }
-
-
-
-
     }
 }

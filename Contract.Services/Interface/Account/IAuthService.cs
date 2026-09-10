@@ -11,5 +11,9 @@ namespace Contract.Services.Interface
         Task<bool> VerifyPassword(VerifyPasswordModelView model);
         Task SendForgotPasswordLinkAsync(string email);
 
+
+        Task RegisterByPhoneAsync(RegisterPhoneModelView registerPhoneModelView);
+
+        Task SendPhoneConfirmationAsync(string phoneNumber);
     }
 }

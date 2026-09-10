@@ -27,8 +27,9 @@ namespace Services.Service
         private readonly IUserInfoService _userInfoService;
         private readonly IEmailService _emailService;
         private readonly IOtpService _otpService;
+        private readonly ISmsSender _smsSender;
 
-        public AuthService(IUnitOfWork unitOfWork, UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager, IConfiguration configuration, IUserInfoService userInfoService, IEmailService emailService, IOtpService otpService)
+        public AuthService(IUnitOfWork unitOfWork, UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager, IConfiguration configuration, IUserInfoService userInfoService, IEmailService emailService, IOtpService otpService, ISmsSender smsSender)
         {
             _unitOfWork = unitOfWork;
             _userManager = userManager;
@@ -37,6 +38,7 @@ namespace Services.Service
             _userInfoService = userInfoService;
             _emailService = emailService;
             _otpService = otpService;
+            _smsSender = smsSender;
         }
 
         #region Implementation Interface
@@ -143,6 +145,109 @@ namespace Services.Service
             await _userInfoService.CreateAsync(defaultUserInfo);
         }
 
+
+
+        public async Task RegisterByPhoneAsync(RegisterPhoneModelView model)
+        {
+            model.PhoneNumber = model.PhoneNumber.Trim();
+
+            // Validate password
+            if (model.Password != model.ConfirmPassword)
+                throw new ErrorException(
+                    400,
+                    "PASSWORD_MISMATCH",
+                    "Passwords do not match");
+
+            // Check phone
+            bool phoneExists = await _userManager.Users
+                .AnyAsync(x => x.PhoneNumber == model.PhoneNumber);
+
+            if (phoneExists)
+                throw new ErrorException(
+                    400,
+                    "PHONE_EXISTS",
+                    "Phone number is already registered");
+
+            // Validate OTP
+            bool isValidOtp = await _otpService.ValidateAsync(
+                $"phone:{model.PhoneNumber}",
+                model.ConfirmationCode);
+
+            if (!isValidOtp)
+                throw new ErrorException(
+                    400,
+                    "INVALID_OTP",
+                    "Invalid or expired confirmation code");
+
+            // Create Identity User
+            var user = new ApplicationUser
+            {
+                UserName = model.PhoneNumber,
+                PhoneNumber = model.PhoneNumber,
+                PhoneNumberConfirmed = true
+            };
+
+            var createResult = await _userManager.CreateAsync(
+                user,
+                model.Password);
+
+            if (!createResult.Succeeded)
+            {
+                string error = createResult.Errors.FirstOrDefault()?.Description
+                               ?? "Unknown error occurred";
+
+                throw new ErrorException(
+                    400,
+                    "INVALID_INPUT",
+                    error);
+            }
+
+            // Add default role
+            await _userManager.AddToRoleAsync(user, "User");
+
+            // Create profile
+            var defaultUserInfo = new CreateUserInfoModelView
+            {
+                UserId = user.Id,
+                GivenName = model.PhoneNumber,
+                BirthDate = DateTime.UtcNow,
+                Gender = GenderType.RatherNotSay
+            };
+
+            await _userInfoService.CreateAsync(defaultUserInfo);
+        }
+
+        public async Task SendPhoneConfirmationAsync(string phoneNumber)
+        {
+            phoneNumber = phoneNumber.Trim();
+
+            if (string.IsNullOrEmpty(phoneNumber))
+                throw new ErrorException(
+                    400,
+                    "INVALID_PHONE",
+                    "Phone number cannot be empty");
+
+            bool phoneExists = await _userManager.Users
+                .AnyAsync(x => x.PhoneNumber == phoneNumber);
+
+            if (phoneExists)
+                throw new ErrorException(
+                    400,
+                    "PHONE_EXISTS",
+                    "Phone number is already registered");
+
+            var code = _otpService.GenerateConfirmationCode();
+            var expiration = DateTime.UtcNow.AddMinutes(10);
+
+            await _otpService.StoreAsync(
+                $"phone:{phoneNumber}",
+                code,
+                expiration);
+
+            await _smsSender.SendTestSmsAsync(
+                phoneNumber,
+                $"[BadmintonBooking] Your verification code is: {code}");
+        }
 
         public async Task SendEmailConfirmationAsync(string email)
         {

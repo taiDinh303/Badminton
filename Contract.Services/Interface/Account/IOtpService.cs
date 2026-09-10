@@ -2,8 +2,8 @@
 {
     public interface IOtpService
     {
-        Task StoreAsync(string email, string code, DateTime expiration);
-        Task<bool> ValidateAsync(string email, string code);
+        Task StoreAsync(string key, string code, DateTime expiration);
+        Task<bool> ValidateAsync(string key, string code);
         string GenerateConfirmationCode();
     }
 
