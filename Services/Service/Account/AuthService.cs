@@ -12,6 +12,7 @@ using Microsoft.IdentityModel.Tokens;
 using ModelViews.AuthModelView;
 using ModelViews.UserInfoModelView;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Mail;
 using System.Security.Claims;
 using System.Text;
 using static Core.Base.BaseException;
@@ -105,15 +106,48 @@ namespace Services.Service
         // Register
         public async Task RegisterAsync(RegisterModelView model)
         {
+            model.Email = model.Email.Trim();
+            model.Username = model.Username.Trim();
+
+            // Validate username
+            if (string.IsNullOrEmpty(model.Username))
+                throw new BadRequestException(
+                    "INVALID_USERNAME",
+                    "Username cannot be empty");
+
+            // Validate email
+            if (string.IsNullOrEmpty(model.Email))
+                throw new BadRequestException(
+                    "INVALID_EMAIL",
+                    "Email cannot be empty");
+
+            if (!MailAddress.TryCreate(model.Email, out _))
+                throw new BadRequestException(
+                    "INVALID_EMAIL",
+                    "Email is not valid");
+
             // Validate password
+            if (string.IsNullOrEmpty(model.Password))
+                throw new BadRequestException(
+                    "INVALID_PASSWORD",
+                    "Password cannot be empty");
+
             if (model.Password != model.ConfirmPassword)
-                throw new ErrorException(400, "PASSWORD_MISMATCH", "Passwords do not match");
+                throw new BadRequestException(
+                    "PASSWORD_MISMATCH",
+                    "Passwords do not match");
 
-            //// Validate OTP
-            bool isValidOtp = await _otpService.ValidateAsync(model.Email, model.ConfirmationCode);
+            // Validate OTP
+            bool isValidOtp = await _otpService.ValidateAsync(
+                model.Email,
+                model.ConfirmationCode);
+
             if (!isValidOtp)
-                throw new ErrorException(400, "INVALID_OTP", "Invalid or expired confirmation code");
+                throw new BadRequestException(
+                    "INVALID_OTP",
+                    "Invalid or expired confirmation code");
 
+            // Create Identity User
             var user = new ApplicationUser
             {
                 UserName = model.Username,
@@ -121,13 +155,18 @@ namespace Services.Service
                 EmailConfirmed = true
             };
 
-            // Create identity user
-            var createResult = await _userManager.CreateAsync(user, model.Password);
+            var createResult = await _userManager.CreateAsync(
+                user,
+                model.Password);
+
             if (!createResult.Succeeded)
             {
                 string error = createResult.Errors.FirstOrDefault()?.Description
                                ?? "Unknown error occurred";
-                throw new ErrorException(400, "INVALID_INPUT", error);
+
+                throw new BadRequestException(
+                    "INVALID_INPUT",
+                    error);
             }
 
             // Add default role
@@ -151,10 +190,25 @@ namespace Services.Service
         {
             model.PhoneNumber = model.PhoneNumber.Trim();
 
+            // Validate phone
+            if (string.IsNullOrEmpty(model.PhoneNumber))
+                throw new BadRequestException(
+                    "INVALID_PHONE",
+                    "Phone number cannot be empty");
+
+            if (!model.PhoneNumber.All(char.IsDigit))
+                throw new BadRequestException(
+                    "INVALID_PHONE",
+                    "Phone number is not valid");
+
             // Validate password
+            if (string.IsNullOrEmpty(model.Password))
+                throw new BadRequestException(
+                    "INVALID_PASSWORD",
+                    "Password cannot be empty");
+
             if (model.Password != model.ConfirmPassword)
-                throw new ErrorException(
-                    400,
+                throw new BadRequestException(
                     "PASSWORD_MISMATCH",
                     "Passwords do not match");
 
@@ -163,8 +217,7 @@ namespace Services.Service
                 .AnyAsync(x => x.PhoneNumber == model.PhoneNumber);
 
             if (phoneExists)
-                throw new ErrorException(
-                    400,
+                throw new BadRequestException(
                     "PHONE_EXISTS",
                     "Phone number is already registered");
 
@@ -174,8 +227,7 @@ namespace Services.Service
                 model.ConfirmationCode);
 
             if (!isValidOtp)
-                throw new ErrorException(
-                    400,
+                throw new BadRequestException(
                     "INVALID_OTP",
                     "Invalid or expired confirmation code");
 
@@ -196,8 +248,7 @@ namespace Services.Service
                 string error = createResult.Errors.FirstOrDefault()?.Description
                                ?? "Unknown error occurred";
 
-                throw new ErrorException(
-                    400,
+                throw new BadRequestException(
                     "INVALID_INPUT",
                     error);
             }
@@ -222,17 +273,20 @@ namespace Services.Service
             phoneNumber = phoneNumber.Trim();
 
             if (string.IsNullOrEmpty(phoneNumber))
-                throw new ErrorException(
-                    400,
+                throw new BadRequestException(
                     "INVALID_PHONE",
                     "Phone number cannot be empty");
+
+            if (!phoneNumber.All(char.IsDigit))
+                throw new BadRequestException(
+                    "INVALID_PHONE",
+                    "Phone number is not valid");
 
             bool phoneExists = await _userManager.Users
                 .AnyAsync(x => x.PhoneNumber == phoneNumber);
 
             if (phoneExists)
-                throw new ErrorException(
-                    400,
+                throw new BadRequestException(
                     "PHONE_EXISTS",
                     "Phone number is already registered");
 
@@ -251,12 +305,29 @@ namespace Services.Service
 
         public async Task SendEmailConfirmationAsync(string email)
         {
+            email = email.Trim();
+
+            if (string.IsNullOrEmpty(email))
+                throw new BadRequestException(
+                    "INVALID_EMAIL",
+                    "Email cannot be empty");
+
+            if (!MailAddress.TryCreate(email, out _))
+                throw new BadRequestException(
+                    "INVALID_EMAIL",
+                    "Email is not valid");
+
             var code = _otpService.GenerateConfirmationCode();
             var expiration = DateTime.UtcNow.AddMinutes(10);
-            // Create OTP
-            await _otpService.StoreAsync(email, code, expiration);
-            // Send email confirmation
-            await _emailService.SendVerificationCodeAsync(email, code);
+
+            await _otpService.StoreAsync(
+                email,
+                code,
+                expiration);
+
+            await _emailService.SendVerificationCodeAsync(
+                email,
+                code);
         }
 
 
@@ -300,8 +371,7 @@ namespace Services.Service
                 if (!createResult.Succeeded)
                 {
                     string errorMsg = createResult.Errors.FirstOrDefault()?.Description ?? "Failed to create user.";
-                    throw new ErrorException(
-                        StatusCodes.Status400BadRequest,
+                    throw new BadRequestException(
                         ResponseCodeConstants.INVALID_INPUT,
                         errorMsg
                     );
@@ -425,18 +495,29 @@ namespace Services.Service
         // Send a forgot-password email to a user
         public async Task SendForgotPasswordLinkAsync(string email)
         {
+            email = email.Trim();
+
+            if (string.IsNullOrEmpty(email))
+                throw new BadRequestException(
+                    "INVALID_EMAIL",
+                    "Email cannot be empty");
+
+            if (!MailAddress.TryCreate(email, out _))
+                throw new BadRequestException(
+                    "INVALID_EMAIL",
+                    "Email is not valid");
+
             var user = await _userManager.FindByEmailAsync(email)
                 ?? throw new ErrorException(
                     StatusCodes.Status404NotFound,
                     ResponseCodeConstants.NOT_FOUND,
-                    "User not found"
-                );
+                    "User not found");
 
-            // Create password reset token
             string token = await _userManager.GeneratePasswordResetTokenAsync(user);
 
-            // Send forgot password email
-            await _emailService.SendForgotPasswordLinkAsync(user, token);
+            await _emailService.SendForgotPasswordLinkAsync(
+                user,
+                token);
         }
 
 

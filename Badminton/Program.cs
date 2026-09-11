@@ -78,8 +78,8 @@ builder.Services.AddConfig(builder.Configuration);
 var app = builder.Build();
 
 //Catch error
-app.UseDeveloperExceptionPage();
-//app.UseMiddleware<ExceptionMiddleware>();
+//app.UseDeveloperExceptionPage();
+app.UseMiddleware<ExceptionMiddleware>();
 
 
 

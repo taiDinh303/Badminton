@@ -3,9 +3,10 @@ using Core.Base;
 
 namespace API.Middleware
 {
-    public class ExceptionMiddleware(RequestDelegate next)
+    public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddleware> logger)
     {
         private readonly RequestDelegate _next = next;
+        private readonly ILogger<ExceptionMiddleware> _logger = logger;
 
         public async Task Invoke(HttpContext context)
         {
@@ -15,16 +16,29 @@ namespace API.Middleware
             }
             catch (BaseException.ErrorException ex)
             {
-                await HandleExceptionAsync(context, ex.StatusCode, ex.ErrorDetail.ErrorCode, ex.ErrorDetail.ErrorMessage?.ToString());
+                await HandleExceptionAsync(
+                    context,
+                    ex.StatusCode,
+                    ex.ErrorDetail.ErrorCode,
+                    ex.ErrorDetail.ErrorMessage?.ToString());
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                await HandleExceptionAsync(context, (int)HttpStatusCode.InternalServerError,
-                    ResponseCodeConstants.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
+                _logger.LogError(ex, "Unhandled exception");
+
+                await HandleExceptionAsync(
+                    context,
+                    (int)HttpStatusCode.InternalServerError,
+                    ResponseCodeConstants.INTERNAL_SERVER_ERROR,
+                    "An unexpected error occurred");
             }
         }
 
-        private static Task HandleExceptionAsync(HttpContext context, int statusCode, string? errorCode, object? errorMessage)
+        private static Task HandleExceptionAsync(
+            HttpContext context,
+            int statusCode,
+            string? errorCode,
+            object? errorMessage)
         {
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = statusCode;
@@ -40,9 +54,11 @@ namespace API.Middleware
             return context.Response.WriteAsJsonAsync(response);
         }
     }
+
     public static class ExceptionMiddlewareExtensions
     {
-        public static IApplicationBuilder UseExceptionMiddleware(this IApplicationBuilder builder)
+        public static IApplicationBuilder UseExceptionMiddleware(
+            this IApplicationBuilder builder)
         {
             return builder.UseMiddleware<ExceptionMiddleware>();
         }
