@@ -72,31 +72,15 @@ namespace BadmintonBE.API.Controllers
                 return Forbid();
             }
 
-            var result = await _bookingService
-                .GetByUserIdAsync(userId);
-
-            return Ok(result);
-        }
-
-        private int GetUserId()
+        [HttpGet("get-all")]
+        //[Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetAll()
         {
-            return int.Parse(
-                User.FindFirstValue("UserId")!);
-        }
-
-        [HttpGet("available")]
-        public async Task<IActionResult> GetAvailable(DateTime bookingDate)
-        {
-            try
-            {
-                var result = await _bookingService.GetAvailableAsync(bookingDate);
-
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
+            var result = await _bookingService.GetAllAsync();
+            return Ok(new BaseResponse<List<BookingResponseModelView>>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: result));
         }
 
         [HttpPut("{bookingId:int}/confirm")]
@@ -127,26 +111,14 @@ namespace BadmintonBE.API.Controllers
         [Authorize(Roles = "Customer,Admin")]
         public async Task<IActionResult> Cancel(int bookingId)
         {
-            var userId = GetUserId();
-            var role = User.FindFirstValue(ClaimTypes.Role);
-
-            var result = await _bookingService.CancelAsync(
-                bookingId,
-                userId,
-                role!);
-
-            if (!result)
-            {
-                return BadRequest(new
-                {
-                    message = "Booking cannot be cancelled."
-                });
-            }
-
-            return Ok(new
-            {
-                message = "Booking cancelled successfully."
-            });
+            var result = await _bookingService.GetByUserIdAsync(
+                User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value
+                ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? string.Empty);
+            return Ok(new BaseResponse<List<BookingResponseModelView>>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: result));
         }
 
         [HttpPut("{bookingId:int}/complete")]
@@ -187,13 +159,26 @@ namespace BadmintonBE.API.Controllers
             return Ok(result);
         }
 
-        [HttpGet]
-        [Authorize(Roles = "Staff,Admin")]
-        public async Task<IActionResult> GetAll()
+        [HttpDelete("soft-delete/{id}")]
+        //[Authorize(Roles = "User,Admin")]
+        public async Task<IActionResult> SoftDelete(Guid id)
         {
-            var result = await _bookingService.GetAllAsync();
+            await _bookingService.SoftDeleteAsync(id);
+            return Ok(new BaseResponse<string>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: "Booking soft-deleted successfully!"));
+        }
 
-            return Ok(result);
+        [HttpDelete("delete/{id}")]
+        //[Authorize(Roles = "Admin")]
+        public async Task<IActionResult> Delete(Guid id)
+        {
+            await _bookingService.DeleteAsync(id);
+            return Ok(new BaseResponse<string>(
+                statusCode: StatusCodeHelper.OK,
+                code: ResponseCodeConstants.SUCCESS,
+                data: "Booking deleted permanently!"));
         }
     }
 }

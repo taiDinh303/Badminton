@@ -1,3 +1,5 @@
+using API;
+using API.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Context;
 using Core.Store;
@@ -45,6 +47,8 @@ builder.Services.AddControllers();
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("JwtSettings"));
 
+// Add all services to this
+builder.Services.AddConfig(builder.Configuration);
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
