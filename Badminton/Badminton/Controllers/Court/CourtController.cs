@@ -5,41 +5,41 @@ using ModelViews.Court;
 
 namespace BadmintonBE.API.Controllers
 {
-    /// <summary>COURT endpoints: read the court list, admin manages courts.</summary>
     [ApiController]
-    [Route("api/courts")]
+    [Route("api/v1/courts")]
     public class CourtController : BaseApiController
     {
         private readonly ICourtService _svc;
-
         public CourtController(ICourtService svc) => _svc = svc;
 
         [HttpGet]
         [AllowAnonymous]
-        public async Task<IActionResult> GetAll() => Resp(await _svc.GetAllAsync());
+        public async Task<IActionResult> GetAll([FromQuery] int? branchId) =>
+            Resp(await _svc.GetAllAsync(branchId));
+
+        [HttpGet("{id:int}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetById(int id) => Resp(await _svc.GetByIdAsync(id));
 
         [HttpPost]
-        [Authorize(Roles = "Admin,Staff")]
-        public async Task<IActionResult> Create(CreateCourtRequest request)
-        {
-            await _svc.CreateAsync(request, CurrentUserName);
-            return RespMsg("Court created.");
-        }
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> Create(CreateCourtRequest request) =>
+            Resp(await _svc.CreateAsync(request, CurrentUserId), "Tạo sân thành công.");
 
-        [HttpPut("{id:int}")]
-        [Authorize(Roles = "Admin,Staff")]
+        [HttpPatch("{id:int}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Update(int id, UpdateCourtRequest request)
         {
-            await _svc.UpdateAsync(id, request, CurrentUserName);
-            return RespMsg("Court updated.");
+            await _svc.UpdateAsync(id, request, CurrentUserId);
+            return RespMsg("Cập nhật sân thành công.");
         }
 
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Delete(int id)
         {
-            await _svc.DeleteAsync(id, CurrentUserName);
-            return RespMsg("Court deleted.");
+            await _svc.DeleteAsync(id, CurrentUserId);
+            return RespMsg("Vô hiệu sân thành công.");
         }
     }
 }

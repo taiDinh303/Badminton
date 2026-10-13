@@ -5,12 +5,10 @@ using System.Text.Json;
 
 namespace BadmintonBE.API.Middleware
 {
-    /// <summary>
-    /// ENCAPSULATION + ABSTRACTION: every domain exception is translated to a
-    /// uniform <see cref="BaseResponse{string}"/> in ONE place, so controllers
-    /// throw cleanly and never write their own try/catch. Unknown exceptions
-    /// collapse to a 500 without leaking internals.
-    /// </summary>
+    /// <summary>docs 04 §4: every domain exception → a uniform
+    /// BaseResponse with a machine-readable <c>code</c> + a Vietnamese
+    /// <c>message</c> + the HTTP status. Unknown errors collapse to 500
+    /// without leaking internals.</summary>
     public sealed class ExceptionMiddleware
     {
         private readonly RequestDelegate _next;
@@ -34,12 +32,11 @@ namespace BadmintonBE.API.Middleware
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unhandled exception on {Method} {Path}",
+                _logger.LogError(ex, "Unhandled on {Method} {Path}",
                     context.Request.Method, context.Request.Path);
-                await WriteAsync(context,
-                    (int)StatusCodeHelper.ServerError,
+                await WriteAsync(context, (int)StatusCodeHelper.ServerError,
                     ResponseCodeConstants.INTERNAL_SERVER_ERROR,
-                    "An unexpected error occurred.");
+                    "Có lỗi xảy ra, vui lòng thử lại.");
             }
         }
 
@@ -50,11 +47,8 @@ namespace BadmintonBE.API.Middleware
             context.Response.ContentType = "application/json";
             var payload = new BaseResponse<string>(
                 (StatusCodeHelper)httpStatus, code, message);
-            await context.Response.WriteAsync(
-                JsonSerializer.Serialize(payload, new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                }));
+            await context.Response.WriteAsync(JsonSerializer.Serialize(payload,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
         }
     }
 }

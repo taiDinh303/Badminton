@@ -3,11 +3,6 @@ using Microsoft.EntityFrameworkCore.Design;
 
 namespace Repositories.Context
 {
-    /// <summary>
-    /// Design-time factory so <c>dotnet ef</c> / <c>Update-Database</c> can create
-    /// the context (for migrations / database update) without booting the API.
-    /// Connection string matches appsettings.json exactly.
-    /// </summary>
     public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<BadmintonBookingDbContext>
     {
         public BadmintonBookingDbContext CreateDbContext(string[] args)

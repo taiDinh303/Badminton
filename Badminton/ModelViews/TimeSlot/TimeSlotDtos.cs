@@ -1,9 +1,10 @@
 namespace ModelViews.TimeSlot
 {
-    // ---------- Time slot ----------
-    public record TimeSlotView(int Id, TimeOnly StartTime, TimeOnly EndTime, string Label);
+    public record TimeSlotView(int Id, string Label, string StartTime, string EndTime,
+        bool IsPeak, bool IsActive);
 
-    public record CreateTimeSlotRequest(TimeOnly StartTime, TimeOnly EndTime);
+    public record CreateTimeSlotRequest(string Label, string StartTime, string EndTime,
+        bool IsPeak);
 
-    public record UpdateTimeSlotRequest(TimeOnly? StartTime, TimeOnly? EndTime, bool? IsActive);
+    public record UpdateTimeSlotRequest(bool? IsActive, string? Label);
 }

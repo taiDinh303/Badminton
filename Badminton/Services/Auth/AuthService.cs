@@ -3,94 +3,87 @@ using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Auth;
 using M.Core.Base;
+using M.Core.Enums;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using ModelViews.Auth;
 
 namespace Services
 {
-    /// <summary>
-    /// AUTH service. INHERITANCE: extends <see cref="BaseService"/> so it shares
-    /// the UoW + repository helper with every other service. Passwords are
-    /// hashed with BCrypt; tokens come from the encapsulated <c>JwtGenerator</c>.
-    /// </summary>
     public sealed class AuthService : BaseService, IAuthService
     {
         private readonly JwtGenerator _jwt;
-        private readonly IGenericRepository<Role> _roles;
 
-        public AuthService(IUnitOfWork uow,
-            Microsoft.AspNetCore.Http.IHttpContextAccessor http,
-            JwtGenerator jwt) : base(uow, http)
+        public AuthService(IUnitOfWork uow, IHttpContextAccessor http, JwtGenerator jwt)
+            : base(uow, http)
         {
             _jwt = jwt;
-            _roles = Repository<Role>();
         }
 
         public async Task<LoginResponse> RegisterAsync(RegisterRequest request)
         {
-            if (string.IsNullOrWhiteSpace(request.Email) ||
-                string.IsNullOrWhiteSpace(request.Password))
-                throw new BadRequestException("Email and password are required.");
+            if (string.IsNullOrWhiteSpace(request.PhoneNumber))
+                throw new BadRequestException("So dien thoai la bat buoc.");
 
-            var userRepo = Repository<User>();
-            var exists = await userRepo.GetByConditionAsync(u =>
-                u.Email == request.Email);
-            if (exists.Count > 0)
-                throw new ConflictException("Email is already registered.");
+            if (request.Role != RoleDto.Customer)
+                throw new ConflictException(
+                    "Manager/Admin duoc tao boi admin, khong the tu dang ky.");
 
-            // Default to the Customer role (id 3 in the seeded Roles table).
-            var customerRole = (await _roles.GetByConditionAsync(
-                r => r.Name == "Customer" && r.IsActive)).FirstOrDefault();
-            if (customerRole is null)
-                throw new ConflictException("Default role not found; seed Roles first.");
+            var users = Repository<User>();
+            var dupes = await users.GetByConditionAsync(u => u.PhoneNumber == request.PhoneNumber);
+            if (dupes.Count > 0)
+                throw new ConflictException("So dien thoai nay da duoc dang ky.");
 
             var user = new User
             {
                 FullName = request.FullName,
-                Email = request.Email,
                 PhoneNumber = request.PhoneNumber,
+                Email = request.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-                RoleId = customerRole.RoleId,
-                IsActive = true
+                Role = Role.Customer,
+                Status = UserStatus.Active,
+                IsVerified = true
             };
-            _ = userRepo.AddAsync(user);
-            await SaveAsync();
 
-            return new LoginResponse
+            _ = users.AddAsync(user);
+            try { await SaveAsync(); }
+            catch (DbUpdateException ex)
             {
-                AccessToken = "",
-                UserId = user.UserId,
-                FullName = user.FullName,
-                Email = user.Email,
-                Role = customerRole.Name
-            };
+                if (IsUniqueViolation(ex))
+                    throw new ConflictException("Dung luong admin/so dien thoai bi loi rang buoc.");
+                throw;
+            }
+
+            var (access, _, _) = _jwt.Generate(user.Id, user.FullName, user.PhoneNumber,
+                user.Role.ToString());
+            return new LoginResponse(user.Id, user.FullName, user.PhoneNumber,
+                user.Role.ToString(), access, _jwt.ExpireMinutes());
         }
 
         public async Task<LoginResponse> LoginAsync(LoginRequest request)
         {
-            var userRepo = Repository<User>();
-            var users = await userRepo.GetByConditionAsync(u => u.Email == request.Email);
-            var user = users.FirstOrDefault();
-            if (user is null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
-                throw new BadRequestException("Invalid email or password.");
-            if (!user.IsActive)
-                throw new ConflictException("Account is deactivated.");
+            var users = Repository<User>();
+            var found = (await users.GetByConditionAsync(
+                u => u.PhoneNumber == request.PhoneNumber)).FirstOrDefault();
+            if (found is null || !BCrypt.Net.BCrypt.Verify(request.Password, found.PasswordHash))
+                throw new BadRequestException("So dien thoai hoac mat khau khong dung.");
+            if (found.Status != UserStatus.Active)
+                throw new ConflictException("Tai khoan da bi hoa.");
+            if (!found.IsVerified)
+                throw new ConflictException("Vui long xac minh so dien thoai.");
 
-            var role = await _roles.GetByIdAsync(user.RoleId);
-            var (access, _, _) = _jwt.Generate(
-                user.UserId, user.Email, user.FullName, role?.Name ?? "Customer");
-
-            user.UpdatedAt = DateTime.UtcNow;
-            userRepo.Update(user);
+            found.UpdatedAt = DateTime.UtcNow;
+            users.Update(found);
             await SaveAsync();
 
-            return new LoginResponse
-            {
-                AccessToken = access,
-                UserId = user.UserId,
-                FullName = user.FullName,
-                Email = user.Email,
-                Role = role?.Name ?? "Customer"
-            };
+            var (access, _, _) = _jwt.Generate(found.Id, found.FullName, found.PhoneNumber,
+                found.Role.ToString());
+            return new LoginResponse(found.Id, found.FullName, found.PhoneNumber,
+                found.Role.ToString(), access, _jwt.ExpireMinutes());
         }
+
+        private static bool IsUniqueViolation(DbUpdateException ex) =>
+            ex.InnerException is Microsoft.Data.SqlClient.SqlException sql
+            && sql.Number is 2601 or 2627;
     }
 }

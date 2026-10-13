@@ -1,59 +1,44 @@
 namespace M.Core.Enums
 {
-    /// <summary>Status of a court. Maps the SQL CHECK constraint on dbo.Courts.Status.</summary>
-    public enum CourtStatus
-    {
-        Available,
-        Maintenance,
-        Inactive
-    }
+    // ── Roles (customer/manager/admin) ──
+    public enum Role { Customer, Manager, Admin }
 
-    /// <summary>Status of a booking. Maps the SQL CHECK constraint on dbo.Bookings.Status.</summary>
+    // ── Branch (active/closed) ──
+    public enum BranchStatus { Active, Closed }
+
+    // ── Court date status (open/maintenance/closed) ──
+    public enum CourtDateStatus { Open, Maintenance, Closed }
+
+    // ── Court surface (sindalo/carpet/wood) ──
+    public enum CourtSurface { Sindalo, Carpet, Wood }
+
+    // ── Booking (pending/confirmed/completed/cancelled/no_show/refunded) ──
     public enum BookingStatus
     {
         Pending,
         Confirmed,
-        Paid,
-        Cancelled,
         Completed,
-        Expired
-    }
-
-    /// <summary>Status of a payment. Maps the SQL CHECK constraint on dbo.Payments.Status.</summary>
-    public enum PaymentStatus
-    {
-        Pending,
-        Paid,
-        Failed,
+        Cancelled,
+        NoShow,
         Refunded
     }
 
-    /// <summary>
-    /// Payment methods. This is a POLYMORPHISM driver (đa hình):
-    /// each value maps to a concrete <c>IPaymentStrategy</c> implementation,
-    /// so adding a new payment method is a new class, not a new if/else.
-    /// </summary>
-    public enum PaymentMethod
-    {
-        Cash,
-        BankTransfer,
-        QRCode
-    }
+    // ── Payment (vnpay/momo/zalopay/cash/qr) ──
+    public enum PaymentMethod { VnPay, MoMo, Zalopay, Cash, QR }
 
-    /// <summary>Status of a booking detail (slot) row.</summary>
-    public enum BookingDetailStatus
-    {
-        Reserved,
-        Cancelled,
-        Completed
-    }
-
-    /// <summary>Status of a customer check-in/out record.</summary>
-    public enum CheckInStatus
+    // ── Payment status (pending/success/failed/refunded/partial_refund) ──
+    public enum PaymentStatus
     {
         Pending,
-        CheckedIn,
-        CheckedOut,
-        NoShow
+        Success,
+        Failed,
+        Refunded,
+        PartialRefund
     }
+
+    // ── Voucher (percent/fixed) ──
+    public enum VoucherType { Percent, Fixed }
+
+    // ── User status (active/locked) ──
+    public enum UserStatus { Active, Locked }
 }

@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Repositories.Context;
 using Services.DI;
+using BadmintonBE.API.Jobs;
 using System.Text;
 
 namespace BadmintonBE.API
@@ -15,16 +16,13 @@ namespace BadmintonBE.API
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // ---------- DB ----------
             builder.Services.AddDbContext<BadmintonBookingDbContext>(options =>
                 options.UseSqlServer(
                     builder.Configuration.GetConnectionString("BadmintonBooking")
                     ?? builder.Configuration.GetConnectionString("DefaultConnection")));
 
-            // ---------- Auth (JWT) ----------
             var jwt = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()!;
             builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
-
             builder.Services
                 .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(o =>
@@ -46,17 +44,13 @@ namespace BadmintonBE.API
                 });
             builder.Services.AddAuthorization();
 
-            // ---------- Business services (UoW + strategies + fee policies) ----------
             builder.Services.AddBookingServices();
             builder.Services.AddHttpContextAccessor();
 
-            // ---------- MVC + Swagger ----------
-            builder.Services.AddControllers();
+            builder.Services.AddHostedService<PendingBookingExpiryJob>();
+            builder.Services.AddHostedService<VoucherExpiryJob>();
 
-            // Read/write enums as their string names (e.g. "BankTransfer",
-            // "Paid") instead of numbers, so the API matches the DB's
-            // string-typed enum columns. Without this, "method":"BankTransfer"
-            // would fail to bind (default expects 0/1/2).
+            builder.Services.AddControllers();
             builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(opt =>
                 opt.JsonSerializerOptions.Converters.Add(
                     new System.Text.Json.Serialization.JsonStringEnumConverter()));
@@ -65,9 +59,10 @@ namespace BadmintonBE.API
             {
                 c.SwaggerDoc("v1", new OpenApiInfo
                 {
-                    Title = "Badminton Booking API",
+                    Title = "Badminton Booking API v1",
                     Version = "v1",
-                    Description = "Court booking backend (4-layer: SERVER / SERVICES / REPOSITORY / CORE)."
+                    Description = "Court booking (docs 01–05): branches, courts, " +
+                                  "slots, booking, payment, voucher, points, review."
                 });
                 c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
                 {
@@ -95,19 +90,13 @@ namespace BadmintonBE.API
 
             var app = builder.Build();
 
-            // Migrate + seed on startup (dev convenience).
             using (var scope = app.Services.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<BadmintonBookingDbContext>();
-                // Migrate() creates the database (if missing) AND applies the
-                // InitialCreate migration in one clean pass. (Using both
-                // EnsureCreated + Migrate double-creates the tables, so we
-                // stick to Migrate only.)
                 db.Database.Migrate();
                 SeedData.Seed(db);
             }
 
-            // Exception handling FIRST, so it wraps everything after it.
             app.UseMiddleware<BadmintonBE.API.Middleware.ExceptionMiddleware>();
 
             if (app.Environment.IsDevelopment())
@@ -116,7 +105,6 @@ namespace BadmintonBE.API
                 app.UseSwaggerUI();
             }
 
-            app.UseHttpsRedirection();
             app.UseAuthentication();
             app.UseAuthorization();
             app.MapControllers();

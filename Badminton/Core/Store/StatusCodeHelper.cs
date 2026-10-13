@@ -2,11 +2,6 @@ using M.Core.Utils;
 
 namespace M.Core.Store
 {
-    /// <summary>
-    /// Standard HTTP-like status codes surfaced through <c>BaseResponse&lt;T&gt;</c>.
-    /// Abstraction: every layer returns this instead of raw ints, so the API
-    /// layer (SERVER) is the only place that maps it to real HTTP responses.
-    /// </summary>
     public enum StatusCodeHelper
     {
         [CustomName("OK")]

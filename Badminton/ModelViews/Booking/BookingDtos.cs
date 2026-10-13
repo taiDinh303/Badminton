@@ -1,24 +1,21 @@
-using M.Core.Enums;
-using ModelViews.TimeSlot;
-
 namespace ModelViews.Booking
 {
-    // ---------- Slot selection inside a booking ----------
-    public record SlotSelection(int CourtId, int TimeSlotId);
+    public record CreateBookingRequest(int CourtId, string Date, int SlotId,
+        int PlayerCount = 1, int? GroupId = null, string? VoucherCode = null,
+        string? IdempotencyKey = null, string? Note = null);
 
-    // ---------- Booking ----------
-    public record CreateBookingRequest(DateOnly BookingDate, List<SlotSelection> Slots,
-        string? Note);
+    public record BookingPriceBreakdown(int BasePrice, int WeekendSurcharge,
+        int VoucherDiscount, int Total, int Payable);
 
-    public record BookingView(int Id, string BookingCode, DateOnly BookingDate,
-        decimal TotalAmount, BookingStatus Status, string? Note, string? AppliedFeePolicy,
-        DateTime CreatedAt, string? UserName,
-        List<BookingDetailView> Details);
+    public record BookingView(int Id, string BookingCode, int CourtId, string CourtName,
+        string Date, string SlotLabel, int PlayerCount, string Status,
+        int TotalAmount, int DiscountAmount, int PayableAmount, int PointsEarned,
+        int? GroupId, int? VoucherRedemptionId, DateTime CreatedAt,
+        string? UserName, BookingPriceBreakdown Price, string? CancelReason);
 
-    public record BookingDetailView(int CourtId, string CourtName, int TimeSlotId,
-        TimeOnly StartTime, TimeOnly EndTime, decimal Price);
+    public record CourtAvailabilityView(int CourtId, string CourtCode, string CourtName,
+        int PriceLowPeak, int PricePeak, List<SlotView> Slots);
 
-    // ---------- Free slots for a court type / day ----------
-    public record CourtSlotAvailabilityView(int CourtId, string CourtCode, string CourtName,
-        decimal PricePerHour, string CourtTypeName, List<TimeSlotView> FreeSlots);
+    public record SlotView(int SlotId, string Label, string StartTime, string EndTime,
+        bool IsPeak, bool IsLocked, string LockReason);
 }

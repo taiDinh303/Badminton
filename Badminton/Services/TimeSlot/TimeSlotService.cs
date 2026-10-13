@@ -1,5 +1,6 @@
 using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
+using Contract.Services.Audit;
 using Contract.Services.TimeSlot;
 using M.Core.Base;
 using Microsoft.AspNetCore.Http;
@@ -7,72 +8,81 @@ using ModelViews.TimeSlot;
 
 namespace Services
 {
-    /// <summary>
-    /// TIME-SLOT service. Slots are global (applies to all courts); the
-    /// unique StartTime+EndTime constraint lives in the DB.
-    /// </summary>
     public sealed class TimeSlotService : BaseService, ITimeSlotService
     {
-        public TimeSlotService(IUnitOfWork uow, IHttpContextAccessor http) : base(uow, http) { }
+        private readonly IAuditService _audit;
+        public TimeSlotService(IUnitOfWork uow, IHttpContextAccessor http, IAuditService audit)
+            : base(uow, http) { _audit = audit; }
 
         private IGenericRepository<TimeSlot> Repo => Repository<TimeSlot>();
 
         public async Task<IReadOnlyList<TimeSlotView>> GetAllAsync()
         {
-            var slots = await Repo.GetByConditionAsync(
-                x => x.IsActive && x.DeletedAt == null);
-            return slots.OrderBy(s => s.StartTime)
-                .Select(s => new TimeSlotView(s.Id, s.StartTime, s.EndTime,
-                    $"{s.StartTime:hh\\:mm}-{s.EndTime:hh\\:mm}"))
-                .ToList();
+            var slots = await Repo.GetByConditionAsync(s => s.IsActive && s.DeletedAt == null);
+            return slots.OrderBy(s => s.StartTime).Select(ToView).ToList();
         }
 
-        public async Task CreateAsync(CreateTimeSlotRequest request, string userName)
+        public async Task<int> CreateAsync(CreateTimeSlotRequest request, int actorId)
         {
-            if (request.EndTime <= request.StartTime)
-                throw new BadRequestException("End time must be after start time.");
+            var start = ParseTime(request.StartTime);
+            var end = ParseTime(request.EndTime);
+            if (end <= start)
+                throw new BadRequestException("Giờ kết thúc phải sau giờ bắt đầu.");
 
             var dupes = await Repo.GetByConditionAsync(
-                x => x.StartTime == request.StartTime &&
-                     x.EndTime == request.EndTime && x.DeletedAt == null);
+                s => s.StartTime == start && s.EndTime == end && s.DeletedAt == null);
             if (dupes.Count > 0)
-                throw new ConflictException("This time slot already exists.");
+                throw new ConflictException("Khung giờ này đã tồn tại.");
 
-            var entity = new TimeSlot
+            var s = new TimeSlot
             {
-                StartTime = request.StartTime,
-                EndTime = request.EndTime
+                Label = request.Label,
+                StartTime = start,
+                EndTime = end,
+                IsPeak = request.IsPeak || start.Hour >= 18
             };
-            ApplyCreateAudit(entity);
-            _ = Repo.AddAsync(entity);
+            _ = Repo.AddAsync(s);
             await SaveAsync();
+            await _audit.LogAsync(actorId, "timeslot.create", "TimeSlot", s.Id.ToString(), null, s);
+            return s.Id;
         }
 
-        public async Task UpdateAsync(int id, UpdateTimeSlotRequest request, string userName)
+        public async Task UpdateAsync(int id, UpdateTimeSlotRequest request, int actorId)
         {
-            var e = await Repo.GetByIdAsync(id);
-            if (e is null || e.DeletedAt.HasValue)
-                throw new NotFoundException(nameof(TimeSlot), id);
-
-            if (request.StartTime.HasValue) e.StartTime = request.StartTime.Value;
-            if (request.EndTime.HasValue) e.EndTime = request.EndTime.Value;
-            if (e.EndTime <= e.StartTime)
-                throw new BadRequestException("End time must be after start time.");
-            if (request.IsActive.HasValue) e.IsActive = request.IsActive.Value;
-
-            ApplyUpdateAudit(e);
-            Repo.Update(e);
+            var s = await MustGetAsync(id);
+            var before = new { s.Label, s.IsActive };
+            if (request.Label is not null) s.Label = request.Label;
+            if (request.IsActive.HasValue) s.IsActive = request.IsActive.Value;
+            s.UpdatedAt = DateTime.UtcNow;
+            Repo.Update(s);
             await SaveAsync();
+            await _audit.LogAsync(actorId, "timeslot.update", "TimeSlot", id.ToString(), before, s);
         }
 
-        public async Task DeleteAsync(int id, string userName)
+        public async Task DeleteAsync(int id, int actorId)
         {
-            var e = await Repo.GetByIdAsync(id);
-            if (e is null) throw new NotFoundException(nameof(TimeSlot), id);
-            e.IsActive = false;
-            ApplySoftDelete(e);
-            Repo.Update(e);
+            var s = await MustGetAsync(id);
+            var before = new { s.Label, s.IsActive };
+            s.IsActive = false;
+            s.DeletedAt = DateTime.UtcNow;
+            s.UpdatedAt = DateTime.UtcNow;
+            Repo.Update(s);
             await SaveAsync();
+            await _audit.LogAsync(actorId, "timeslot.delete", "TimeSlot", id.ToString(), before, s);
         }
+
+        private async Task<TimeSlot> MustGetAsync(int id)
+        {
+            var s = await Repo.GetByIdAsync(id);
+            if (s is null || s.DeletedAt.HasValue) throw new NotFoundException("TimeSlot", id);
+            return s;
+        }
+
+        private static TimeOnly ParseTime(string s) =>
+            TimeOnly.TryParse(s, out var t) ? t : throw new BadRequestException("Giờ không hợp lệ.");
+
+        private static TimeSlotView ToView(TimeSlot s) => new(
+            s.Id, s.Label, s.StartTime.ToString("hh\\:mm"), s.EndTime.ToString("hh\\:mm"),
+            s.IsPeak, s.IsActive);
     }
 }

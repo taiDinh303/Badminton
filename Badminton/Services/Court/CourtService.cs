@@ -1,87 +1,113 @@
 using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
+using Contract.Services.Audit;
 using Contract.Services.Court;
 using M.Core.Base;
+using M.Core.Enums;
 using Microsoft.AspNetCore.Http;
 using ModelViews.Court;
 
 namespace Services
 {
-    /// <summary>
-    /// COURT service. Demonstrates batch-loading a related master dictionary
-    /// (court types) to hydrate views in ONE round-trip instead of N+1.
-    /// </summary>
     public sealed class CourtService : BaseService, ICourtService
     {
-        private readonly IGenericRepository<CourtType> _courtTypes;
+        private readonly IAuditService _audit;
+        public CourtService(IUnitOfWork uow, IHttpContextAccessor http, IAuditService audit)
+            : base(uow, http) { _audit = audit; }
 
-        public CourtService(IUnitOfWork uow, IHttpContextAccessor http) : base(uow, http)
-        {
-            _courtTypes = Repository<CourtType>();
-        }
-
-        public async Task<IReadOnlyList<CourtView>> GetAllAsync()
-        {
-            var courts = await Repo.GetByConditionAsync(
-                x => x.IsActive && x.DeletedAt == null);
-            var typeNames = await TypeNamesAsync();
-            return courts.Select(c => new CourtView(
-                c.Id, c.CourtCode, c.CourtName, c.Location,
-                c.PricePerHour, c.Status,
-                typeNames.TryGetValue(c.CourtTypeId, out var n) ? n : "Unknown")
-                ).ToList();
-        }
-
-        public Task CreateAsync(CreateCourtRequest request, string userName)
-        {
-            var entity = new Court
-            {
-                CourtTypeId = request.CourtTypeId,
-                CourtCode = request.CourtCode,
-                CourtName = request.CourtName,
-                Location = request.Location,
-                PricePerHour = request.PricePerHour,
-                ImageUrl = request.ImageUrl
-            };
-            ApplyCreateAudit(entity);
-            _ = Repo.AddAsync(entity);
-            return SaveAsync();
-        }
-
-        public async Task UpdateAsync(int id, UpdateCourtRequest request, string userName)
-        {
-            var e = await Repo.GetByIdAsync(id);
-            if (e is null || e.DeletedAt.HasValue)
-                throw new NotFoundException(nameof(Court), id);
-
-            if (request.CourtName is not null) e.CourtName = request.CourtName;
-            if (request.Location is not null) e.Location = request.Location;
-            if (request.PricePerHour.HasValue) e.PricePerHour = request.PricePerHour.Value;
-            if (request.Status.HasValue) e.Status = request.Status.Value;
-            if (request.ImageUrl is not null) e.ImageUrl = request.ImageUrl;
-
-            ApplyUpdateAudit(e);
-            Repo.Update(e);
-            await SaveAsync();
-        }
-
-        public async Task DeleteAsync(int id, string userName)
-        {
-            var e = await Repo.GetByIdAsync(id);
-            if (e is null) throw new NotFoundException(nameof(Court), id);
-            e.IsActive = false;
-            ApplySoftDelete(e);
-            Repo.Update(e);
-            await SaveAsync();
-        }
-
-        // ---------- helpers ----------
         private IGenericRepository<Court> Repo => Repository<Court>();
 
-        private async Task<Dictionary<int, string>> TypeNamesAsync()
+        public async Task<IReadOnlyList<CourtView>> GetAllAsync(int? branchId = null)
         {
-            var types = await _courtTypes.GetByConditionAsync(x => x.DeletedAt == null);
-            return types.ToDictionary(t => t.Id, t => t.Name);
+            var courts = branchId is { } bid
+                ? await Repo.GetByConditionAsync(c => c.BranchId == bid && c.IsActive && c.DeletedAt == null)
+                : await Repo.GetByConditionAsync(c => c.IsActive && c.DeletedAt == null);
+            return courts.Select(ToView).ToList();
         }
+
+        public async Task<CourtView> GetByIdAsync(int id)
+        {
+            var c = await MustGetAsync(id);
+            return ToView(c);
+        }
+
+        public async Task<int> CreateAsync(CreateCourtRequest request, int actorId)
+        {
+            if (request.PricePeak <= 0 || request.PriceLowPeak < 0)
+                throw new BadRequestException("GiÃ¡ peak pháº£i dÆ°Æ¡ng.");
+            var dupes = await Repo.GetByConditionAsync(
+                c => c.BranchId == request.BranchId && c.Code == request.Code && c.DeletedAt == null);
+            if (dupes.Count > 0)
+                throw new ConflictException($"SÃ¢n '{request.Code}' Ä‘Ã£ tá»“n táº¡i á»Ÿ cÆ¡ sá»Ÿ {request.BranchId}.");
+
+            var c = new Court
+            {
+                BranchId = request.BranchId,
+                Code = request.Code,
+                Name = request.Name,
+                PricePeak = request.PricePeak,
+                PriceLowPeak = request.PriceLowPeak,
+                WeekendSurcharge = request.WeekendSurcharge,
+                Capacity = request.Capacity,
+                Surface = ParseSurface(request.Surface),
+                Amenities = request.Amenities
+            };
+            _ = Repo.AddAsync(c);
+            await SaveAsync();
+            await _audit.LogAsync(actorId, "court.create", "Court", c.Id.ToString(), null, c);
+            return c.Id;
+        }
+
+        public async Task UpdateAsync(int id, UpdateCourtRequest request, int actorId)
+        {
+            var c = await MustGetAsync(id);
+            var before = AuditCopy(c);
+            if (request.Name is not null) c.Name = request.Name;
+            if (request.PriceLowPeak.HasValue) c.PriceLowPeak = request.PriceLowPeak.Value;
+            if (request.PricePeak.HasValue) c.PricePeak = request.PricePeak.Value;
+            if (request.WeekendSurcharge.HasValue) c.WeekendSurcharge = request.WeekendSurcharge.Value;
+            if (request.Capacity.HasValue) c.Capacity = request.Capacity.Value;
+            if (request.Surface is not null) c.Surface = ParseSurface(request.Surface);
+            if (request.Amenities is not null) c.Amenities = request.Amenities;
+            if (request.IsActive.HasValue) c.IsActive = request.IsActive.Value;
+            c.UpdatedAt = DateTime.UtcNow;
+            Repo.Update(c);
+            await SaveAsync();
+            await _audit.LogAsync(actorId, "court.update", "Court", id.ToString(), before, c,
+                "Chá»‰nh giÃ¡/cáº¥u hÃ¬nh sÃ¢n (phi-Ãªn báº£n, giá»¯ snapshot booking Ä‘Ã£ xÃ¡c nháº­n)");
+        }
+
+        public async Task DeleteAsync(int id, int actorId)
+        {
+            var c = await MustGetAsync(id);
+            var before = AuditCopy(c);
+            c.IsActive = false;
+            c.DeletedAt = DateTime.UtcNow;
+            c.UpdatedAt = DateTime.UtcNow;
+            Repo.Update(c);
+            await SaveAsync();
+            await _audit.LogAsync(actorId, "court.delete", "Court", id.ToString(), before, c);
+        }
+
+        private async Task<Court> MustGetAsync(int id)
+        {
+            var c = await Repo.GetByIdAsync(id);
+            if (c is null || c.DeletedAt.HasValue) throw new NotFoundException("Court", id);
+            return c;
+        }
+
+        private static CourtSurface ParseSurface(string s) =>
+            Enum.TryParse<CourtSurface>(s, ignoreCase: true, out var v) ? v : CourtSurface.Sindalo;
+
+        private static CourtView ToView(Court c) => new(
+            c.Id, c.BranchId, c.Code, c.Name, c.PriceLowPeak, c.PricePeak,
+            c.WeekendSurcharge, c.Capacity, c.Surface.ToString(), c.IsActive,
+            c.RatingAvg, c.RatingCount);
+
+        private static object? AuditCopy(Court c) => new
+        {
+            c.Name, c.PriceLowPeak, c.PricePeak, c.WeekendSurcharge, c.Capacity,
+            c.Surface, c.Amenities, c.IsActive
+        };
     }
 }
