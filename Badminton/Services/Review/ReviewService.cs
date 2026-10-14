@@ -67,18 +67,41 @@ namespace Services
         public async Task<IReadOnlyList<ReviewView>> GetByCourtAsync(int courtId)
         {
             var list = await Repo.GetByConditionAsync(r => r.CourtId == courtId);
-            return (await Task.WhenAll(list.Select(ToView))).ToList();
+            if (list.Count == 0) return Array.Empty<ReviewView>();
+
+            // ANTI-N+1: the court is known from courtId (1 query) and every
+            // reviewer's user row is bulk-loaded in ONE query — the old code
+            // issued 2 queries per review row inside the loop.
+            var court = await Repository<Court>().GetByIdAsync(courtId);
+            var userIds = list.Select(r => r.UserId).Distinct().ToList();
+            var users = (await Repository<User>().GetByConditionAsync(u => userIds.Contains(u.Id)))
+                .ToDictionary(u => u.Id);
+
+            var views = new List<ReviewView>(list.Count);
+            foreach (var r in list)
+            {
+                users.TryGetValue(r.UserId, out var user);
+                views.Add(ToView(r, court?.Name ?? "?", user?.FullName ?? "?"));
+            }
+            return views;
         }
 
         private async Task<ReviewView> ToView(Review r)
         {
+            // Single-record variant (used right after CreateAsync when the
+            // review row is already staged — no bulk map needed).
             var court = await Repository<Court>().GetByIdAsync(r.CourtId);
             var user = await Repository<User>().GetByIdAsync(r.UserId);
+            return ToView(r, court?.Name ?? "?", user?.FullName ?? "?");
+        }
+
+        private static ReviewView ToView(Review r, string courtName, string userName)
+        {
             var images = string.IsNullOrWhiteSpace(r.Images)
                 ? new List<string>()
                 : JsonSerializer.Deserialize<List<string>>(r.Images) ?? new();
-            return new ReviewView(r.Id, r.BookingId, r.CourtId, court?.Name ?? "?",
-                user?.FullName ?? "?", r.Rating, r.Comment, images, r.CreatedAt,
+            return new ReviewView(r.Id, r.BookingId, r.CourtId, courtName,
+                userName, r.Rating, r.Comment, images, r.CreatedAt,
                 r.FlaggedRefunded);
         }
     }

@@ -16,7 +16,7 @@ namespace M.Core.Domain
     }
 
     public sealed record RawWebhook(string Provider, string GatewayRef, string Body,
-        string Signature, IReadOnlyDictionary<string, string> Headers);
+        string? Signature, IReadOnlyDictionary<string, string> Headers);
 
     public sealed record PaymentInitResult(bool Ok, string? GatewayUrl, string? GatewayRef,
         string? Error)
@@ -35,8 +35,18 @@ namespace M.Core.Domain
         public static RefundResult Fail(string error) => new(false, 0m, error);
     }
 
+    public sealed record WebhookResult(bool Accepted, string? Reason,
+        bool IdempotentDuplicate = false)
+    {
+        public static WebhookResult Reject(string reason) => new(false, reason);
+        public static WebhookResult Duplicate(string reason) => new(true, reason, true);
+        public static WebhookResult Applied(string reason) => new(true, reason, false);
+    }
+
     public interface IPaymentGatewayFactory
     {
         IPaymentGateway GetGateway(PaymentMethod method);
+
+        IPaymentGateway GetGatewayByProvider(string provider);
     }
 }

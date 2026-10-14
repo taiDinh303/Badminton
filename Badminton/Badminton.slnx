@@ -14,4 +14,7 @@
   <Folder Name="/4. CORE/">
     <Project Path="Core/Core.csproj" />
   </Folder>
+  <Folder Name="/5. TESTS/">
+    <Project Path="Badminton.Tests/Badminton.Tests.csproj" />
+  </Folder>
 </Solution>

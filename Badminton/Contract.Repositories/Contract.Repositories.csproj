@@ -7,8 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- REPOSITORY layer (Contract) depends on CORE for entities (IntBaseEntity)
-         and domain enums / abstractions. -->
+    <!-- REPOSITORY contract stays provider/EF-free: it hides EF's DbSet behind
+         IGenericRepository. Atomic compare-and-set lives on IUnitOfWork. -->
     <ProjectReference Include="..\Core\Core.csproj" />
   </ItemGroup>
 

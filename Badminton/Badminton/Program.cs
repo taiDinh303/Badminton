@@ -22,6 +22,13 @@ namespace BadmintonBE.API
                     ?? builder.Configuration.GetConnectionString("DefaultConnection")));
 
             var jwt = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>()!;
+            if (string.IsNullOrWhiteSpace(jwt.Key))
+                throw new InvalidOperationException(
+                    "JwtSettings:Key must be provided (environment variable " +
+                    "JwtSettings__Key). Refusing to start with no signing key.");
+            if (jwt.Key.Length < 32 && !builder.Environment.IsDevelopment())
+                throw new InvalidOperationException(
+                    "JwtSettings:Key must be at least 32 characters in production.");
             builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
             builder.Services
                 .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

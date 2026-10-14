@@ -18,31 +18,39 @@ namespace Services
 
         public async Task<IReadOnlyList<BranchView>> GetAllAsync()
         {
-            var branches = await Repo.GetAllAsync();
-            var views = new List<BranchView>();
-            foreach (var b in branches)
-            {
-                var courts = await Repository<Court>().GetByConditionAsync(c => c.BranchId == b.Id && c.IsActive && c.DeletedAt == null);
-                views.Add(new BranchView(b.Id, b.Name, b.Address, b.IsActive,
-                    b.OpenTime.ToString("hh\\:mm"), b.CloseTime.ToString("hh\\:mm"), courts.Count));
-            }
-            return views;
+            var branches = await Repo.GetByConditionAsync(b => b.DeletedAt == null);
+
+            // Anti-N+1: load every active court ONCE and count in memory instead
+            // of issuing one query per branch inside the loop.
+            var activeCourts = await Repository<Court>()
+                .GetByConditionAsync(c => c.IsActive && c.DeletedAt == null);
+            var counts = activeCourts
+                .GroupBy(c => c.BranchId)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            return branches
+                .Select(b => new BranchView(
+                    b.Id, b.Name, b.Address, b.IsActive,
+                    b.OpenTime.ToString("hh\\:mm"), b.CloseTime.ToString("hh\\:mm"),
+                    counts.TryGetValue(b.Id, out var n) ? n : 0))
+                .ToList();
         }
 
         public async Task<BranchView> GetByIdAsync(int id)
         {
             var b = await MustGetAsync(id);
-            var courts = await Repository<Court>().GetByConditionAsync(c => c.BranchId == id && c.IsActive && c.DeletedAt == null);
+            var courtCount = await Repository<Court>()
+                .CountByConditionAsync(c => c.BranchId == id && c.IsActive && c.DeletedAt == null);
             return new BranchView(b.Id, b.Name, b.Address, b.IsActive,
-                b.OpenTime.ToString("hh\\:mm"), b.CloseTime.ToString("hh\\:mm"), courts.Count);
+                b.OpenTime.ToString("hh\\:mm"), b.CloseTime.ToString("hh\\:mm"), courtCount);
         }
 
         public async Task<int> CreateAsync(CreateBranchRequest request, int actorId)
         {
             var dupes = await Repo.GetByConditionAsync(b => b.Name == request.Name && b.DeletedAt == null);
-            if (dupes.Count > 0) throw new ConflictException($"CÆ¡ sá»Ÿ '{request.Name}' Ä‘Ã£ tá»“n táº¡i.");
+            if (dupes.Count > 0)
+                throw new ConflictException($"Cơ sở '{request.Name}' đã tồn tại.");
 
-            var before = new Branch { };
             var b = new Branch
             {
                 Name = request.Name,
@@ -54,7 +62,7 @@ namespace Services
             };
             _ = Repo.AddAsync(b);
             await SaveAsync();
-            await _audit.LogAsync(actorId, "branch.create", "Branch", b.Id.ToString(), before, b);
+            await _audit.LogAsync(actorId, "branch.create", "Branch", b.Id.ToString(), null, b);
             return b.Id;
         }
 
@@ -88,7 +96,8 @@ namespace Services
         private async Task<Branch> MustGetAsync(int id)
         {
             var b = await Repo.GetByIdAsync(id);
-            if (b is null || b.DeletedAt.HasValue) throw new NotFoundException("Branch", id);
+            if (b is null || b.DeletedAt.HasValue)
+                throw new NotFoundException("Branch", id);
             return b;
         }
 

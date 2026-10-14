@@ -12,6 +12,12 @@ namespace Contract.Services.Audit
         Task<IReadOnlyList<AuditEntry>> QueryAsync(
             string? entityType = null, string? entityId = null,
             DateOnly? from = null, DateOnly? to = null, int limit = 100);
+
+        /// <summary>Paged query — pushes all filters to SQL, returns total.</summary>
+        Task<(IReadOnlyList<AuditEntry> Items, int TotalCount)> QueryPagedAsync(
+            string? entityType = null, string? entityId = null,
+            DateOnly? from = null, DateOnly? to = null,
+            Contract.Repositories.UnitOfWork.Page? page = null);
     }
 
     public sealed record AuditEntry(long Id, int? ActorId, string? ActorName,

@@ -29,6 +29,9 @@ namespace Services
         private IGenericRepository<Payment> Repo => Repository<Payment>();
         private IGenericRepository<Booking> Bookings => Repository<Booking>();
 
+        private static readonly IReadOnlyDictionary<string, string> EmptyHeaders
+            = new Dictionary<string, string>();
+
         public async Task<PaymentInitResponse> InitAsync(InitPaymentRequest request, int userId)
         {
             var booking = await Bookings.GetByIdAsync(request.BookingId);
@@ -67,39 +70,106 @@ namespace Services
                 init.GatewayRef, booking.BookingCode);
         }
 
-        public async Task HandleWebhookAsync(string provider, PaymentWebhookRequest raw)
+        // ── Webhook: verified → idempotent → atomic ────────────────────────
+        public async Task<WebhookResult> HandleWebhookAsync(string provider, PaymentWebhookRequest raw)
         {
             if (string.IsNullOrWhiteSpace(raw.GatewayRef))
-                throw new BadRequestException("webhook thieu gateway_ref.");
+                return WebhookResult.Reject("webhook thieu gateway_ref.");
 
-            // IDEMPOTENCY: look up by gateway_ref, not by booking.
-            var rows = await Repo.GetByConditionAsync(p => p.GatewayRef == raw.GatewayRef);
-            var payment = rows.FirstOrDefault();
-            if (payment is null)
-                throw new NotFoundException("Payment", raw.GatewayRef);
+            // SECURITY: never trust a webhook before the provider's signature
+            // is verified. Resolve THIS provider's gateway and verify the raw.
+            IPaymentGateway gateway;
+            try { gateway = _gateways.GetGatewayByProvider(provider); }
+            catch (BadRequestException ex) { return WebhookResult.Reject(ex.Message); }
 
-            if (payment.Status == PaymentStatus.Success)
-                return;
+            // Feed the gateway what it needs to verify. When the caller only
+            // reported a status (no raw body), synthesise a minimal body so the
+            // provider adapter derives success/failure from the reported status
+            // instead of defaulting to success on a blank payload.
+            var verifyBody = string.IsNullOrEmpty(raw.RawResponse)
+                ? "{\"status\":\"" + (raw.Status ?? string.Empty).ToLowerInvariant() + "\"}"
+                : raw.RawResponse;
+            var verified = await gateway.VerifyWebhookAsync(
+                new RawWebhook(provider, raw.GatewayRef, verifyBody,
+                    raw.Status, EmptyHeaders));
+            if (!verified.Verified)
+                return WebhookResult.Reject(verified.Error ?? "webhook chua duoc xac minh ky hieu.");
 
-            var booking = await Bookings.GetByIdAsync(payment.BookingId);
-            if (booking is null || booking.Status is BookingStatus.Cancelled
-                or BookingStatus.NoShow or BookingStatus.Refunded)
-                return;
+            // IDEMPOTENCY + EXISTENCE: look up the payment row for this ref.
+            //   - no row at all      → unknown ref → REJECT (not a replay).
+            //   - row already Success → a clean replay → DUPLICATE no-op.
+            //   - row Pending/Failed  → proceed to claim it below.
+            var known = await Repo.GetByConditionAsync(
+                p => p.GatewayRef == raw.GatewayRef);
+            if (known.Count == 0)
+                return WebhookResult.Reject("gateway_ref khong ton tai trong he thong.");
+            if (known.First().Status == PaymentStatus.Success)
+                return WebhookResult.Duplicate("gateway_ref da duoc xu ly truoc do.");
 
-            // webhook = source of truth: mark success + confirmed + award points.
-            payment.Status = PaymentStatus.Success;
-            payment.PaidAt = DateTime.UtcNow;
-            payment.RawResponse = raw.RawResponse;
-            Repo.Update(payment);
+            // A failure never flips the booking: mark the payment failed and
+            // let the customer retry / cancel.
+            if (!verified.Success)
+            {
+                await Uow.ExecuteSqlRawAsync(
+                    "UPDATE Payments SET Status = 'Failed' " +
+                    "WHERE GatewayRef = @p0 AND Status = 'Pending'",
+                    raw.GatewayRef);
+                await SaveAsync();
+                return WebhookResult.Reject("gateway bao loi, don vao tung pending/failed.");
+            }
 
-            booking.Status = BookingStatus.Confirmed;
-            booking.PointsEarned = booking.PayableAmount; // 1 dong = 1 point
-            booking.UpdatedAt = DateTime.UtcNow;
-            Bookings.Update(booking);
+            // ATOMICITY: flip payment Pending→Success and booking
+            // Pending→Confirmed (+points) inside one database transaction,
+            // with guarded CAS so only a single concurrent writer wins.
+            var refNo = raw.GatewayRef;
+            int confirmed = 0;
+            int bookingId = 0;
+            int points = 0;
+            string bookingCode = string.Empty;
+            int userId = 0;
 
-            await _points.AwardAsync(booking.UserId, booking.Id, booking.PointsEarned,
-                "confirmed booking " + booking.BookingCode);
-            await SaveAsync();
+            await Uow.RunInTransactionAsync(async () =>
+            {
+                // 1) claim the payment (single writer wins; loser gets 0).
+                // Empty body → store an empty string (RawResponse is nullable
+                // but "" is a valid, non-null value; ExecuteSqlRaw has no
+                // DBNull mapping).
+                string rawBody = Trunc(raw.RawResponse) ?? string.Empty;
+                int claimed = await Uow.ExecuteSqlRawAsync(
+                    "UPDATE Payments SET Status = 'Success', PaidAt = @p0, " +
+                    "  RawResponse = @p1 " +
+                    "WHERE GatewayRef = @p2 AND Status = 'Pending'",
+                    DateTime.UtcNow, rawBody, refNo);
+                if (claimed == 0) return; // lost a same-instant race → skip
+
+                var p = (await Repo.GetByConditionAsync(x => x.GatewayRef == refNo)).First();
+                var booking = await Bookings.GetByIdAsync(p.BookingId);
+                if (booking is null ||
+                    booking.Status is BookingStatus.Cancelled or BookingStatus.NoShow or
+                    BookingStatus.Refunded)
+                    return; // terminal: keep the payment record, do not confirm
+
+                // 2) flip the booking exactly once.
+                points = booking.PayableAmount;
+                bookingId = booking.Id;
+                bookingCode = booking.BookingCode;
+                userId = booking.UserId;
+                confirmed = await Uow.ExecuteSqlRawAsync(
+                    "UPDATE Bookings SET Status = 'Confirmed', PointsEarned = @p0, " +
+                    "  UpdatedAt = @p1 " +
+                    "WHERE Id = @p2 AND Status = 'Pending'",
+                    points, DateTime.UtcNow, bookingId);
+
+                if (confirmed > 0)
+                    await _points.AwardAsync(userId, bookingId, points,
+                        "confirmed booking " + bookingCode);
+
+                await SaveAsync();
+            });
+
+            return confirmed > 0
+                ? WebhookResult.Applied("don da duoc xac nhan.")
+                : WebhookResult.Duplicate("webhook dong bo (dupe/race), da co don xu ly truoc do.");
         }
 
         public async Task<PaymentView> ConfirmOnSiteAsync(int bookingId, string method,
@@ -122,18 +192,29 @@ namespace Services
                 Method = m,
                 Status = PaymentStatus.Success,
                 PaidAt = DateTime.UtcNow,
-                RawResponse = note
+                RawResponse = Trunc(note)
             };
-            _ = Repo.AddAsync(payment);
 
-            booking.Status = BookingStatus.Confirmed;
-            booking.PointsEarned = booking.PayableAmount;
-            booking.UpdatedAt = DateTime.UtcNow;
-            Bookings.Update(booking);
+            int confirmed = 0;
+            await Uow.RunInTransactionAsync(async () =>
+            {
+                // One manager can confirm; a racing webhook / second manager
+                // is rejected by the same Pending→Confirmed guard.
+                confirmed = await Uow.ExecuteSqlRawAsync(
+                    "UPDATE Bookings SET Status = 'Confirmed', PointsEarned = @p0, " +
+                    "  UpdatedAt = @p1 " +
+                    "WHERE Id = @p2 AND Status = 'Pending'",
+                    booking.PayableAmount, DateTime.UtcNow, bookingId);
+                if (confirmed == 0)
+                    throw new ConflictException(
+                        $"Don {booking.BookingCode} da duoc xac nhan truoc do.");
 
-            await _points.AwardAsync(booking.UserId, booking.Id, booking.PointsEarned,
-                "on-site confirmed " + booking.BookingCode);
-            await SaveAsync();
+                _ = Repo.AddAsync(payment);
+                await _points.AwardAsync(booking.UserId, booking.Id,
+                    booking.PayableAmount, "on-site confirmed " + booking.BookingCode);
+                await SaveAsync();
+            });
+
             await _audit.LogAsync(actorId, "payment.on-site-confirm", "Payment",
                 payment.Id.ToString(), null,
                 new { payment.Method, payment.Amount, payment.Status, payment.GatewayRef, payment.PaidAt },
@@ -141,63 +222,152 @@ namespace Services
             return ToView(payment);
         }
 
+        // ── Refund: claim → gateway → record (race-safe + idempotent) ──────
+
+        /// <summary>
+        /// Per-booking lock that serializes concurrent refund attempts on the
+        /// same order, so the external gateway is told to refund at most once
+        /// and the "existing refund" fast path reliably sees a committed row.
+        /// (The deterministic <c>REFUND-&lt;bookingId&gt;</c> unique index is the
+        /// database-level backstop for cross-process callers.)
+        /// </summary>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int,
+            System.Threading.SemaphoreSlim> RefundLocks = new();
+
+        private static System.Threading.SemaphoreSlim RefundLock(int bookingId) =>
+            RefundLocks.GetOrAdd(bookingId, _ => new System.Threading.SemaphoreSlim(1, 1));
+
         public async Task<PaymentView> RefundAsync(int bookingId, int actorId, string? reason = null)
+        {
+            var refundLock = RefundLock(bookingId);
+            await refundLock.WaitAsync();
+            try
+            {
+                var booking = await Bookings.GetByIdAsync(bookingId);
+                if (booking is null) throw new NotFoundException("Booking", bookingId);
+
+                // IDEMPOTENCY FIRST: a replayed / already-processed refund
+                // returns the existing record, regardless of current status.
+                // This runs before the status guard so a replay after the
+                // booking is already Refunded still resolves cleanly.
+                var existingRefund = (await Repo.GetByConditionAsync(
+                    p => p.BookingId == bookingId &&
+                         (p.Status == PaymentStatus.Refunded || p.Status == PaymentStatus.PartialRefund)))
+                    .FirstOrDefault();
+                if (existingRefund is not null)
+                    return ToView(existingRefund);
+
+                // An unpaid (pending) booking: just release the slot.
+                if (booking.Status is BookingStatus.Pending)
+                    throw new ConflictException(
+                        "Don chua thanh toan: huy don de giai phong slot, khong phat sinh hoan tien.");
+
+                if (booking.Status is not (BookingStatus.Confirmed or BookingStatus.Completed))
+                    throw new ConflictException($"Khong the hoan tien don {booking.Status}.");
+
+                var slot = await Repository<TimeSlot>().GetByIdAsync(booking.SlotId);
+                if (slot is null)
+                    throw new ConflictException("Khung gio cua don bi mat, khong the tinh ty le hoan tien.");
+                var slotStartUtc = booking.Date.ToDateTime(slot.StartTime);
+                var (ratio, label) = RefundPolicy.Tier(DateTime.UtcNow, slotStartUtc);
+                var refundAmount = (int)(booking.PayableAmount * ratio);
+
+                var original = (await Repo.GetByConditionAsync(
+                    p => p.BookingId == bookingId && p.Status == PaymentStatus.Success))
+                    .FirstOrDefault();
+                var method = original?.Method ?? PaymentMethod.Cash;
+
+                // CLAIM: atomically flip the booking to Refunded so exactly one
+                // of two concurrent refund calls proceeds (the lock above plus
+                // this guard = defence in depth).
+                int claimed = await Uow.ExecuteSqlRawAsync(
+                    "UPDATE Bookings SET Status = 'Refunded', CancelReason = @p0, " +
+                    "  UpdatedAt = @p1 " +
+                    "WHERE Id = @p2 AND Status IN ('Confirmed','Completed')",
+                    label, DateTime.UtcNow, bookingId);
+                if (claimed == 0)
+                {
+                    var winner = (await Repo.GetByConditionAsync(
+                        p => p.BookingId == bookingId &&
+                             (p.Status == PaymentStatus.Refunded ||
+                              p.Status == PaymentStatus.PartialRefund)))
+                        .FirstOrDefault();
+                    return winner is not null
+                        ? ToView(winner)
+                        : throw new ConflictException("Don vung: hoan tien dong thoi bi don khac chiem.");
+                }
+
+                // External call (outside the DB transaction): push the refund
+                // to the gateway that actually took the money.
+                var gateway = _gateways.GetGateway(method);
+                var gatewayResult = await gateway.RefundAsync(
+                    booking.BookingCode, refundAmount, reason ?? label);
+                if (!gatewayResult.Ok)
+                {
+                    // Revert the claim so the booking is refundable again.
+                    await Uow.ExecuteSqlRawAsync(
+                        "UPDATE Bookings SET Status = 'Confirmed', " +
+                        "  CancelReason = @p0, UpdatedAt = @p1 " +
+                        "WHERE Id = @p2 AND Status = 'Refunded'",
+                        "refund gateway failed, reverted", DateTime.UtcNow, bookingId);
+                    await SaveAsync();
+                    throw new ConflictException(
+                        "Gateway tu choi hoan tien: " + (gatewayResult.Error ?? "loi khong xac dinh."));
+                }
+
+                var refundRow = new Payment
+                {
+                    BookingId = booking.Id,
+                    UserId = booking.UserId,
+                    Method = method,
+                    Amount = booking.PayableAmount,
+                    Status = ratio == 1.0
+                        ? PaymentStatus.Refunded
+                        : (ratio > 0 ? PaymentStatus.PartialRefund : PaymentStatus.Refunded),
+                    RefundAmount = refundAmount,
+                    RefundedAt = DateTime.UtcNow,
+                    // Deterministic, unique per booking → at most ONE refund
+                    // row can exist (enforced by IX_Payments_GatewayRef).
+                    GatewayRef = $"REFUND-{booking.Id}",
+                    RawResponse = Trunc(label)
+                };
+                _ = Repo.AddAsync(refundRow);
+
+                // Points mirror money: a full refund reverses the whole
+                // credit, a partial one reverses its share; a no-show (ratio
+                // 0) keeps the points.
+                if (ratio > 0 && refundAmount > 0)
+                    await _points.ClawbackAsync(booking.UserId, booking.Id, refundAmount,
+                        $"refund {label} of " + booking.BookingCode);
+
+                await SaveAsync();
+                await _audit.LogAsync(actorId, "payment.refund", "Payment", refundRow.Id.ToString(),
+                    null, refundRow, reason ?? label);
+                return ToView(refundRow);
+            }
+            finally
+            {
+                refundLock.Release();
+            }
+        }
+
+        /// <summary>Read payments for a booking — owner or staff only (IDOR guard).</summary>
+        public async Task<IReadOnlyList<PaymentView>> GetByBookingAsync(
+            int bookingId, int requestingUserId)
         {
             var booking = await Bookings.GetByIdAsync(bookingId);
             if (booking is null) throw new NotFoundException("Booking", bookingId);
+            if (booking.UserId != requestingUserId && !IsStaff())
+                throw new ConflictException("Khong co quyen xem giao dich thanh toan nay.");
 
-            // An unpaid (pending) booking: just release the slot.
-            if (booking.Status is BookingStatus.Pending)
-                throw new ConflictException(
-                    "Don chua thanh toan: huy don de giai phong slot, khong phat sinh hoan tien.");
-
-            if (booking.Status is not (BookingStatus.Confirmed or BookingStatus.Completed))
-                throw new ConflictException($"Khong the hoan tien don {booking.Status}.");
-
-            var slot = await Repository<TimeSlot>().GetByIdAsync(booking.SlotId);
-            if (slot is null)
-                throw new ConflictException("Khung gio cua don bi mat, khong the tinh ty le hoan tien.");
-            var slotStartUtc = booking.Date.ToDateTime(slot.StartTime);
-            var (ratio, label) = RefundPolicy.Tier(DateTime.UtcNow, slotStartUtc);
-
-            var payments = await Repo.GetByConditionAsync(p => p.BookingId == booking.Id);
-            var refundRow = new Payment
-            {
-                BookingId = booking.Id,
-                UserId = booking.UserId,
-                Method = payments.FirstOrDefault()?.Method ?? PaymentMethod.Cash,
-                Amount = booking.PayableAmount,
-                Status = PaymentStatus.Refunded,
-                RefundAmount = (int)(booking.PayableAmount * ratio),
-                RefundedAt = DateTime.UtcNow,
-                GatewayRef = $"REFUND-{booking.Id}-{Guid.NewGuid():N}"[..20],
-                RawResponse = label
-            };
-            _ = Repo.AddAsync(refundRow);
-
-            booking.Status = BookingStatus.Refunded;
-            booking.CancelReason = label;
-            booking.UpdatedAt = DateTime.UtcNow;
-            Bookings.Update(booking);
-
-            if (booking.PointsEarned > 0 && ratio == 0)
-                await _points.ClawbackAsync(booking.UserId, booking.Id, booking.PointsEarned,
-                    "full refund of " + booking.BookingCode);
-
-            await SaveAsync();
-            await _audit.LogAsync(actorId, "payment.refund", "Payment", refundRow.Id.ToString(),
-                null, refundRow, reason ?? label);
-            return ToView(refundRow);
-        }
-
-        /// <summary>Read payments for a booking.</summary>
-        public async Task<IReadOnlyList<PaymentView>> GetByBookingAsync(int bookingId)
-        {
             var list = await Repo.GetByConditionAsync(p => p.BookingId == bookingId);
             return list.Select(ToView).ToList();
         }
 
         // ── helpers ─────────────────────────────────────────────────────────
+
+        private static string? Trunc(string? s) =>
+            string.IsNullOrEmpty(s) ? s : (s.Length > 2000 ? s[..2000] : s);
 
         private bool IsStaff() =>
             _http.HttpContext?.User.IsInRole("Admin") == true

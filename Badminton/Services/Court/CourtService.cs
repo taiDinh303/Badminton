@@ -34,11 +34,11 @@ namespace Services
         public async Task<int> CreateAsync(CreateCourtRequest request, int actorId)
         {
             if (request.PricePeak <= 0 || request.PriceLowPeak < 0)
-                throw new BadRequestException("GiÃ¡ peak pháº£i dÆ°Æ¡ng.");
+                throw new BadRequestException("Giá peak phải dương.");
             var dupes = await Repo.GetByConditionAsync(
                 c => c.BranchId == request.BranchId && c.Code == request.Code && c.DeletedAt == null);
             if (dupes.Count > 0)
-                throw new ConflictException($"SÃ¢n '{request.Code}' Ä‘Ã£ tá»“n táº¡i á»Ÿ cÆ¡ sá»Ÿ {request.BranchId}.");
+                throw new ConflictException($"Sân '{request.Code}' đã tồn tại ở cơ sở {request.BranchId}.");
 
             var c = new Court
             {
@@ -74,7 +74,7 @@ namespace Services
             Repo.Update(c);
             await SaveAsync();
             await _audit.LogAsync(actorId, "court.update", "Court", id.ToString(), before, c,
-                "Chá»‰nh giÃ¡/cáº¥u hÃ¬nh sÃ¢n (phi-Ãªn báº£n, giá»¯ snapshot booking Ä‘Ã£ xÃ¡c nháº­n)");
+                "Chỉnh giá/cấu hình sân (phi-phiên bản, giữ snapshot booking đã xác nhận)");
         }
 
         public async Task DeleteAsync(int id, int actorId)

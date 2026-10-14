@@ -239,7 +239,15 @@ namespace Repositories.Context
                 e.HasKey(x => x.Id);
                 e.Property(x => x.Id).ValueGeneratedOnAdd();
                 e.Property(x => x.Reason).HasMaxLength(100);
+                e.Property(x => x.LedgerKey).HasMaxLength(80);
                 e.HasIndex(x => new { x.UserId, x.CreatedAt });
+                // IDEMPOTENCY backstop: a booking can earn/clawback points at
+                // most ONCE. A replayed webhook or a racing confirm+webhook
+                // hits this unique index and the transaction rolls back, so
+                // points are never credited twice.
+                e.HasIndex(x => x.LedgerKey)
+                    .IsUnique()
+                    .HasFilter("[LedgerKey] IS NOT NULL");
                 e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
                     .OnDelete(DeleteBehavior.Restrict);
                 e.HasOne(x => x.Booking).WithMany().HasForeignKey(x => x.BookingId)

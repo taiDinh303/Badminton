@@ -1,4 +1,6 @@
 using Contract.Services.Payment;
+using M.Core.Base;
+using M.Core.Store;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ModelViews.Payment;
@@ -17,12 +19,25 @@ namespace BadmintonBE.API.Controllers
         public async Task<IActionResult> Init(InitPaymentRequest request) =>
             Resp(await _svc.InitAsync(request, CurrentUserId), "Khởi tạo thanh toán thành công.");
 
+        /// <summary>
+        /// Gateway webhook callback. Returns 2xx so the provider stops retrying
+        /// when the payload was accepted or was an idempotent duplicate;
+        /// returns 4xx when the payload was rejected (bad signature / unknown
+        /// ref) so the provider does NOT keep hammering a permanently-broken
+        /// call.
+        /// </summary>
         [HttpPost("webhook/{provider}")]
         [AllowAnonymous]
-        public async Task<IActionResult> Webhook(string provider, PaymentWebhookRequest raw)
+        public async Task<IActionResult> Webhook(string provider, [FromBody] PaymentWebhookRequest raw)
         {
-            await _svc.HandleWebhookAsync(provider, raw);
-            return RespMsg("Webhook đã xử lý.");
+            var result = await _svc.HandleWebhookAsync(provider, raw);
+            if (result.Accepted)
+                return Ok(new BaseResponse<string>(StatusCodeHelper.OK,
+                    ResponseCodeConstants.SUCCESS,
+                    result.Reason ?? "ok"));
+            return BadRequest(new BaseResponse<string>(StatusCodeHelper.BadRequest,
+                ResponseCodeConstants.BAD_REQUEST,
+                result.Reason ?? "webhook rejected"));
         }
 
         [HttpPost("{bookingId:int}/on-site")]
@@ -40,7 +55,7 @@ namespace BadmintonBE.API.Controllers
 
         [HttpGet("booking/{bookingId:int}")]
         [Authorize]
-        public async Task<IActionResult> ForBooking(int bookingId) =>
-            Resp(await _svc.GetByBookingAsync(bookingId));
+        public async Task<IActionResult> ForBooking(int bookingId)
+            => Resp(await _svc.GetByBookingAsync(bookingId, CurrentUserId));
     }
 }

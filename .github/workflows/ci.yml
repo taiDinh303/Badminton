@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+# Build + migration-sync validation run on every OS in the matrix (they do not
+# need a database). The test job runs on windows-latest because the integration
+# tests target SQL Server LocalDB ((localdb)\\MSSQLLocalDB, see
+# Badminton.Tests/TestHost.cs), which only exists on Windows.
+jobs:
+  build-and-verify:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0'
+
+      - name: Install EF tools
+        run: dotnet tool install --global dotnet-ef --version 8.*
+
+      - name: Restore
+        run: dotnet restore Badminton/Badminton.slnx
+
+      - name: Build (no tests)
+        run: dotnet build Badminton/Badminton.slnx -c Release --no-restore
+
+      - name: Verify EF migrations are in sync with the model
+        # Fails if the DbContext drifts from the generated migrations, so a
+        # forgotten migration (like PointLedger.LedgerKey) cannot ship.
+        # This builds the model only — no database connection required.
+        working-directory: Badminton
+        run: dotnet ef migrations has-pending-model-changes --project Repositories --startup-project Badminton
+
+  test:
+    needs: build-and-verify
+    runs-on: windows-latest   # LocalDB available here only
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0'
+
+      - name: Restore
+        run: dotnet restore Badminton/Badminton.slnx
+
+      - name: Run tests
+        run: dotnet test Badminton/Badminton.Tests -c Debug --no-restore

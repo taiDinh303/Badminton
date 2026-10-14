@@ -26,22 +26,42 @@ namespace Services
             await SaveAsync();
         }
 
-        public async Task<IReadOnlyList<AuditEntry>> QueryAsync(
+        public async Task<(IReadOnlyList<AuditEntry> Items, int TotalCount)> QueryPagedAsync(
             string? entityType = null, string? entityId = null,
-            DateOnly? from = null, DateOnly? to = null, int limit = 100)
+            DateOnly? from = null, DateOnly? to = null, Page? page = null)
         {
-            var logs = await Repository<AuditLog>().GetAllAsync();
-            return logs
-                .Where(a => entityType is null || a.EntityType == entityType)
-                .Where(a => entityId is null || a.EntityId == entityId)
-                .Where(a => from is null || a.CreatedAt.Date >= from.Value.ToDateTime(TimeOnly.MinValue))
-                .Where(a => to is null || a.CreatedAt.Date <= to.Value.ToDateTime(TimeOnly.MinValue))
-                .OrderByDescending(a => a.CreatedAt)
-                .Take(limit)
+            // Push every filter down to SQL (the old code loaded the whole
+            // AuditLog table and filtered/sliced in memory — O(table) I/O on
+            // every call).
+            var fromUtc = from?.ToDateTime(TimeOnly.MinValue);
+            var toUtc = to?.ToDateTime(TimeOnly.MaxValue);
+            var et = entityType; var eid = entityId;
+            System.Linq.Expressions.Expression<Func<AuditLog, bool>> predicate =
+                a => (et == null || a.EntityType == et)
+                && (eid == null || a.EntityId == eid)
+                && (fromUtc == null || a.CreatedAt >= fromUtc)
+                && (toUtc == null || a.CreatedAt <= toUtc);
+
+            var pg = page ?? new Page(1, 100);
+            var (logs, total) = await Repository<AuditLog>().GetPagedAsync(
+                predicate, a => a.CreatedAt, OrderDirection.Desc, pg);
+
+            var items = logs
                 .Select(a => new AuditEntry(a.Id, a.ActorId, a.Actor?.FullName,
                     a.Action, a.EntityType, a.EntityId, a.BeforeJson, a.AfterJson,
                     a.Reason, a.CreatedAt))
                 .ToList();
+            return (items, total);
+        }
+
+        /// <summary>Backward-compatible capped list (first page only).</summary>
+        public async Task<IReadOnlyList<AuditEntry>> QueryAsync(
+            string? entityType = null, string? entityId = null,
+            DateOnly? from = null, DateOnly? to = null, int limit = 100)
+        {
+            var (items, _) = await QueryPagedAsync(entityType, entityId, from, to,
+                new Page(1, Math.Max(1, limit)));
+            return items;
         }
     }
 }

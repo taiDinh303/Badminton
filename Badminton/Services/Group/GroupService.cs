@@ -16,31 +16,39 @@ namespace Services
         public async Task<IReadOnlyList<GroupView>> GetByOwnerAsync(int ownerId)
         {
             var groups = await Repo.GetByConditionAsync(g => g.OwnerId == ownerId && g.DeletedAt == null);
-            var memberCounts = new Dictionary<int, int>();
-            foreach (var g in groups)
-            {
-                var members = await Repository<GroupMember>().GetByConditionAsync(m => m.GroupId == g.Id);
-                memberCounts[g.Id] = members.Count;
-            }
+            if (groups.Count == 0) return Array.Empty<GroupView>();
+
+            // ANTI-N+1: load every member row for this owner's groups in ONE
+            // query, then count in memory (the old code issued 1 query per group).
+            var groupIds = groups.Select(g => g.Id).ToList();
+            var members = await Repository<GroupMember>().GetByConditionAsync(m => groupIds.Contains(m.GroupId));
+            var counts = members
+                .GroupBy(m => m.GroupId)
+                .ToDictionary(g => g.Key, g => g.Count());
+
             return groups.Select(g => new GroupView(
                 g.Id, g.Name, g.OwnerId, OwnerNamePlaceholder, g.MaxMembers,
-                memberCounts.TryGetValue(g.Id, out var c) ? c : 0, g.CreatedAt)).ToList();
+                counts.TryGetValue(g.Id, out var c) ? c : 0, g.CreatedAt)).ToList();
         }
 
         public async Task<GroupView> CreateAsync(string name, int ownerId, int maxMembers = 10)
         {
-            if (string.IsNullOrWhiteSpace(name)) throw new BadRequestException("TÃªn nhÃ³m khÃ´ng Ä‘Æ°á»£c rá»—ng.");
+            if (string.IsNullOrWhiteSpace(name))
+                throw new BadRequestException("Ten nhom khong duoc rong.");
             if (maxMembers < 1 || maxMembers > 10)
-                throw new BadRequestException("NhÃ³m tá»‘i Ä‘a 10 thÃ nh viÃªn (docs 01 Â§4).");
+                throw new BadRequestException("Nhom toi da 10 thanh vien (docs 01 §4).");
 
             var group = new PlayGroup { Name = name, OwnerId = ownerId, MaxMembers = maxMembers };
             _ = Repo.AddAsync(group);
+            await SaveAsync();
 
+            // Persist the owner membership only AFTER the group has a primary key:
+            // GroupId is part of the composite key AND a FK to PlayGroups, so an
+            // explicit 0 would violate the FK on the first insert.
             _ = Repository<GroupMember>().AddAsync(new GroupMember
             {
-                GroupId = 0, // set after save
-                UserId = ownerId,
-                Group = group
+                GroupId = group.Id,
+                UserId = ownerId
             });
             await SaveAsync();
             return new GroupView(group.Id, group.Name, ownerId, OwnerNamePlaceholder,
@@ -53,7 +61,7 @@ namespace Services
             var members = await Repository<GroupMember>().GetByConditionAsync(m => m.GroupId == groupId);
             if (members.Any(m => m.UserId == userId)) return; // already a member
             if (members.Count >= g.MaxMembers)
-                throw new ConflictException($"NhÃ³m Ä‘Ã£ Ä‘á»§ {g.MaxMembers} thÃ nh viÃªn.");
+                throw new ConflictException($"Nhom da dat {g.MaxMembers} thanh vien.");
 
             g.Members.Add(new GroupMember { UserId = userId, GroupId = groupId, Group = g });
             await SaveAsync();
@@ -61,14 +69,20 @@ namespace Services
 
         public async Task<IReadOnlyList<GroupMemberView>> GetMembersAsync(int groupId)
         {
-            await MustGetAsync(groupId);
+            var g = await MustGetAsync(groupId);
             var members = await Repository<GroupMember>().GetByConditionAsync(m => m.GroupId == groupId);
-            var views = new List<GroupMemberView>();
+
+            // ANTI-N+1: bulk-load the user names, then map in memory.
+            var userIds = members.Select(m => m.UserId).Distinct().ToList();
+            var users = (await Repository<User>().GetByConditionAsync(u => userIds.Contains(u.Id)))
+                .ToDictionary(u => u.Id);
+
+            var views = new List<GroupMemberView>(members.Count);
             foreach (var m in members)
             {
-                var u = await Repository<User>().GetByIdAsync(m.UserId);
+                users.TryGetValue(m.UserId, out var u);
                 views.Add(new GroupMemberView(m.UserId, u?.FullName ?? "?",
-                    u?.PhoneNumber ?? "?", m.UserId == (await MustGetAsync(groupId)).OwnerId, m.JoinedAt));
+                    u?.PhoneNumber ?? "?", m.UserId == g.OwnerId, m.JoinedAt));
             }
             return views;
         }

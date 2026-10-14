@@ -1,4 +1,6 @@
+using Contract.Repositories.UnitOfWork;
 using Contract.Services.Booking;
+using M.Core.Base;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ModelViews.Booking;
@@ -21,9 +23,22 @@ namespace BadmintonBE.API.Controllers
         public async Task<IActionResult> GetById(int id) =>
             Resp(await _svc.GetByIdAsync(id, CurrentUserId));
 
+        /// <summary>
+        /// Paged "my bookings". Defaults to the first 50, newest first.
+        /// The total count lets the client render a proper paginator instead
+        /// of an unbounded list.
+        /// </summary>
         [HttpGet("mine")]
-        public async Task<IActionResult> Mine([FromQuery] string? status) =>
-            Resp(await _svc.GetByUserAsync(CurrentUserId, status));
+        public async Task<IActionResult> Mine(
+            [FromQuery] string? status,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 50)
+        {
+            var (items, total) = await _svc.GetByUserPagedAsync(
+                CurrentUserId, status, new Page(page, pageSize));
+            var paged = new BasePaginatedList<BookingView>(items, total, page, pageSize);
+            return Resp(paged);
+        }
 
         [HttpPost("{id:int}/cancel")]
         public async Task<IActionResult> Cancel(int id)

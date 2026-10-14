@@ -507,6 +507,10 @@ namespace Repositories.Migrations
                     b.Property<int>("Delta")
                         .HasColumnType("int");
 
+                    b.Property<string>("LedgerKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -518,6 +522,10 @@ namespace Repositories.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("BookingId");
+
+                    b.HasIndex("LedgerKey")
+                        .IsUnique()
+                        .HasFilter("[LedgerKey] IS NOT NULL");
 
                     b.HasIndex("UserId", "CreatedAt");
 

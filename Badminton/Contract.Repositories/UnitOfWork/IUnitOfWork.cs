@@ -1,5 +1,3 @@
-using System.Linq.Expressions;
-
 namespace Contract.Repositories.UnitOfWork
 {
     public interface IUnitOfWork
@@ -7,5 +5,9 @@ namespace Contract.Repositories.UnitOfWork
         IGenericRepository<T> GetRepository<T>() where T : class;
 
         Task<int> SaveChangesAsync(CancellationToken ct = default);
+
+        Task RunInTransactionAsync(Func<Task> action, CancellationToken ct = default);
+
+        Task<int> ExecuteSqlRawAsync(string sql, params object[] sqlParameters);
     }
 }

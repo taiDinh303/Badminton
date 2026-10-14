@@ -1,3 +1,24 @@
-.vs/
+# .NET / Visual Studio
 bin/
 obj/
+.vs/
+*.user
+*.suo
+.vscode/
+
+# Build output / artifacts
+*.nupkg
+*.dll
+*.pdb
+TestResults/
+
+# Environment / secrets (real values never committed; use .env.example)
+.env
+.env.*
+!.env.example
+appsettings.Production.json
+
+# Local tool / scratch
+.agnes/
+*.log
+Thumbs.db

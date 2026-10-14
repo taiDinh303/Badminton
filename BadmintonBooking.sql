@@ -302,6 +302,7 @@ CREATE TABLE [PointLedger] (
     [Delta]     int          NOT NULL,
     [Reason]    nvarchar(100) NOT NULL,
     [BookingId] int          NULL,
+    [LedgerKey] nvarchar(80) NULL,
     [CreatedAt] datetime2    NOT NULL,
     CONSTRAINT [PK_PointLedger] PRIMARY KEY ([Id]),
     CONSTRAINT [FK_PointLedger_Bookings_BookingId] FOREIGN KEY ([BookingId])
@@ -441,6 +442,11 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_PointLedger_BookingId
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_PointLedger_UserId_CreatedAt')
     CREATE INDEX [IX_PointLedger_UserId_CreatedAt] ON [PointLedger]([UserId],[CreatedAt]);
+GO
+-- Idempotency backstop: a booking can earn / clawback points at most once.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_PointLedger_LedgerKey')
+    CREATE UNIQUE INDEX [IX_PointLedger_LedgerKey] ON [PointLedger]([LedgerKey])
+    WHERE [LedgerKey] IS NOT NULL;
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Reviews_BookingId')
     CREATE UNIQUE INDEX [IX_Reviews_BookingId] ON [Reviews]([BookingId]);
