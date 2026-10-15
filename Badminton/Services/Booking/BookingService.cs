@@ -224,11 +224,6 @@ namespace Services
             return await MapToViewsAsync(bookings);
         }
 
-        /// <summary>
-        /// Paged "my bookings" — server-side <c>Skip/Take</c> + total count in
-        /// one round trip (replaces the unbounded full-list fetch for the
-        /// customer dashboard). Status filter is pushed into the query.
-        /// </summary>
         public async Task<(IReadOnlyList<BookingView> Items, int TotalCount)>
             GetByUserPagedAsync(int userId, string? status, Page page)
         {
@@ -254,10 +249,28 @@ namespace Services
             return (views, total);
         }
 
-        /// <summary>
-        /// Shared mapper: bulk-fetches reference data for a set of bookings so
-        /// each row maps without issuing its own queries (anti-N+1).
-        /// </summary>
+        public async Task<(IReadOnlyList<BookingView> Items, int TotalCount)>
+            GetAllPagedAsync(string? status, int? branchId, Page page)
+        {
+            var bi = branchId;
+            bool hasStatus = !string.IsNullOrWhiteSpace(status);
+            BookingStatus? stEnum = hasStatus
+                && Enum.TryParse<BookingStatus>(status, ignoreCase: true, out var p)
+                ? p
+                : null;
+            if (hasStatus && stEnum is null)
+                throw new BadRequestException($"Trang thai '{status}' khong hop le.");
+
+            System.Linq.Expressions.Expression<Func<Booking, bool>> predicate = b =>
+                b.DeletedAt == null
+                && (stEnum == null || b.Status == stEnum!.Value)
+                && (bi == null || b.BranchId == bi);
+            var (bookings, total) = await Repo.GetPagedAsync(
+                predicate, b => b.CreatedAt, OrderDirection.Desc, page);
+            var views = await MapToViewsAsync(bookings.ToList());
+            return (views, total);
+        }
+
         private async Task<IReadOnlyList<BookingView>> MapToViewsAsync(IReadOnlyList<Booking> bookings)
         {
             if (bookings.Count == 0) return Array.Empty<BookingView>();
@@ -517,13 +530,6 @@ namespace Services
                 b.CreatedAt, user?.FullName, breakdown, b.CancelReason);
         }
 
-        /// <summary>
-        /// Detects the slot-conflict unique violation by its
-        /// <see cref="Microsoft.Data.SqlClient.SqlException.Number"/> (2601)
-        /// instead of parsing the generic "UNIQUE" text, so a voucher
-        /// per-user cap or idempotency replay is no longer mislabelled as
-        /// "slot just taken".
-        /// </summary>
         private static bool IsSlotConflict(DbUpdateException ex)
         {
             if (ex.InnerException is Microsoft.Data.SqlClient.SqlException sql

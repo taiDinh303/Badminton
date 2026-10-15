@@ -23,11 +23,6 @@ namespace BadmintonBE.API.Controllers
         public async Task<IActionResult> GetById(int id) =>
             Resp(await _svc.GetByIdAsync(id, CurrentUserId));
 
-        /// <summary>
-        /// Paged "my bookings". Defaults to the first 50, newest first.
-        /// The total count lets the client render a proper paginator instead
-        /// of an unbounded list.
-        /// </summary>
         [HttpGet("mine")]
         public async Task<IActionResult> Mine(
             [FromQuery] string? status,
@@ -36,6 +31,20 @@ namespace BadmintonBE.API.Controllers
         {
             var (items, total) = await _svc.GetByUserPagedAsync(
                 CurrentUserId, status, new Page(page, pageSize));
+            var paged = new BasePaginatedList<BookingView>(items, total, page, pageSize);
+            return Resp(paged);
+        }
+
+        [HttpGet("all")]
+        [Authorize(Roles = "Admin,Manager")]
+        public async Task<IActionResult> All(
+            [FromQuery] string? status,
+            [FromQuery] int? branchId,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 100)
+        {
+            var (items, total) = await _svc.GetAllPagedAsync(
+                status, branchId, new Page(page, pageSize));
             var paged = new BasePaginatedList<BookingView>(items, total, page, pageSize);
             return Resp(paged);
         }

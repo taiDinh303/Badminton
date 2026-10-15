@@ -85,20 +85,26 @@ export interface Branch {
 
 export interface Court {
   id: number;
+  branchId: number;
   code: string;
   name: string;
   surface: string;
   priceLowPeak: number;
   pricePeak: number;
+  weekendSurcharge: number;
+  capacity: number;
   isActive: boolean;
+  ratingAvg: number | null;
+  ratingCount: number;
 }
 
 export interface TimeSlot {
-  slotId: number;
+  id: number;
   label: string;
   startTime: string;
   endTime: string;
   isPeak: boolean;
+  isActive: boolean;
 }
 
 export interface Slot {
@@ -195,6 +201,60 @@ export interface PaymentView {
   refundedAt: string | null;
 }
 
+export interface Staff {
+  id: number;
+  fullName: string;
+  phoneNumber: string;
+  role: string;
+  status: string;
+  branchId: number | null;
+  isVerified: boolean;
+  createdAt: string;
+}
+
+export interface AuditEntry {
+  id: number;
+  actorId: number | null;
+  actorName: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  beforeJson: string | null;
+  afterJson: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface ReportSummary {
+  todayBookings: number;
+  pendingCount: number;
+  noShowCount30d: number;
+  revenueToday: number;
+  peakFillRatePct: number;
+  usersToday: number;
+  activeCourts: number;
+  activeBranches: number;
+}
+
+export interface RevenueByDay {
+  date: string;
+  bookings: number;
+  revenue: number;
+  refunds: number;
+}
+
+export interface OccupancyByDay {
+  date: string;
+  branchId: number | null;
+  branchName: string | null;
+  bookedSlots: number;
+  totalSlots: number;
+  fillRatePct: number;
+  peakBooked: number;
+  peakTotal: number;
+  peakFillRatePct: number;
+}
+
 // ── Endpoints ───────────────────────────────────────────────────────
 
 export const api = {
@@ -212,13 +272,66 @@ export const api = {
   branches: {
     list: () => request<Branch[]>("GET", "/branches"),
     get: (id: number) => request<Branch>("GET", `/branches/${id}`),
+    create: (b: {
+      name: string;
+      address: string;
+      geoLat?: number;
+      geoLng?: number;
+      openTime?: string;
+      closeTime?: string;
+    }) => request<number>("POST", "/branches", b),
+    update: (
+      id: number,
+      b: {
+        name?: string;
+        address?: string;
+        isActive?: boolean;
+        openTime?: string;
+        closeTime?: string;
+      },
+    ) => request<unknown>("PATCH", `/branches/${id}`, b),
+    delete: (id: number) => request<unknown>("DELETE", `/branches/${id}`),
   },
   courts: {
     list: (branchId?: number) =>
       request<Court[]>("GET", "/courts", undefined, { branchId }),
+    create: (b: {
+      branchId: number;
+      code: string;
+      name: string;
+      priceLowPeak: number;
+      pricePeak: number;
+      weekendSurcharge?: number;
+      capacity?: number;
+      surface?: string;
+      amenities?: string | null;
+    }) => request<number>("POST", "/courts", b),
+    update: (
+      id: number,
+      b: {
+        name?: string;
+        priceLowPeak?: number;
+        pricePeak?: number;
+        weekendSurcharge?: number;
+        capacity?: number;
+        surface?: string;
+        amenities?: string | null;
+        isActive?: boolean;
+      },
+    ) => request<unknown>("PATCH", `/courts/${id}`, b),
+    delete: (id: number) => request<unknown>("DELETE", `/courts/${id}`),
   },
   timeSlots: {
     list: () => request<TimeSlot[]>("GET", "/time-slots"),
+    create: (b: {
+      label: string;
+      startTime: string;
+      endTime: string;
+      isPeak: boolean;
+    }) => request<number>("POST", "/time-slots", b),
+    update: (id: number, b: { isActive?: boolean; label?: string }) =>
+      request<unknown>("PATCH", `/time-slots/${id}`, b),
+    delete: (id: number) => request<unknown>("DELETE", `/time-slots/${id}`),
   },
   booking: {
     availability: (branchId: number, date: string) =>
@@ -245,6 +358,19 @@ export const api = {
       }),
     getById: (id: number) => request<Booking>("GET", `/bookings/${id}`),
     cancel: (id: number) => request<Booking>("POST", `/bookings/${id}/cancel`),
+    // Admin: list all bookings (filterable), paged.
+    all: (
+      status?: string,
+      branchId?: number,
+      page = 1,
+      pageSize = 100,
+    ) =>
+      request<Paged<Booking>>("GET", "/bookings/all", undefined, {
+        status,
+        branchId,
+        page,
+        pageSize,
+      }),
     // Staff (Manager/Admin) lifecycle:
     complete: (id: number, note?: string) =>
       request<Booking>("POST", `/bookings/${id}/complete`, undefined, { note }),
@@ -281,6 +407,105 @@ export const api = {
     get: (code: string) => request<Voucher>("GET", `/vouchers/${encodeURIComponent(code)}`),
     list: (activeOnly = true) =>
       request<Voucher[]>("GET", "/vouchers", undefined, { activeOnly }),
+    create: (b: {
+      code: string;
+      type: "Percent" | "Fixed";
+      value: number;
+      maxValue?: number | null;
+      minSpend?: number;
+      maxPerUser?: number;
+      totalQty?: number;
+      validFrom?: string;
+      validUntil?: string;
+    }) => request<unknown>("POST", "/vouchers", b),
+    deactivate: (id: number) =>
+      request<unknown>("POST", `/vouchers/${id}/deactivate`),
+  },
+  // ── Staff / admin (Manager + Admin, docs 07 §3) ──────────────
+  admin: {
+    staff: {
+      list: () => request<Staff[]>("GET", "/admin/staff"),
+      create: (b: {
+        fullName: string;
+        phoneNumber: string;
+        password: string;
+        email?: string;
+        role?: "Manager" | "Admin";
+        branchId?: number;
+      }) => request<number>("POST", "/admin/staff", b),
+      lock: (id: number) => request<unknown>("POST", `/admin/staff/${id}/lock`),
+      unlock: (id: number) =>
+        request<unknown>("POST", `/admin/staff/${id}/unlock`),
+      changeRole: (id: number, role: string) =>
+        request<unknown>("PATCH", `/admin/staff/${id}/role`, undefined, { role }),
+      assignBranch: (id: number, branchId: number) =>
+        request<unknown>(
+          "PATCH",
+          `/admin/staff/${id}/branch`,
+          undefined,
+          { branchId },
+        ),
+    },
+    audit: {
+      query: (q: {
+        entityType?: string;
+        entityId?: string;
+        from?: string;
+        to?: string;
+        page?: number;
+        pageSize?: number;
+      }) =>
+        request<Paged<AuditEntry>>("GET", "/admin/audit", undefined, {
+          entityType: q.entityType,
+          entityId: q.entityId,
+          from: q.from,
+          to: q.to,
+          page: q.page,
+          pageSize: q.pageSize,
+        }),
+    },
+    maintenance: {
+      set: (
+        courtId: number,
+        date: string,
+        status: "Open" | "Maintenance" | "Closed",
+        note?: string,
+      ) =>
+        request<unknown>(
+          "POST",
+          `/admin/courts/${courtId}/maintenance`,
+          undefined,
+          { date, status, note },
+        ),
+      get: (courtId: number, date: string) =>
+        request<unknown>(
+          "GET",
+          `/admin/courts/${courtId}/maintenance/${date}`,
+        ),
+    },
+    report: {
+      summary: (branchId?: number) =>
+        request<ReportSummary>(
+          "GET",
+          "/admin/report/summary",
+          undefined,
+          { branchId },
+        ),
+      revenue: (from: string, to: string, branchId?: number) =>
+        request<RevenueByDay[]>(
+          "GET",
+          "/admin/report/revenue",
+          undefined,
+          { from, to, branchId },
+        ),
+      occupancy: (from: string, to: string, branchId?: number) =>
+        request<OccupancyByDay[]>(
+          "GET",
+          "/admin/report/occupancy",
+          undefined,
+          { from, to, branchId },
+        ),
+    },
   },
 };
 

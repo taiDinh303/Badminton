@@ -27,7 +27,7 @@ namespace Services
             if (request.Role is not (Role.Manager or Role.Admin))
                 throw new BadRequestException("Chỉ tạo được Manager hoặc Admin.");
 
-            // "Exactly one active Admin" invariant (docs 01 §2).
+            // "Exactly one active Admin" invariant.
             if (request.Role == Role.Admin)
             {
                 var activeAdmins = await Repo.CountByConditionAsync(
@@ -41,7 +41,7 @@ namespace Services
             if (dupes.Count > 0)
                 throw new ConflictException("Số điện thoại này đã được đăng ký.");
 
-            // A Manager MUST be assigned to a branch (Q3=A: 1 manager = 1 cơ sở).
+            // A Manager MUST be assigned to a branch (1 manager = 1 cơ sở).
             if (request.Role == Role.Manager && request.BranchId is null)
                 throw new BadRequestException("Manager phải được gán vào một cơ sở (BranchId).");
 
