@@ -5,11 +5,6 @@ using Repositories.Context;
 
 namespace Repositories.UnitOfWork
 {
-    /// <summary>
-    /// Concrete generic repository (ENCAPSULATION: hides EF Core's <c>DbSet</c>
-    /// behind <c>IGenericRepository&lt;T&gt;</c>). Services only ever see the
-    /// contract, never the EF API.
-    /// </summary>
     public class GenericRepository<T> : IGenericRepository<T> where T : class
     {
         private readonly BadmintonBookingDbContext _context;
@@ -38,11 +33,6 @@ namespace Repositories.UnitOfWork
             Expression<Func<T, bool>> predicate, CancellationToken ct = default) =>
             _dbSet.AsNoTracking().Where(predicate).CountAsync(ct);
 
-        /// <summary>
-        /// Anti-N+1 paged read: single round trip for both the window and the
-        /// total. <see cref="OrderDirection.Desc"/> is the usual "newest
-        /// first" for list endpoints; <c>Asc</c> is for ordered scans.
-        /// </summary>
         public async Task<(IReadOnlyList<T> Items, int TotalCount)> GetPagedAsync(
             Expression<Func<T, bool>> predicate,
             Expression<Func<T, DateTime>> orderBy,
@@ -63,11 +53,6 @@ namespace Repositories.UnitOfWork
             return (items, total);
         }
 
-        /// <summary>
-        /// Server-side <c>SUM</c> over the filtered set (EF Core 6+). Replaces
-        /// the "load the whole table into memory and <c>.Sum()</c>" pattern
-        /// that used to dominate <c>PointService.GetBalanceAsync</c>.
-        /// </summary>
         public Task<int> SumIntByConditionAsync(
             Expression<Func<T, bool>> predicate,
             Expression<Func<T, int>> selector,

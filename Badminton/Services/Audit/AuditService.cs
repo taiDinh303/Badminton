@@ -2,6 +2,7 @@ using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using M.Core.Base;
+using M.Core.Utils;
 using Microsoft.AspNetCore.Http;
 
 namespace Services
@@ -30,11 +31,13 @@ namespace Services
             string? entityType = null, string? entityId = null,
             DateOnly? from = null, DateOnly? to = null, Page? page = null)
         {
-            // Push every filter down to SQL (the old code loaded the whole
-            // AuditLog table and filtered/sliced in memory — O(table) I/O on
-            // every call).
-            var fromUtc = from?.ToDateTime(TimeOnly.MinValue);
-            var toUtc = to?.ToDateTime(TimeOnly.MaxValue);
+            var hOffset = HanoiTime.FixedOffset;
+            DateTime? fromUtc = from is { } f
+                ? f.ToDateTime(TimeOnly.MinValue).Add(-hOffset)
+                : null;
+            DateTime? toUtc = to is { } t
+                ? t.AddDays(1).ToDateTime(TimeOnly.MinValue).Add(-hOffset)
+                : null;
             var et = entityType; var eid = entityId;
             System.Linq.Expressions.Expression<Func<AuditLog, bool>> predicate =
                 a => (et == null || a.EntityType == et)

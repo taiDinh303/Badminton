@@ -10,6 +10,7 @@ using Contract.Services.Payment;
 using Contract.Services.Points;
 using Contract.Services.Pricing;
 using Contract.Services.Review;
+using Contract.Services.Staff;
 using Contract.Services.TimeSlot;
 using Contract.Services.Voucher;
 using M.Core.Domain;
@@ -50,6 +51,7 @@ namespace Services.DI
             services.AddScoped<IPointService, PointService>();
             services.AddScoped<IGroupService, GroupService>();
             services.AddScoped<IAuditService, AuditService>();
+            services.AddScoped<IStaffService, StaffService>();
             services.AddScoped<IReviewService, ReviewService>();
             services.AddScoped<IBookingService, BookingService>();
             services.AddScoped<IPaymentService, PaymentService>();

@@ -8,6 +8,7 @@ using Contract.Services.Pricing;
 using Contract.Services.Voucher;
 using M.Core.Base;
 using M.Core.Enums;
+using M.Core.Utils;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using ModelViews.Booking;
@@ -59,13 +60,22 @@ namespace Services
             if (dateStatus != CourtDateStatus.Open)
                 throw new ConflictException("San dang bao tri hoac dong trong ngay nay.");
 
-            var now = DateTime.UtcNow;
-            var slotStart = date.ToDateTime(slot.StartTime);
-            if (slotStart < now.AddMinutes(30))
+            var hanoiNow = HanoiTime.HanoiNow();
+            var slotStart = HanoiTime.SlotStart(date, slot.StartTime);
+            if (slotStart < hanoiNow.AddMinutes(30))
                 throw new BadRequestException(
                     "Thoi gian nay khong the dat (slot da bat dau hoac trong 30 phut toi).");
-            if (date > DateOnly.FromDateTime(now.Date.AddDays(30)))
+            var hanoiToday = HanoiTime.HanoiToday();
+            if (date > hanoiToday.AddDays(30))
                 throw new BadRequestException("Vui long chon ngay trong 30 ngay toi.");
+
+            var requester = await Repository<User>().GetByIdAsync(userId);
+            if (requester is not null
+                && requester.NoShowLimited
+                && requester.NoShowLimitedPeriod is { } lp
+                && lp == HanoiTime.HanoiToday().MonthStart())
+                throw new ConflictException(
+                    "Tai khoan dang bi gioi han dat sau 3 lan ko di (thang nay). Thang tiep se mo lai.");
 
             if (request.GroupId is { } groupId)
             {
@@ -84,13 +94,14 @@ namespace Services
                 court.PriceLowPeak, court.PricePeak, slot.IsPeak,
                 court.WeekendSurcharge, IsWeekend(date));
 
-            // The whole booking (order + player + voucher reservation) is
-            // all-or-nothing: a voucher that fails its total-qty guard rolls the
-            // order back with it, and vice-versa.
+            // The whole booking (order + player + voucher + points) is
+            // all-or-nothing: a voucher that fails its total-qty guard or a
+            // points redemption that exceeds balance rolls the order back.
             Booking? booking = null;
             await Uow.RunInTransactionAsync(async () =>
             {
                 int voucherDiscount = 0;
+                int pointsDiscount = 0;
                 VoucherRedemption? voucherRedemption = null;
 
                 if (!string.IsNullOrWhiteSpace(request.VoucherCode))
@@ -100,9 +111,19 @@ namespace Services
                             request.VoucherCode, userId, total);
                 }
 
-                var finalAmount = (int)_pricing.FinalPrice(
-                    court.PriceLowPeak, court.PricePeak, slot.IsPeak,
-                    court.WeekendSurcharge, IsWeekend(date), voucherDiscount);
+                int pointsRedeemedCount = 0;
+                if (request.PointsToRedeem is { } ptsReq && ptsReq > 0)
+                {
+                    var afterVoucher = total - voucherDiscount;
+                    // maxPointsThatFit = points whose 20k-per-1000 discount ≤ afterVoucher.
+                    var maxPointsThatFit = (long)afterVoucher * 1_000 / 20_000;
+                    pointsRedeemedCount = Math.Min(ptsReq, (int)maxPointsThatFit);
+                    if (pointsRedeemedCount < 1_000)
+                        pointsRedeemedCount = 0; // can't redeem less than one 1000-pt unit
+                    pointsDiscount = pointsRedeemedCount * 20_000 / 1_000;
+                }
+
+                var finalAmount = Math.Max(0, total - voucherDiscount - pointsDiscount);
 
                 var b = new Booking
                 {
@@ -117,20 +138,14 @@ namespace Services
                     PlayerCount = Math.Max(1, request.PlayerCount),
                     Status = BookingStatus.Pending,
                     TotalAmount = total,
-                    DiscountAmount = voucherDiscount,
+                    DiscountAmount = voucherDiscount + pointsDiscount,
                     PayableAmount = finalAmount,
-                    PendingExpiresAt = now.AddMinutes(10),
+                    PointsRedeemed = pointsRedeemedCount,
+                    PendingExpiresAt = DateTime.UtcNow.AddMinutes(10),
                     Note = request.Note
                 };
 
-                // Cross-links (booking.VoucherRedemptionId and
-                // redemption.BookingId) stay null until both rows have
-                // primary keys; they are patched after the first save below.
-
-                // In-transaction slot pre-check: a second concurrent order for
-                // the same court+date+slot in an active state means the slot
-                // just got taken. The filtered unique index is the hard
-                // backstop for any race that slips past this read.
+                // In-transaction slot pre-check
                 var slotTaken = await Repo.GetByConditionAsync(x =>
                     x.CourtId == court.Id && x.Date == date && x.SlotId == slot.Id
                     && (x.Status == BookingStatus.Pending || x.Status == BookingStatus.Confirmed));
@@ -157,27 +172,26 @@ namespace Services
                     throw;
                 }
 
-                // Patch the cross-links now that both rows have primary keys.
+                // Patch cross-links now that both rows have primary keys.
                 if (voucherRedemption is not null)
                 {
                     voucherRedemption.BookingId = b.Id;
                     b.VoucherRedemptionId = voucherRedemption.Id;
-                    await SaveAsync();
                 }
+
+                // Write the points-redeem ledger row now that the booking has
+                // a PK, so the unique LedgerKey binds to the real bookingId.
+                if (b.PointsRedeemed > 0)
+                    await _points.RedeemAsync(userId, b.Id, b.PointsRedeemed, b.BookingCode);
+
+                if (voucherRedemption is not null || b.PointsRedeemed > 0)
+                    await SaveAsync();
 
                 booking = b;
             });
 
-            // The transaction only completes without throwing when the order
-            // was persisted, so a null here would mean a silent failure.
             return await ToView(booking!);
         }
-
-        private static bool IsSlotConflict(DbUpdateException ex) =>
-            ex.Message.Contains("ux_court_slot_active")
-            || ex.InnerException?.Message?.Contains("UNIQUE") is true
-            || ex.InnerException?.Message?.Contains("unique") is true
-            || ex.InnerException?.Message?.Contains("IX_Bookings_CourtId_Date_SlotId") is true;
 
         // - read ------------------------------------------------------------
 
@@ -219,10 +233,20 @@ namespace Services
             GetByUserPagedAsync(int userId, string? status, Page page)
         {
             var u = userId;
-            string? st = status;
+            // Push the status filter into SQL. Pre-parse to the enum so EF
+            // emits `Status = N'Confirmed'` instead of the (non-translatable)
+            // `b.Status.ToString().Equals(st)` that would throw at query time.
+            bool hasStatus = !string.IsNullOrWhiteSpace(status);
+            BookingStatus? stEnum = hasStatus
+                && Enum.TryParse<BookingStatus>(status, ignoreCase: true, out var p)
+                ? p
+                : null;
+            if (hasStatus && stEnum is null)
+                throw new BadRequestException($"Trang thai '{status}' khong hop le.");
+
             System.Linq.Expressions.Expression<Func<Booking, bool>> predicate =
                 b => b.UserId == u && b.DeletedAt == null
-                     && (st == null || b.Status.ToString().Equals(st));
+                     && (stEnum == null || b.Status == stEnum!.Value);
 
             var (bookings, total) = await Repo.GetPagedAsync(
                 predicate, b => b.CreatedAt, OrderDirection.Desc, page);
@@ -263,8 +287,11 @@ namespace Services
                     court.PriceLowPeak, court.PricePeak, slot.IsPeak,
                     court.WeekendSurcharge, isWeekend);
                 var weekendOnly = isWeekend ? basePrice : 0;
+                var pointsVnd = b.PointsRedeemed * 20_000 / 1_000; // 1000 pts → 20k
+                var voucherVnd = b.DiscountAmount - pointsVnd;
                 var breakdown = new BookingPriceBreakdown(
-                    basePrice, weekendOnly, b.DiscountAmount, b.TotalAmount, b.PayableAmount);
+                    basePrice, weekendOnly, voucherVnd, pointsVnd,
+                    b.TotalAmount, b.PayableAmount);
                 users.TryGetValue(b.UserId, out var user);
 
                 views.Add(new BookingView(
@@ -272,7 +299,8 @@ namespace Services
                     b.Date.ToString("dd/MM/yyyy"),
                     $"{slot.Label} ({slot.StartTime:hh\\:mm}-{slot.EndTime:hh\\:mm})",
                     b.PlayerCount, b.Status.ToString(), b.TotalAmount, b.DiscountAmount,
-                    b.PayableAmount, b.PointsEarned, b.GroupId, b.VoucherRedemptionId,
+                    b.PayableAmount, b.PointsEarned, b.PointsRedeemed,
+                    b.GroupId, b.VoucherRedemptionId,
                     b.CreatedAt, user?.FullName, breakdown, b.CancelReason));
             }
             return views;
@@ -314,6 +342,63 @@ namespace Services
             return await ToView(b);
         }
 
+        // - lifecycle: Confirmed → Completed / NoShow -----------------------
+
+        public async Task<BookingView> MarkCompletedAsync(int bookingId, int actorId, string? note = null)
+        {
+            var b = await MustGetActive(bookingId);
+            if (b.Status is not BookingStatus.Confirmed)
+                throw new ConflictException($"Chỉ được đánh dấu hoàn thành đơn ở trạng thái Confirmed (hiện tại: {b.Status}).");
+
+            b.Status = BookingStatus.Completed;
+            b.UpdatedAt = DateTime.UtcNow;
+            if (!string.IsNullOrWhiteSpace(note)) b.CancelReason = note; // reuse free-text field
+            Repo.Update(b);
+            await SaveAsync();
+            await _audit.LogAsync(actorId, "booking.complete", "Booking", b.Id.ToString(),
+                new { b.Status }, new { b.Status }, note);
+            return await ToView(b);
+        }
+
+        public async Task<BookingView> MarkNoShowAsync(int bookingId, int actorId, string? note = null)
+        {
+            var b = await MustGetActive(bookingId);
+            if (b.Status is not BookingStatus.Confirmed)
+                throw new ConflictException($"Chỉ được gắn cờ no-show đơn ở trạng thái Confirmed (hiện tại: {b.Status}).");
+
+            b.Status = BookingStatus.NoShow;
+            b.CancelledAt = DateTime.UtcNow;
+            b.CancelReason = "No-show: khách không đến sân" + (string.IsNullOrWhiteSpace(note) ? "" : " — " + note);
+            b.UpdatedAt = DateTime.UtcNow;
+            Repo.Update(b);
+
+            // Increment the user's no-show counter (calendar month keyed).
+            var user = await Repository<User>().GetByIdAsync(b.UserId);
+            if (user is not null)
+            {
+                var monthStart = HanoiTime.HanoiToday().MonthStart();
+                if (user.NoShowPeriod != monthStart)
+                {
+                    user.NoShowPeriod = monthStart;
+                    user.NoShowCount = 0; // new month window
+                }
+                user.NoShowCount++;
+                if (user.NoShowCount >= 3)
+                {
+                    // Block next Hanoi month: set the limit flag + period.
+                    user.NoShowLimited = true;
+                    user.NoShowLimitedPeriod = monthStart.AddMonths(1);
+                }
+                Repository<User>().Update(user);
+            }
+
+            await SaveAsync();
+            await _audit.LogAsync(actorId, "booking.no-show", "Booking", b.Id.ToString(),
+                new { beforeStatus = BookingStatus.Confirmed },
+                new { afterStatus = b.Status }, note);
+            return await ToView(b);
+        }
+
         // - availability grid ----------------------------------------------
 
         public async Task<IReadOnlyList<CourtAvailabilityView>> GetAvailabilityAsync(int branchId, DateOnly date)
@@ -322,7 +407,7 @@ namespace Services
                 c => c.BranchId == branchId && c.IsActive && c.DeletedAt == null);
             var slots = await Repository<TimeSlot>().GetByConditionAsync(
                 s => s.IsActive && s.DeletedAt == null);
-            var now = DateTime.UtcNow;
+            var hanoiNowAvail = HanoiTime.HanoiNow();
 
             // ANTI-N+1: fetch every court-date-status entry and every active
             // booking for this date in two batched queries, then map in-memory
@@ -349,10 +434,10 @@ namespace Services
 
                 var slotViews = slots.Select(sl =>
                 {
-                    var start = date.ToDateTime(sl.StartTime);
+                    var start = HanoiTime.SlotStart(date, sl.StartTime);
                     var isLocked = dayStatus != CourtDateStatus.Open
                         || bookedSlots.Contains(sl.Id)
-                        || start < now.AddMinutes(30);
+                        || start < hanoiNowAvail.AddMinutes(30);
                     var lockReason = isLocked
                         ? (dayStatus != CourtDateStatus.Open ? "San bao tri/dong"
                           : bookedSlots.Contains(sl.Id) ? "Da duoc dat"
@@ -416,16 +501,38 @@ namespace Services
                 court.PriceLowPeak, court.PricePeak, slot.IsPeak,
                 court.WeekendSurcharge, isWeekend);
             var weekendOnly = isWeekend ? basePrice : 0;
+            var pointsVnd = b.PointsRedeemed * 20_000 / 1_000;
+            var voucherVnd = b.DiscountAmount - pointsVnd;
             var breakdown = new BookingPriceBreakdown(
-                basePrice, weekendOnly, b.DiscountAmount, b.TotalAmount, b.PayableAmount);
+                basePrice, weekendOnly, voucherVnd, pointsVnd,
+                b.TotalAmount, b.PayableAmount);
 
             return new BookingView(
                 b.Id, b.BookingCode, b.CourtId, court.Name,
                 b.Date.ToString("dd/MM/yyyy"),
                 $"{slot.Label} ({slot.StartTime:hh\\:mm}-{slot.EndTime:hh\\:mm})",
                 b.PlayerCount, b.Status.ToString(), b.TotalAmount, b.DiscountAmount,
-                b.PayableAmount, b.PointsEarned, b.GroupId, b.VoucherRedemptionId,
+                b.PayableAmount, b.PointsEarned, b.PointsRedeemed,
+                b.GroupId, b.VoucherRedemptionId,
                 b.CreatedAt, user?.FullName, breakdown, b.CancelReason);
+        }
+
+        /// <summary>
+        /// Detects the slot-conflict unique violation by its
+        /// <see cref="Microsoft.Data.SqlClient.SqlException.Number"/> (2601)
+        /// instead of parsing the generic "UNIQUE" text, so a voucher
+        /// per-user cap or idempotency replay is no longer mislabelled as
+        /// "slot just taken".
+        /// </summary>
+        private static bool IsSlotConflict(DbUpdateException ex)
+        {
+            if (ex.InnerException is Microsoft.Data.SqlClient.SqlException sql
+                && sql.Number == 2601)
+            {
+                return sql.Message.Contains("ux_court_slot_active")
+                    || sql.Message.Contains("IX_Bookings_CourtId_Date_SlotId");
+            }
+            return ex.Message.Contains("ux_court_slot_active");
         }
 
         private static bool IsWeekend(DateOnly d) =>
@@ -433,6 +540,14 @@ namespace Services
 
         private static DateOnly ParseDate(string s) =>
             DateOnly.TryParse(s, out var d) ? d : throw new BadRequestException("Ngay khong hop le.");
+
+        private async Task<Booking> MustGetActive(int bookingId)
+        {
+            var b = await Repo.GetByIdAsync(bookingId);
+            if (b is null || b.DeletedAt.HasValue)
+                throw new NotFoundException("Booking", bookingId);
+            return b;
+        }
 
         private static string GenerateCode() =>
             "BD-" + DateTime.UtcNow.ToString("yyMMdd") + "-" +

@@ -7,6 +7,7 @@ using M.Core.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using ModelViews.Auth;
+using System.Collections.Concurrent;
 
 namespace Services
 {
@@ -20,19 +21,45 @@ namespace Services
             _jwt = jwt;
         }
 
+        private static readonly ConcurrentDictionary<string, List<DateTime>> _failures
+            = new();
+        private const int MaxAttempts = 5;
+        private static readonly TimeSpan FailureWindow = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
+
+        private static bool IsLocked(string phone)
+        {
+            if (!_failures.TryGetValue(phone, out var times)) return false;
+            var cutoff = DateTime.UtcNow.AddSeconds(-FailureWindow.TotalSeconds);
+            var recent = times.Count(t => t >= cutoff);
+            return recent >= MaxAttempts;
+        }
+
+        private static void RecordFailure(string phone)
+        {
+            _failures.AddOrUpdate(phone,
+                _ => new List<DateTime> { DateTime.UtcNow },
+                (_, list) => { list.Add(DateTime.UtcNow); return list; });
+        }
+
+        private static void ClearFailures(string phone) =>
+            _failures.TryRemove(phone, out _);
+
+        // ── Register ─────────────────────────────────────────────────────
+
         public async Task<LoginResponse> RegisterAsync(RegisterRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.PhoneNumber))
-                throw new BadRequestException("So dien thoai la bat buoc.");
+                throw new BadRequestException("Số điện thoại là bắt buộc.");
 
             if (request.Role != RoleDto.Customer)
                 throw new ConflictException(
-                    "Manager/Admin duoc tao boi admin, khong the tu dang ky.");
+                    "Manager/Admin được tạo bởi admin, không thể tự đăng ký.");
 
             var users = Repository<User>();
             var dupes = await users.GetByConditionAsync(u => u.PhoneNumber == request.PhoneNumber);
             if (dupes.Count > 0)
-                throw new ConflictException("So dien thoai nay da duoc dang ky.");
+                throw new ConflictException("Số điện thoại này đã được đăng ký.");
 
             var user = new User
             {
@@ -50,7 +77,7 @@ namespace Services
             catch (DbUpdateException ex)
             {
                 if (IsUniqueViolation(ex))
-                    throw new ConflictException("Dung luong admin/so dien thoai bi loi rang buoc.");
+                    throw new ConflictException("Dùng số điện thoại đã tồn tại (vi phạm unique).");
                 throw;
             }
 
@@ -60,17 +87,34 @@ namespace Services
                 user.Role.ToString(), access, _jwt.ExpireMinutes());
         }
 
+        // ── Login ────────────────────────────────────────────────────────
+
         public async Task<LoginResponse> LoginAsync(LoginRequest request)
         {
+            var phone = request.PhoneNumber;
+
+            // Rate-limit check (in-memory; 5 attempts/10min → lock 15min).
+            if (IsLocked(phone))
+                throw new ConflictException(
+                    "Quá nhiều lần thử sai. Vui lòng thử lại sau 15 phút.");
+
             var users = Repository<User>();
             var found = (await users.GetByConditionAsync(
-                u => u.PhoneNumber == request.PhoneNumber)).FirstOrDefault();
+                u => u.PhoneNumber == phone)).FirstOrDefault();
+
             if (found is null || !BCrypt.Net.BCrypt.Verify(request.Password, found.PasswordHash))
-                throw new BadRequestException("So dien thoai hoac mat khau khong dung.");
+            {
+                RecordFailure(phone);
+                throw new BadRequestException("Số điện thoại hoặc mật khẩu không đúng.");
+            }
+
+            // Successful auth → clear any accumulated failures for this phone.
+            ClearFailures(phone);
+
             if (found.Status != UserStatus.Active)
-                throw new ConflictException("Tai khoan da bi hoa.");
+                throw new ConflictException("Tài khoản đã bị khóa.");
             if (!found.IsVerified)
-                throw new ConflictException("Vui long xac minh so dien thoai.");
+                throw new ConflictException("Vui lòng xác minh số điện thoại.");
 
             found.UpdatedAt = DateTime.UtcNow;
             users.Update(found);

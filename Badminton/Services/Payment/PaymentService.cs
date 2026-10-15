@@ -6,6 +6,7 @@ using Contract.Services.Points;
 using M.Core.Base;
 using M.Core.Domain;
 using M.Core.Enums;
+using M.Core.Utils;
 using Microsoft.AspNetCore.Http;
 using ModelViews.Payment;
 
@@ -177,6 +178,7 @@ namespace Services
         {
             var booking = await Bookings.GetByIdAsync(bookingId);
             if (booking is null) throw new NotFoundException("Booking", bookingId);
+            await AuthorizeStaffScope(booking, actorId);
             if (booking.Status is not BookingStatus.Pending)
                 throw new ConflictException($"Don {booking.BookingCode} da {booking.Status}.");
 
@@ -231,20 +233,27 @@ namespace Services
         /// (The deterministic <c>REFUND-&lt;bookingId&gt;</c> unique index is the
         /// database-level backstop for cross-process callers.)
         /// </summary>
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int,
-            System.Threading.SemaphoreSlim> RefundLocks = new();
+        private static System.Threading.SemaphoreSlim GetRefundLock(int bookingId) =>
+            _refundLocks.GetOrAdd(bookingId, _ => new System.Threading.SemaphoreSlim(1, 1));
 
-        private static System.Threading.SemaphoreSlim RefundLock(int bookingId) =>
-            RefundLocks.GetOrAdd(bookingId, _ => new System.Threading.SemaphoreSlim(1, 1));
+        private static void ReleaseRefundLock(int bookingId, System.Threading.SemaphoreSlim lockObj)
+        {
+            lockObj.Release();
+            _refundLocks.TryRemove(bookingId, out _);
+        }
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int,
+            System.Threading.SemaphoreSlim> _refundLocks = new();
 
         public async Task<PaymentView> RefundAsync(int bookingId, int actorId, string? reason = null)
         {
-            var refundLock = RefundLock(bookingId);
+            var refundLock = GetRefundLock(bookingId);
             await refundLock.WaitAsync();
             try
             {
                 var booking = await Bookings.GetByIdAsync(bookingId);
                 if (booking is null) throw new NotFoundException("Booking", bookingId);
+                await AuthorizeStaffScope(booking, actorId);
 
                 // IDEMPOTENCY FIRST: a replayed / already-processed refund
                 // returns the existing record, regardless of current status.
@@ -268,8 +277,10 @@ namespace Services
                 var slot = await Repository<TimeSlot>().GetByIdAsync(booking.SlotId);
                 if (slot is null)
                     throw new ConflictException("Khung gio cua don bi mat, khong the tinh ty le hoan tien.");
-                var slotStartUtc = booking.Date.ToDateTime(slot.StartTime);
-                var (ratio, label) = RefundPolicy.Tier(DateTime.UtcNow, slotStartUtc);
+                // Refund tiers are computed in the business wall clock (Asia/Ho_Chi_Minh).
+                // slotStart is naive Hanoi, so compare against HanoiTime.HanoiNow().
+                var slotStart = HanoiTime.SlotStart(booking.Date, slot.StartTime);
+                var (ratio, label) = RefundPolicy.Tier(HanoiTime.HanoiNow(), slotStart);
                 var refundAmount = (int)(booking.PayableAmount * ratio);
 
                 var original = (await Repo.GetByConditionAsync(
@@ -340,6 +351,12 @@ namespace Services
                     await _points.ClawbackAsync(booking.UserId, booking.Id, refundAmount,
                         $"refund {label} of " + booking.BookingCode);
 
+                // Restore any points the customer redeemed toward this booking
+                // (a full refund of money also gives back the points they spent).
+                if (booking.PointsRedeemed > 0)
+                    await _points.RestoreAsync(booking.UserId, booking.Id,
+                        booking.PointsRedeemed, booking.BookingCode);
+
                 await SaveAsync();
                 await _audit.LogAsync(actorId, "payment.refund", "Payment", refundRow.Id.ToString(),
                     null, refundRow, reason ?? label);
@@ -347,7 +364,7 @@ namespace Services
             }
             finally
             {
-                refundLock.Release();
+                ReleaseRefundLock(bookingId, refundLock);
             }
         }
 
@@ -372,6 +389,25 @@ namespace Services
         private bool IsStaff() =>
             _http.HttpContext?.User.IsInRole("Admin") == true
             || _http.HttpContext?.User.IsInRole("Manager") == true;
+
+        /// <summary>
+        /// Branch-scope check (Q3=A: 1 manager = 1 cơ sở):
+        /// Admin has global access; Manager may only touch bookings at
+        /// their own BranchId.
+        /// </summary>
+        private async Task AuthorizeStaffScope(Booking booking, int actorId)
+        {
+            var ctx = _http.HttpContext;
+            bool isAdmin = ctx?.User.IsInRole("Admin") == true;
+            if (isAdmin) return; // global
+
+            var actor = await Repository<User>().GetByIdAsync(actorId);
+            if (actor is null || actor.Role != Role.Manager)
+                throw new ConflictException("Chỉ Manager/Admin mới thao tác được đơn của khách.");
+            if (actor.BranchId is { } bid && bid != booking.BranchId)
+                throw new ConflictException(
+                    $"Bạn chỉ được xử lý đơn thuộc cơ sở của mình (cơ sở {bid}).");
+        }
 
         private static PaymentMethod ParseMethod(string s) =>
             Enum.TryParse<PaymentMethod>(s, ignoreCase: true, out var m)

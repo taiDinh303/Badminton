@@ -1,5 +1,6 @@
 using M.Core.Store;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -51,11 +52,53 @@ namespace BadmintonBE.API
                 });
             builder.Services.AddAuthorization();
 
+            // ── CORS: allow the React SPA (Vercel) to call the API. ─────
+            // In production set Cors:AllowedOrigins (comma-separated) to lock
+            // the origin list down; otherwise fall back to any-origin so the
+            // dev baseline keeps working out of the box.
+            var corsOrigins = builder.Configuration["Cors:AllowedOrigins"]
+                ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                ?? Array.Empty<string>();
+            builder.Services.AddCors(o =>
+            {
+                o.AddDefaultPolicy(p =>
+                {
+                    p.AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("X-Request-Id");
+                    if (corsOrigins.Length > 0)
+                        p.WithOrigins(corsOrigins);
+                    else
+                        p.AllowAnyOrigin();
+                });
+            });
+
+            // ── Rate-limiter: global + strict auth bucket ─────────────
+            builder.Services.AddRateLimiter(o =>
+            {
+                o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                // Global: 100 req/10s per connection.
+                o.AddFixedWindowLimiter("global", w =>
+                {
+                    w.PermitLimit = 100;
+                    w.Window = TimeSpan.FromSeconds(10);
+                    w.QueueLimit = 0;
+                });
+                // Auth: 5 attempts/60s (brute-force guard) — applied per-endpoint
+                // via [EnableRateLimiting("auth")] on AuthController.
+                o.AddFixedWindowLimiter("auth", w =>
+                {
+                    w.PermitLimit = 5;
+                    w.Window = TimeSpan.FromSeconds(60);
+                    w.QueueLimit = 0;
+                });
+            });
+
             builder.Services.AddBookingServices();
             builder.Services.AddHttpContextAccessor();
 
             builder.Services.AddHostedService<PendingBookingExpiryJob>();
+            builder.Services.AddHostedService<AutoCompleteJob>();
             builder.Services.AddHostedService<VoucherExpiryJob>();
+            builder.Services.AddHostedService<NoShowResetJob>();
 
             builder.Services.AddControllers();
             builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(opt =>
@@ -105,6 +148,8 @@ namespace BadmintonBE.API
             }
 
             app.UseMiddleware<BadmintonBE.API.Middleware.ExceptionMiddleware>();
+            app.UseCors();
+            app.UseRateLimiter();
 
             if (app.Environment.IsDevelopment())
             {

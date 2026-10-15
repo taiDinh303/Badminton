@@ -17,5 +17,10 @@ namespace Contract.Repositories.Entity
         public Branch? Branch { get; set; }
         public UserStatus Status { get; set; } = UserStatus.Active;
         public bool IsVerified { get; set; }
+
+        public int NoShowCount { get; set; }
+        public DateOnly NoShowPeriod { get; set; } = new(2026, 1, 1);
+        public bool NoShowLimited { get; set; }
+        public DateOnly? NoShowLimitedPeriod { get; set; }
     }
 }

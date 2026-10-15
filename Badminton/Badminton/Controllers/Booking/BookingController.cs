@@ -47,6 +47,24 @@ namespace BadmintonBE.API.Controllers
             return Resp(view, "Hủy đặt chỗ thành công.");
         }
 
+        // ── Lifecycle: Confirmed → Completed / NoShow (Q1=B, Q2=A) ───────
+
+        [HttpPost("{id:int}/complete")]
+        [Authorize(Roles = "Admin,Manager")]
+        public async Task<IActionResult> Complete(int id, [FromQuery] string? note = null)
+        {
+            var view = await _svc.MarkCompletedAsync(id, CurrentUserId, note);
+            return Resp(view, "Đã đánh dấu hoàn thành.");
+        }
+
+        [HttpPost("{id:int}/no-show")]
+        [Authorize(Roles = "Admin,Manager")]
+        public async Task<IActionResult> NoShow(int id, [FromQuery] string? note = null)
+        {
+            var view = await _svc.MarkNoShowAsync(id, CurrentUserId, note);
+            return Resp(view, "Đã gắn cờ no-show.");
+        }
+
         [HttpGet("availability/{branchId:int}/{date}")]
         [AllowAnonymous]
         public async Task<IActionResult> Availability(int branchId, [FromRoute] string date) =>

@@ -21,6 +21,14 @@ namespace Services
             if (court is null || !court.IsActive)
                 throw new NotFoundException("Court", courtId);
 
+            if (_http.HttpContext?.User.IsInRole("Manager") == true)
+            {
+                var actor = await Repository<User>().GetByIdAsync(actorId);
+                if (actor is not null && actor.BranchId is { } ab && ab != court.BranchId)
+                    throw new ConflictException(
+                        $"Bạn chỉ được thao tác sân thuộc cơ sở của mình (cơ sở {ab}).");
+            }
+
             var repo = Repository<CourtDateStatusEntry>();
             var existing = (await repo.GetByConditionAsync(
                 r => r.CourtId == courtId && r.Date == date)).FirstOrDefault();

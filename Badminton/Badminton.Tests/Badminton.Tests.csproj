@@ -31,4 +31,12 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
+  <!-- xUnit reads runner settings from next to the test assembly.
+       parallelizeTestCollections=false because TestHost pins the STATIC
+       HanoiTime.NowUtc clock, which is only safe when test collections
+       run one at a time. -->
+  <ItemGroup>
+    <None Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

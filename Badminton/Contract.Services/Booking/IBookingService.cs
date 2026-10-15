@@ -10,11 +10,14 @@ namespace Contract.Services.Booking
         Task<BookingView> GetByIdAsync(int id, int requestingUserId);
         Task<IReadOnlyList<BookingView>> GetByUserAsync(int userId, string? status = null);
 
-        /// <summary>Paged "my bookings", server-side Skip/Take + total.</summary>
         Task<(IReadOnlyList<BookingView> Items, int TotalCount)>
             GetByUserPagedAsync(int userId, string? status, Page page);
 
         Task<BookingView> CancelAsync(int bookingId, int actorId);
         Task<IReadOnlyList<CourtAvailabilityView>> GetAvailabilityAsync(int branchId, DateOnly date);
+
+        Task<BookingView> MarkCompletedAsync(int bookingId, int actorId, string? note = null);
+
+        Task<BookingView> MarkNoShowAsync(int bookingId, int actorId, string? note = null);
     }
 }

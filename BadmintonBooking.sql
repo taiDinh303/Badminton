@@ -135,6 +135,10 @@ CREATE TABLE [Users] (
     [BranchId]     int           NULL,
     [Status]       nvarchar(20)  NOT NULL DEFAULT N'Active',
     [IsVerified]   bit           NOT NULL,
+    [NoShowCount]  int           NOT NULL DEFAULT 0,
+    [NoShowPeriod] date          NOT NULL DEFAULT '0001-01-01',
+    [NoShowLimited] bit         NOT NULL DEFAULT 0,
+    [NoShowLimitedPeriod] date   NULL,
     [CreatedAt]    datetime2     NOT NULL,
     [UpdatedAt]    datetime2     NULL,
     [DeletedAt]    datetime2     NULL,
@@ -216,6 +220,7 @@ CREATE TABLE [Bookings] (
     [DiscountAmount]        int           NOT NULL,
     [PayableAmount]         int           NOT NULL,
     [PointsEarned]          int           NOT NULL,
+    [PointsRedeemed]        int           NOT NULL DEFAULT 0,
     [PendingExpiresAt]      datetime2     NULL,
     [Note]                  nvarchar(max) NULL,
     [CancelReason]          nvarchar(max) NULL,
@@ -552,12 +557,13 @@ GO
    Chi 1 Admin Active — de phui index ux_active_admin. */
 SET IDENTITY_INSERT [Users] ON;
 INSERT INTO [Users]
-    ([Id],[FullName],[PhoneNumber],[Email],[PasswordHash],[AvatarUrl],[Role],[BranchId],[Status],[IsVerified],[CreatedAt])
+    ([Id],[FullName],[PhoneNumber],[Email],[PasswordHash],[AvatarUrl],[Role],[BranchId],[Status],[IsVerified],
+     [NoShowCount],[NoShowPeriod],[NoShowLimited],[NoShowLimitedPeriod],[CreatedAt])
 VALUES
-    (1, N'Customer 03', N'0900000003', N'customer03@dev.vn', N'$2a$11$y0HD89.43iXVJJMCn.mMBuCpk7wKXKHQ1l4ycvjVcIBjiWC7XD7eG', NULL, N'Customer', NULL, N'Active', 1, GETDATE()),
-    (2, N'Customer 04', N'0900000004', N'customer04@dev.vn', N'$2a$11$y0HD89.43iXVJJMCn.mMBuCpk7wKXKHQ1l4ycvjVcIBjiWC7XD7eG', NULL, N'Customer', NULL, N'Active', 1, GETDATE()),
-    (3, N'Manager Minh Long', N'0900000005', N'manager@dev.vn', N'$2a$11$y0HD89.43iXVJJMCn.mMBuCpk7wKXKHQ1l4ycvjVcIBjiWC7XD7eG', NULL, N'Manager', 1, N'Active', 1, GETDATE()),
-    (4, N'Tran Admin', N'0900000006', N'admin@dev.vn', N'$2a$11$y0HD89.43iXVJJMCn.mMBuCpk7wKXKHQ1l4ycvjVcIBjiWC7XD7eG', NULL, N'Admin', NULL, N'Active', 1, GETDATE());
+    (1, N'Customer 03', N'0900000003', N'customer03@dev.vn', N'$2a$11$y0HD89.43iXVJJMCn.mMBuCpk7wKXKHQ1l4ycvjVcIBjiWC7XD7eG', NULL, N'Customer', NULL, N'Active', 1, 0, '0001-01-01', 0, NULL, GETDATE()),
+    (2, N'Customer 04', N'0900000004', N'customer04@dev.vn', N'$2a$11$y0HD89.43iXVJJMCn.mMBuCpk7wKXKHQ1l4ycvjVcIBjiWC7XD7eG', NULL, N'Customer', NULL, N'Active', 1, 0, '0001-01-01', 0, NULL, GETDATE()),
+    (3, N'Manager Minh Long', N'0900000005', N'manager@dev.vn', N'$2a$11$y0HD89.43iXVJJMCn.mMBuCpk7wKXKHQ1l4ycvjVcIBjiWC7XD7eG', NULL, N'Manager', 1, N'Active', 1, 0, '0001-01-01', 0, NULL, GETDATE()),
+    (4, N'Tran Admin', N'0900000006', N'admin@dev.vn', N'$2a$11$y0HD89.43iXVJJMCn.mMBuCpk7wKXKHQ1l4ycvjVcIBjiWC7XD7eG', NULL, N'Admin', NULL, N'Active', 1, 0, '0001-01-01', 0, NULL, GETDATE());
 SET IDENTITY_INSERT [Users] OFF;
 GO
 
@@ -566,6 +572,12 @@ GO
 IF NOT EXISTS (SELECT 1 FROM [__EFMigrationsHistory] WHERE [MigrationId] = N'20261013131702_InitialCreate')
     INSERT INTO [__EFMigrationsHistory] ([MigrationId],[ProductVersion])
     VALUES (N'20261013131702_InitialCreate', N'8.0.28');
+IF NOT EXISTS (SELECT 1 FROM [__EFMigrationsHistory] WHERE [MigrationId] = N'20261014015245_AddPointLedgerLedgerKey')
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId],[ProductVersion])
+    VALUES (N'20261014015245_AddPointLedgerLedgerKey', N'8.0.28');
+IF NOT EXISTS (SELECT 1 FROM [__EFMigrationsHistory] WHERE [MigrationId] = N'20261014063758_AddNoShowTrackingAndPointsRedeemed')
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId],[ProductVersion])
+    VALUES (N'20261014063758_AddNoShowTrackingAndPointsRedeemed', N'8.0.31');
 GO
 
 /* ============================================================================

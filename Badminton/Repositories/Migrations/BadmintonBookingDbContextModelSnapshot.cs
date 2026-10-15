@@ -130,6 +130,9 @@ namespace Repositories.Migrations
                     b.Property<int>("PointsEarned")
                         .HasColumnType("int");
 
+                    b.Property<int>("PointsRedeemed")
+                        .HasColumnType("int");
+
                     b.Property<int>("SlotId")
                         .HasColumnType("int");
 
@@ -652,6 +655,18 @@ namespace Repositories.Migrations
 
                     b.Property<bool>("IsVerified")
                         .HasColumnType("bit");
+
+                    b.Property<int>("NoShowCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("NoShowLimited")
+                        .HasColumnType("bit");
+
+                    b.Property<DateOnly?>("NoShowLimitedPeriod")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("NoShowPeriod")
+                        .HasColumnType("date");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()

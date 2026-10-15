@@ -5,10 +5,8 @@ namespace Contract.Repositories.Entity
 {
     public class Booking : IntBaseEntity
     {
-        /// <summary>Deterministic code, e.g. "BD-261013-XXXXXX".</summary>
         public string BookingCode { get; set; } = null!;
 
-        /// the same key never duplicates the booking.</summary>
         public string? IdempotencyKey { get; set; }
 
         public int UserId { get; set; }
@@ -28,15 +26,14 @@ namespace Contract.Repositories.Entity
 
         public BookingStatus Status { get; set; } = BookingStatus.Pending;
 
-        /// <summary>Pricing snapshot (VND, integer).</summary>
         public int TotalAmount { get; set; }
         public int DiscountAmount { get; set; }
         public int PayableAmount { get; set; }
 
-        /// <summary>V1: 1 dong = 1 point on a completed booking.</summary>
         public int PointsEarned { get; set; }
 
-        /// <summary>Pending bookings expire after 10 minutes.</summary>
+        public int PointsRedeemed { get; set; }
+
         public DateTime? PendingExpiresAt { get; set; }
 
         public string? Note { get; set; }

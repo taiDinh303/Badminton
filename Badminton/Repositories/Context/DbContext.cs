@@ -45,6 +45,8 @@ namespace Repositories.Context
                 e.Property(x => x.Status)
                     .HasConversion(s => s.ToString(), s => Enum.Parse<UserStatus>(s))
                     .HasMaxLength(20).HasDefaultValue(UserStatus.Active);
+                // No-show tracking (int / bool / date-only columns; EF8 maps
+                // DateOnly to SQL Server `date` automatically).
                 e.HasIndex(x => x.PhoneNumber).IsUnique();
                 e.HasIndex(x => new { x.Role, x.Status });
 
@@ -241,10 +243,7 @@ namespace Repositories.Context
                 e.Property(x => x.Reason).HasMaxLength(100);
                 e.Property(x => x.LedgerKey).HasMaxLength(80);
                 e.HasIndex(x => new { x.UserId, x.CreatedAt });
-                // IDEMPOTENCY backstop: a booking can earn/clawback points at
-                // most ONCE. A replayed webhook or a racing confirm+webhook
-                // hits this unique index and the transaction rolls back, so
-                // points are never credited twice.
+
                 e.HasIndex(x => x.LedgerKey)
                     .IsUnique()
                     .HasFilter("[LedgerKey] IS NOT NULL");

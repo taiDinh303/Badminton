@@ -39,9 +39,6 @@ namespace Badminton.Tests
             var slot = _h.SlotPeak;
             var court = _h.Court1;
 
-            // Two reservations by two different users for the same
-            // court/date/slot, each in its own DI scope (its own DbContext +
-            // UnitOfWork + transaction), mirroring two simultaneous API calls.
             var (r1, e1) = await TryBook(_h.Alice, court, slot, date);
             var (r2, e2) = await TryBook(_h.Bob, court, slot, date);
 
@@ -61,10 +58,6 @@ namespace Badminton.Tests
             var slot = _h.SlotNoon;
             var court = _h.Court2;
 
-            // Fire N simultaneous reservations for one slot; the filtered
-            // unique index guarantees at most one active booking survives.
-            // Each task swallows its own exception (SLOT_CONFLICT / daily
-            // limit), and we assert the invariant on the DB afterward.
             int n = 8;
             var tasks = Enumerable.Range(0, n).Select(async _ =>
             {

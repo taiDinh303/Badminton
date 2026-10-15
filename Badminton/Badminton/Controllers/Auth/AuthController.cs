@@ -1,12 +1,14 @@
 using Contract.Services.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using ModelViews.Auth;
 
 namespace BadmintonBE.API.Controllers
 {
     [ApiController]
     [Route("api/v1/auth")]
+    [EnableRateLimiting("auth")]
     public class AuthController : BaseApiController
     {
         private readonly IAuthService _auth;

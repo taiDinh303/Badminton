@@ -18,6 +18,7 @@ namespace BadmintonBE.API.Controllers
             Resp(await _svc.GetAllAsync(activeOnly));
 
         [HttpGet("{code}")]
+        [Authorize]
         public async Task<IActionResult> GetByCode(string code) =>
             Resp(await _svc.GetByCodeAsync(code));
 
