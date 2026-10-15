@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+/*
+ * Design system tokens — docs 07 §2 (V1).
+ * Light surface by default; brand green = primary action,
+ * yellow = accent CTA. CSS variables only, no hardcoded hex in JSX.
+ */
+@theme {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-primary: var(--primary);
+  --color-accent: var(--accent);
+  --color-muted: var(--muted);
+  --color-card: var(--card);
+  --color-border: var(--border);
+
+  --color-slot-free-bg: var(--slot-free-bg);
+  --color-slot-free-fg: var(--slot-free-fg);
+  --color-slot-booked-bg: var(--slot-booked-bg);
+  --color-slot-booked-fg: var(--slot-booked-fg);
+  --color-slot-maint-bg: var(--slot-maint-bg);
+  --color-slot-maint-fg: var(--slot-maint-fg);
+
+  --color-state-success: var(--state-success);
+  --color-state-warning: var(--state-warning);
+  --color-state-error: var(--state-error);
+
+  --font-sans: "Be Vietnam Pro", "Inter", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+:root {
+  /* Docs 07 §2 — Design tokens V1 */
+  --bg: #f8fafc; /* surface.page */
+  --fg: #0f172a; /* text.primary */
+  --muted: #475569; /* text.secondary */
+  --card: #ffffff; /* surface.card */
+  --border: #e2e8f0; /* border.default */
+
+  --primary: #16a34a; /* brand.primary */
+  --accent: #facc15; /* brand.accent */
+
+  --slot-free-bg: #dcfce7;
+  --slot-free-fg: #15803d;
+  --slot-booked-bg: #fee2e2;
+  --slot-booked-fg: #991b1b;
+  --slot-maint-bg: #e5e7eb;
+  --slot-maint-fg: #6b7280;
+
+  --state-success: #16a34a;
+  --state-warning: #f59e0b;
+  --state-error: #ef4444;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular numbers for time/price data (docs 07 §2) */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Visibly reachable focus ring on light surfaces (docs 07 §6) */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Respect reduced-motion (docs 07 §6) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
