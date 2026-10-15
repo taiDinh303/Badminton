@@ -47,8 +47,15 @@ namespace Badminton.Tests
         public TestHost(string? dbName = null)
         {
             DbName = dbName ?? "BadmintonTest_" + Guid.NewGuid().ToString("N")[..8];
+            // Local dev defaults to .\SQLEXPRESS. CI (GitHub's windows-latest
+            // runner) sets BADMINTON_TEST_SQLSERVER=(localdb)\MSSQLLocalDB,
+            // because the runner image only ships SQL Server LocalDB, not a
+            // SQL Express instance (see .github/workflows/ci.yml).
+            var server =
+                Environment.GetEnvironmentVariable("BADMINTON_TEST_SQLSERVER")
+                ?? ".\\SQLEXPRESS";
             ConnectionString =
-                $"Server=.\\SQLEXPRESS;Database={DbName};Trusted_Connection=True;TrustServerCertificate=True;";
+                $"Server={server};Database={DbName};Trusted_Connection=True;TrustServerCertificate=True;";
 
             // Deterministic Hanoi wall clock for the whole suite.
             HanoiTime.NowUtc = () => HanoiNowUtc;

@@ -7,8 +7,8 @@ on:
 
 # Build + migration-sync validation run on every OS in the matrix (they do not
 # need a database). The test job runs on windows-latest because the integration
-# tests target SQL Server LocalDB ((localdb)\\MSSQLLocalDB, see
-# Badminton.Tests/TestHost.cs), which only exists on Windows.
+# tests target SQL Server LocalDB (default instance, preinstalled on GitHub
+# Windows runners; see Badminton.Tests/TestHost.cs), which only exists there.
 jobs:
   build-and-verify:
     runs-on: ${{ matrix.os }}
@@ -44,6 +44,11 @@ jobs:
   test:
     needs: build-and-verify
     runs-on: windows-latest   # LocalDB available here only
+    # The windows-latest runner image ships SQL Server LocalDB (via Visual
+    # Studio's SQL.LocalDB.Runtime component) but not a SQL Express instance,
+    # so point the tests at the LocalDB automatic instance.
+    env:
+      BADMINTON_TEST_SQLSERVER: '(localdb)\MSSQLLocalDB'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
