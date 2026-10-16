@@ -1,8 +1,17 @@
 # 02 — Thiết kế dữ liệu hệ thống đặt sân cầu lông
 
+> **Chủ tài liệu: Đinh Văn Tài.** Cập nhật: 16/10/2026.
+> **EN/AI:** This doc describes the **source EF Core model** (`Repositories/Context/DbContext.cs`, 15 tables).
+> **Dev baseline = SQL Server, `int` PKs, enums as `nvarchar`.** Production target = Supabase Postgres (target only; provider, migration and raw SQL must be reviewed).
+
 ## 1. Nguyên tắc dữ liệu
 
-Supabase Postgres lưu hồ sơ, cơ sở, sân, đặt chỗ, thanh toán, voucher và audit; **ảnh sân, hóa đơn và ảnh đánh giá chỉ nằm trong Supabase Storage** (bucket riêng tư hoặc công khai theo loại), không lưu blob/base64 trong Postgres. Dữ liệu đặt chỗ gốc không bị ghi đè khi hủy; điều chỉnh và phê duyệt là record riêng. Mọi thời điểm lưu `timestamptz` UTC, hiển thị và xác định ngày đặt theo `Asia/Ho_Chi_Minh`. Các bảng có `id uuid`, `created_at`, `updated_at` phù hợp; khóa ngoại và chỉ mục tạo trong migration. Chỉ dùng schema cần thiết cho phạm vi V1.
+- Postgres (prod) / SQL Server (dev) lưu: hồ sơ, cơ sở, sân, đặt chỗ, thanh toán, voucher, điểm, audit, review.
+- **Ảnh chỉ nằm trong Storage** (prod: Supabase buckets), **không lưu blob/base64 trong DB**. Dev dùng cột `ImageUrl` (string path).
+- Booking cập nhật trạng thái khi hủy, giữ bản ghi và tiền snapshot; hoàn tiền tạo Payment riêng. Ledger/audit có thiết kế append-only ở ứng dụng, chưa là bảo vệ bất biến DB trước mọi thao tác đặc quyền.
+- Mọi timestamp lưu UTC; xác định ngày đặt & deadline hiển thị theo `Asia/Ho_Chi_Minh` (Hanoi clock, fixed UTC+7).
+- Chỉ dùng schema cần cho V1; mọi thay đổi schema qua **migration có phiên bản** (EF Core), không sửa tay schema production.
+- **Nguồn chân thực = DB.** Chống overbooking bằng unique filtered index, không chỉ app-level lock.
 
 ## 2. Sơ đồ quan hệ
 
@@ -11,114 +20,129 @@ erDiagram
   BRANCHES ||--o{ COURTS : has
   COURTS ||--o{ COURT_DATE_STATUS : states
   COURTS ||--o{ BOOKINGS : receives
-  APP_USERS ||--o{ BOOKINGS : owns
+  USERS ||--o{ BOOKINGS : owns
   PLAY_GROUPS ||--o{ GROUP_MEMBERS : includes
   PLAY_GROUPS ||--o{ BOOKINGS : creates
   BOOKINGS ||--o{ BOOKING_PLAYERS : lists
-  BOOKINGS ||--o| PAYMENTS : paid_by
+  BOOKINGS ||--o{ PAYMENTS : paid_by
   BOOKINGS ||--o| REVIEWS : rated
-  PAYMENTS ||--o| VOUCHER_REDEMPTIONS : applies
   VOUCHERS ||--o{ VOUCHER_REDEMPTIONS : used
-  APP_USERS ||--o{ POINT_LEDGER : earns
-  APP_USERS ||--o{ AUDIT_LOGS : acts
+  BOOKINGS |o--o{ VOUCHER_REDEMPTIONS : reserves
+  USERS ||--o{ VOUCHER_REDEMPTIONS : redeems
+  USERS ||--o{ GROUP_MEMBERS : joins
+  TIME_SLOTS ||--o{ BOOKINGS : schedules
+  USERS ||--o{ POINT_LEDGER : earns
+  USERS ||--o{ AUDIT_LOGS : acts
 ```
 
-## 3. Bảng và trường cốt lõi
+> Bảng entity (C#) nằm ở `Contract.Repositories/Entity/*.cs`; mapping + index ở `Repositories/Context/DbContext.cs`. Các bảng dưới dùng **tên bảng DB** (singular/plural theo mapping).
 
-| Bảng | Trường quan trọng | Ràng buộc / mục đích |
-| --- | --- | --- |
-| `branches` | `name`, `address`, `geo_lat`, `geo_lng`, `open_time`, `close_time`, `status` | Unique `name`; `status` là `active/closed`. V1 có thể nhiều cơ sở; mỗi cơ sở do manager/admin quản lý. |
-| `courts` | `branch_id`, `code`, `name`, `surface`, `price_low_peak`, `price_peak`, `weekend_surcharge`, `capacity`, `amenities`, `rating_avg`, `rating_count`, `is_active` | Unique `(branch_id, code)`; `surface` là `sindalo/carpet/wood`; `amenities` là JSON array; giá là số nguyên VND/giờ; `rating_avg` cập nhật khi có đánh giá mới. |
-| `time_slots` | `label`, `start_time`, `end_time`, `is_peak` | Fixed slots theo dải giờ (mặc định 06:00–23:00, 17 slot). `is_peak` = true cho slot bắt đầu ≥18:00. Admin có thể thêm/bớt slot mới (ví dụ slot 30 phút) bằng migration có phiên bản. |
-| `court_date_status` | `court_id`, `date`, `status`, `note`, `created_by` | PK `(court_id, date)`; `status` là `open/maintenance/closed`. Default `open`. Admin/manager đặt bảo trì hoặc đóng; không cho đặt khi status khác `open`. |
-| `play_groups` | `name`, `owner_id`, `max_members` | `owner_id` là customer tạo nhóm; `max_members` tối đa 10. |
-| `group_members` | `group_id`, `user_id`, `joined_at` | PK `(group_id, user_id)`; khách có thể thuộc nhiều nhóm; nhóm không trùng khách. |
-| `bookings` | `booking_code`, `user_id`, `group_id`, `court_id`, `branch_id`, `date`, `slot_id`, `player_count`, `status`, `total_amount`, `discount_amount`, `payable_amount`, `points_earned`, `cancel_reason`, `cancelled_at` | Unique `booking_code`; `status` là `pending/confirmed/completed/cancelled/no_show/refunded`; `group_id` NULL nếu cá nhân; `branch_id` denormalize cho index nhanh. |
-| `booking_players` | `booking_id`, `user_id`, `is_creator` | PK `(booking_id, user_id)`; `is_creator` đánh dấu người tạo đặt chỗ (chỉ người này có quyền hủy). |
-| `payments` | `booking_id`, `user_id`, `amount`, `method`, `gateway_ref`, `status`, `refund_amount`, `refunded_at`, `raw_response`, `paid_at` | `method` là `vnpay/momo/zalopay/cash/qr`; `status` là `pending/success/failed/refunded/partial_refund`; `gateway_ref` lưu mã tham chiếu gateway; `raw_response` là JSON lưu full response cho audit; không sửa payment gốc, hoàn tiền tạo record mới. |
-| `vouchers` | `code`, `type`, `value`, `min_spend`, `max_per_user`, `total_qty`, `used_qty`, `valid_from`, `valid_until`, `is_active` | Unique `code`; `type` là `percent/fixed`; `percent` có trần (trường `value` là số nguyên: 20 = 20% có trần 50000 VND nếu cần); `fixed` value là VND. |
-| `voucher_redemptions` | `voucher_id`, `user_id`, `booking_id`, `redeemed_at` | Unique `(voucher_id, user_id)` — mỗi khách dùng một voucher một lần; không dùng lại. |
-| `point_ledger` | `user_id`, `delta`, `reason`, `booking_id`, `created_at` | `delta` dương khi cộng điểm, âm khi trừ (hoàn tiền); không xóa record, chỉ thêm giao dịch mới; số dư = tổng `delta` theo user. |
-| `reviews` | `booking_id`, `court_id`, `user_id`, `rating`, `comment`, `images`, `created_at` | Unique `booking_id` (một đánh giá một đặt chỗ); `rating` 1–5; `images` là JSON array path trong Storage; chỉ tạo khi booking `completed`. |
-| `app_users` | `auth_user_id`, `full_name`, `phone_number`, `email`, `role`, `branch_id`, `status`, `is_verified` | `auth_user_id` trỏ Supabase Auth; `role` là `customer/manager/admin`; `branch_id` NULL cho customer (tất cả cơ sở) hoặc gắn cơ sở cho manager; unique partial index trên `role='admin' AND status='active'` để chặn admin thứ hai. |
-| `audit_logs` | `actor_id`, `action`, `entity_type`, `entity_id`, `before_json`, `after_json`, `reason`, `created_at` | Ghi thay đổi giá, voucher, bảo trì, hủy booking, đổi role, khóa kỳ; chỉ admin xem toàn bộ; `before/after` lưu snapshot để truy vết. |
+## 3. Bảng và trường cốt lõi (kết hợp thực tế)
 
-**Chống overbooking (critical):**
+| Bảng (DB) | Entity (C#) | Trường quan trọng | Ràng buộc / mục đích |
+| --- | --- | --- | --- |
+| `Branches` | `Branch` | `Name`,`Address`,`OpenTime`,`CloseTime`,`Status` | Unique `Name`; `Status` = `Active/Closed`. Manager có thể gắn `BranchId` (1 manager = 1 cơ sở). |
+| `Courts` | `Court` | `BranchId`,`Code`,`Name`,`Surface`,`PriceLowPeak`,`PricePeak`,`WeekendSurcharge`,`Capacity`,`Amenities`,`ImageUrl`,`RatingAvg`,`RatingCount`,`IsActive` | Unique `(BranchId,Code)`; `Surface` = `Sindalo/Carpet/Wood`; giá là **int** VND/giờ; `Amenities` = JSON array string. |
+| `TimeSlots` | `TimeSlot` | `Label`,`StartTime`,`EndTime`,`IsPeak`,`IsActive` | Unique `(StartTime,EndTime)`. Seed = 17 slot 06:00–22:00; `IsPeak` = bắt đầu ≥18:00. Có API quản trị; V1 yêu cầu slot 60 phút. |
+| `CourtDateStatus` | `CourtDateStatusEntry` | `CourtId`,`Date`,`Status`,`Note` | PK `(CourtId,Date)`; `Status` = `Open/Maintenance/Closed`, default `Open`. Khác `Open` → không cho đặt. |
+| `PlayGroups` | `PlayGroup` | `Name`,`OwnerId`,`MaxMembers` | `OwnerId` = customer tạo nhóm; `MaxMembers` tối đa 10. |
+| `GroupMembers` | `GroupMember` | `GroupId`,`UserId` | PK `(GroupId,UserId)`; khách thuộc nhiều nhóm; nhóm không trùng khách. |
+| `Bookings` | `Booking` | `BookingCode`,`IdempotencyKey`,`UserId`,`GroupId`,`CourtId`,`SlotId`,`BranchId`,`Date`,`PlayerCount`,`Status`,`TotalAmount`,`DiscountAmount`,`PayableAmount`,`PointsEarned`,`PointsRedeemed`,`PendingExpiresAt`,`CancelReason`,`CancelledAt`,`VoucherRedemptionId` | Unique `BookingCode`; filtered unique `IdempotencyKey` (chống double-create); **filtered unique `ux_court_slot_active`** chống overbooking; `Status` = `Pending/Confirmed/Completed/Cancelled/NoShow/Refunded`. |
+| `BookingPlayers` | `BookingPlayer` | `BookingId`,`UserId` | PK `(BookingId,UserId)`; có IsCreator; quyền hủy phải kiểm tra service, không suy ra từ cột. |
+| `Payments` | `Payment` | `BookingId`,`UserId`,`Amount`,`Method`,`GatewayRef`,`Status`,`RefundAmount`,`RefundedAt`,`RawResponse`,`PaidAt` | `Method` = `VnPay/MoMo/Zalopay/Cash/QR`; `Status` = `Pending/Success/Failed/Refunded/PartialRefund`; filtered unique `GatewayRef` (idempotent webhook). **Hoàn tiền = record mới, không sửa record gốc.** |
+| `Vouchers` | `Voucher` | `Code`,`Type`,`Value`,`MaxValue`,`MinSpend`,`MaxPerUser`,`TotalQty`,`UsedQty`,`ValidFrom`,`ValidUntil`,`IsActive` | Unique `Code`; `Type` = `Percent/Fixed`. `Percent` có trần (`MaxValue`); `Fixed` là VND. |
+| `VoucherRedemptions` | `VoucherRedemption` | `Id`,`VoucherId`,`UserId`,`BookingId?`,`DiscountAmount`,`RedeemedAt` | **Unique `(VoucherId,UserId)`** — 1 khách dùng 1 voucher 1 lần. |
+| `PointLedger` | `PointLedger` | `UserId`,`Delta`,`Reason`,`BookingId`,`LedgerKey`,`CreatedAt` | Append-only; `Delta` +/−; filtered unique `LedgerKey` (idempotent redeem/restore); số dư = tổng delta theo user. |
+| `Reviews` | `Review` | `BookingId`,`CourtId`,`UserId`,`Rating`,`Comment`,`Images`,`CreatedAt` | **Unique `BookingId`** (1 đánh giá/đặt chỗ); `Rating` 1–5; chỉ tạo khi `Completed`. |
+| `Users` | `User` | `FullName`,`PhoneNumber`,`Email`,`PasswordHash`,`Role`,`BranchId`,`Status`,`IsVerified`,`NoShowCount`,`NoShowPeriod`,`NoShowLimited`,`NoShowLimitedPeriod` | Unique `PhoneNumber`; **filtered unique `ux_active_admin`** (`Status='Active' AND Role='Admin'`). Cờ no-show: 3 lần/tháng → chặn đặt tháng kế. |
+| `AuditLogs` | `AuditLog` | `ActorId`,`Action`,`EntityType`,`EntityId`,`BeforeJson`,`AfterJson`,`Reason`,`CreatedAt` | Append-only; snapshot before/after; index `(EntityType,EntityId,CreatedAt)`. Chỉ admin xem toàn bộ. |
 
-```sql
--- Partial unique index: một slot chỉ có một booking PENDING/CONFIRMED
-CREATE UNIQUE INDEX ux_court_slot_active
-  ON bookings (court_id, "date", slot_id)
-  WHERE status IN ('pending', 'confirmed')
-    AND status != 'cancelled';
+> **Dev note:** `Users.PasswordHash` hiện là danh tính ứng dụng; chuyển OTP là TARGET cần mapping identity và migration, chưa xóa cột hoặc hash. Cột no-show (`NoShowCount/NoShowPeriod/NoShowLimited/NoShowLimitedPeriod`) + `Bookings.PointsRedeemed` thêm bằng migration `20261014063758_AddNoShowTrackingAndPointsRedeemed`.
 
--- Khi booking cancel → index không còn enforce → slot mở lại cho khách khác
+## 4. Chống overbooking (critical)
+
+```csharp
+// Repositories/Context/DbContext.cs — Bookings:
+e.HasIndex(x => new { x.CourtId, x.Date, x.SlotId })
+   .IsUnique()
+   .HasFilter("[Status] IN (N'Pending', N'Confirmed')")
+   .HasDatabaseName("ux_court_slot_active");
 ```
+- Một `(court_id, date, slot_id)` chỉ có **một** booking `Pending`/`Confirmed`. Khi booking `cancel` → index hết enforce → slot mở lại.
+- Service `BookingService.CreateAsync` chạy transaction, INSERT; nếu vi phạm unique (race giữa 2 request song song) → trả **409 `SLOT_CONFLICT`** (kèm hướng dẫn chọn slot khác), không ghi đè.
+- Đọc xung đột trong code qua `SqlException.Number == 2601` (không parse message).
 
-Ngoài index, service create-booking dùng `SELECT ... FOR UPDATE` khóa slot trong transaction, rồi `INSERT`; nếu index bị vi phạm (race), trả lỗi 409 có hướng dẫn. Không chỉ dùng app-level lock (Redis) vì DB là source of truth.
+**Cửa sổ đặt (BR2):** service kiểm tra `slot.start_time ≥ now()+30min` (Hanoi clock) và `date ≤ today()+30d`.
 
-**Cửa sổ đặt (BR2):**
+## 5. Ràng buộc toàn vẹn và yêu cầu nhất quán
 
-```sql
-ALTER TABLE bookings ADD CONSTRAINT slot_window_check
-  CHECK ("date" > CURRENT_DATE AND "date" <= CURRENT_DATE + 30);
-```
+- **Tối đa 1 admin active** do index `ux_active_admin`; yêu cầu đúng 1 cần bootstrap và service; giao dịch khóa/xóa tài khoản từ chối nếu sẽ mất admin cuối.
+- TARGET chỉ user Active/IsVerified được tạo đặt chỗ, khóa user giữ lịch sử. CURRENT CreateAsync kiểm no-show nhưng chưa guard Active/IsVerified đầy đủ; cần kiểm token sau khóa.
+- `Pending` không trả tự hủy sau 10 phút bởi job (không phụ thuộc request cycle); job giải phóng voucher slot + trả điểm redeem (xem `03`/`04`).
+- **Webhook là source of truth** cho `Confirmed`; khách đóng tab giữa chừng vẫn xác nhận nếu gateway đã trả. Webhook **idempotent** theo `GatewayRef` (filtered unique index).
+- **Hoàn tiền** không sửa payment gốc; tạo record mới `status=Refunded/PartialRefund`.
+- **Voucher** 1 khách 1 lần (unique redemption); job expire vô hiệu khi qua `ValidUntil`.
+- **Điểm** append-only; hoàn tiền đơn có cộng điểm → giao dịch âm cùng `booking_id` (truy vết).
+- Khi `CourtDateStatus` ≠ `Open`: **lock slot mới, KHÔNG tự hủy** booking `Confirmed` đã có; manager quyết định hủy/hoàn qua API (audit + refund).
 
-+ kiểm tra phía service: `slot.start_time >= now() + 30min` (theo `Asia/Ho_Chi_Minh`).
+## 6. Quyền dữ liệu (RLS) & ảnh
 
-## 4. Ràng buộc toàn vẹn và quy tắc nhất quán
+> **Prod target:** bật RLS cho mọi bảng nghiệp vụ, policy theo `auth.uid()` + role lưu phía DB, không tin role từ client. Khách chỉ đọc đặt chỗ/voucher/điểm/review của mình; manager đọc/xử lý phạm vi cơ sở gắn; admin theo quyền quản trị đã định nghĩa ở nghiệp vụ. Chặn `UPDATE/DELETE` trực tiếp trên `Bookings/Payments/PointLedger/AuditLogs` từ client; mọi mutation qua API .NET.
+> **Dev note:** baseline hiện dùng .NET JWT + service-layer scope check (`AuthorizeStaffScope`), **chưa bật RLS Postgres** — là hạng mục P0 khi cutover Supabase.
 
-- Tạo unique partial index trên `app_users(role)` khi `role = 'admin' AND status = 'active'` để ngăn admin hoạt động thứ hai. Quy trình bootstrap tạo một admin; giao dịch khóa/xóa tài khoản phải từ chối nếu sẽ làm mất admin cuối cùng.
-- Chỉ tài khoản `active` và khách đã xác minh (`is_verified = true`) được tạo đặt chỗ. Khóa tài khoản giữ nguyên toàn bộ lịch sử đặt chỗ.
-- `pending` không thanh toán tự hủy sau 10 phút bởi background job; job này chạy độc lập, không phụ thuộc request cycle.
-- Webhook payment là **source of truth** cho trạng thái `confirmed`; nếu khách đóng tab giữa chừng, webhook vẫn chuyển trạng thái. Không phụ thuộc client callback.
-- Hoàn tiền (refund) không sửa payment gốc; tạo payment record mới với `status = refunded`, `refund_amount`, `refunded_at`. Giữ audit trail đầy đủ.
-- Voucher redemption: unique `(voucher_id, user_id)` chặn dùng lại; job expire voucher hằng ngày xóa `is_active` khi qua `valid_until`.
-- Điểm tích lũy: giao dịch trong `point_ledger` không bị xóa; hoàn tiền đơn có cộng điểm → thêm giao dịch âm (delta âm) cùng `booking_id` để truy vết.
-- Khi `court_date_status` đổi sang `maintenance/closed`, không tự hủy booking đã `confirmed` của khách; chỉ lock slot mới. Manager quyết định hủy/hoàn booking đã confirm qua API (audit + refund).
-
-## 5. Quyền dữ liệu và ảnh (RLS)
-
-Bật RLS cho **mọi bảng nghiệp vụ**; policy dựa trên `auth.uid()` và role lưu phía database, không tin role gửi từ client. Khách chỉ đọc đặt chỗ, voucher, điểm và đánh giá của mình; chỉ tạo đặt chỗ của mình. Manager đọc/xử lý đặt chỗ, bảo trì và báo cáo của **cơ sở gắn**; không thấy cơ sở khác. Admin có mọi quyền nghiệp vụ và cấu hình nhưng không hủy/duyệt yêu cầu cá nhân của chính mình (tự xử lý ở phạm vi cấu hình).
-
-Chặn `UPDATE/DELETE` trực tiếp trên `bookings`, `payments`, `point_ledger`, `audit_logs` từ client; mọi mutation đi qua API/hàm có kiểm tra quyền. Chỉ admin thay role và trạng thái tài khoản.
-
-Storage bucket:
+Storage bucket (prod):
 
 | Bucket | Access | Nội dung |
 | --- | --- | --- |
-| `court-images` | public-read | Ảnh sân (hot link qua CDN Supabase) |
-| `receipts` | service-role only | Hóa đơn, proof thanh toán |
+| `court-images` | public-read | Ảnh sân (CDN) |
 | `user-uploads` | RLS (owner) | Avatar, ảnh review |
+| `receipts` | service-role only | Hóa đơn, proof thanh toán |
 
-RLS cho `user-uploads`:
-```sql
-alter table storage.objects enable row level security;
-create policy "own uploads" on storage.objects
-  for all using (bucket_id='user-uploads' and owner = auth.uid());
-```
+## 7. Indexing strategy (đã code trong `DbContext.cs`)
 
-## 6. Indexing strategy
-
-| Index | Loại | Mục đích |
+| Index (DB name) | Loại | Mục đích |
 | --- | --- | --- |
-| `ux_court_slot_active` | Partial Unique | Chống overbooking (critical) |
-| `idx_bookings_user` | `(user_id, created_at DESC)` | Lịch sử booking của customer |
-| `idx_bookings_date` | `("date")` | Query dashboard theo ngày |
-| `idx_bookings_branch` | `(branch_id, "date")` | Manager filter theo cơ sở |
-| `idx_pay_booking` | `(booking_id)` | Đối soát payment theo booking |
-| `idx_pay_status` | `(status, paid_at)` | Conciliation job |
-| `idx_voucher_redemption` | Unique `(voucher_id, user_id)` | Chặn dùng voucher lại |
-| `idx_court_date_status` | PK composite | Xem trạng thái ngày |
-| `idx_audit_entity` | `(entity_type, entity_id, created_at DESC)` | Audit query |
-| `idx_point_ledger_user` | `(user_id, created_at DESC)` | Số dư điểm khách |
+| `ux_court_slot_active` | Filtered Unique | Chống overbooking (critical) |
+| `ux_active_admin` | Filtered Unique | Chỉ 1 admin active |
+| `Bookings.BookingCode` | Unique | Mã đặt chỗ |
+| `Bookings.IdempotencyKey` | Filtered Unique | Chống double-create |
+| `Bookings.(UserId)` / `(Date)` / `(BranchId,Date)` / `(Status)` | B-tree | Lịch sử khách, dashboard, manager theo cơ sở |
+| `Payments.(BookingId)` / `(GatewayRef)` filtered unique / `(Status,PaidAt)` | B-tree | Đối soát, idempotent webhook, conciliation |
+| `VoucherRedemptions.(VoucherId,UserId)` | Unique | Chặn dùng voucher lại |
+| `PointLedger.(UserId,CreatedAt)` / `LedgerKey` filtered unique | B-tree | Số dư, idempotent redeem |
+| `AuditLogs.(EntityType,EntityId,CreatedAt)` | B-tree | Query audit |
+| `Reviews.BookingId` unique / `CourtId` | Unique/B-tree | 1 review/đặt chỗ, trung bình sân |
 
-## 7. Data retention
+## 8. Kiểu dữ liệu và vòng đời
 
-- `payments.raw_response`: giữ 90 ngày (compliance thanh toán) rồi archive tới S3/Blob.
-- `audit_logs`: partition theo tháng (pg_partman hoặc pg_partman), giữ 12 tháng.
-- `bookings` `cancelled`/`completed`: không xóa (cần report + loyalty + audit).
-- Ảnh `user-uploads`: theo retention do admin cấu hình (mặc định 90 ngày), giữ metadata.
-- `point_ledger`: giữ vĩnh viễn (loại không xóa); archive khi >100k records/user.
+| Dữ liệu | CURRENT | Lưu ý khi thay đổi |
+| --- | --- | --- |
+| Khóa | int identity; CourtDateStatus/BookingPlayers/GroupMembers dùng composite key | Không tự đổi UUID khi chuyển Postgres |
+| Tiền | int VND, surcharge decimal | Không dùng float; kiểm tra overflow khi tổng báo cáo và quy đổi điểm |
+| Date/Time | DateOnly/TimeOnly cho lịch; DateTime UTC cho timestamp | Không ép ngày sân qua UTC làm đổi ngày |
+| Enum | String mapping trong SQL Server | Giữ tên trạng thái/case khi migration/raw SQL |
+| JSON/ảnh | Amenities/Images/BeforeJson/AfterJson là string có giới hạn | Validate/giới hạn kích thước; URL chưa là upload API |
+| Xóa | Có DeletedAt và OnDelete theo mapping | Soft delete không làm biến mất unique index nếu filter không xét DeletedAt |
 
-Xem quy tắc nghiệp vụ tại [01-business-analysis.md](01-business-analysis.md) và luồng thao tác tại [03-workflow.md](03-workflow.md).
+## 9. Migration, backup và retention
+
+Nguồn model là [DbContext](../Backend/Repositories/Context/DbContext.cs); lịch sử runtime ở [Migrations](../Backend/Repositories/Migrations). SQL root là tham khảo; TestHost dùng EnsureCreated nên không chứng minh migration nâng cấp chạy được.
+
+Quy trình TARGET: kiểm tra drift → sinh/rà migration → thử DB sạch và nâng DB cũ → so số dòng/FK/index/tổng tiền/ledger → backup/restore → release tương thích ngược. Không chạy EnsureDeleted trên DB ứng dụng. Cutover PostgreSQL phải rà raw SQL, filtered index, generated key, transaction, provider error và chính sách quyền.
+
+Các mốc cũ 90 ngày raw response/ảnh, 12 tháng audit là **đề xuất chưa có job và chưa xác nhận căn cứ pháp lý**. Không gọi là compliance bắt buộc. Chốt retention/backup/quyền xóa theo DEC-05 trước triển khai. Booking/payment/ledger cần bảo toàn khả năng đối soát, không xóa cứng qua CRUD thông thường.
+
+## 10. Toàn vẹn cần bổ sung nghiệm thu
+
+| Rủi ro | CURRENT | TARGET/test |
+| --- | --- | --- |
+| Admin | Unique filter chỉ tối đa một | Không mất admin cuối, bootstrap một |
+| Idempotency | Unique key toàn hệ thống | Binding actor/payload, không trả booking khác người |
+| Điểm đồng thời | LedgerKey chống trùng theo booking | Hai booking cùng tiêu balance không được âm do race |
+| Voucher | Unique một lần/khách; release có xóa redemption | Không coi redemption append-only; release/use đồng thời không vượt UsedQty |
+| Slot không chuẩn | Unique chỉ court/date/slotId | Không tự cho slot thời gian chồng lấn khác ID |
+| Giá lịch sử | Tổng tiền snapshot; breakdown tính từ sân hiện hành | Snapshot đủ chi tiết, đổi giá không đổi lịch sử |
+| Delete cascade | Payments liên kết Booking có cascade | Không xóa booking gốc làm mất payment; kiểm tra quyền vận hành |
+| Jobs/refund | Nhiều thao tác cập nhật trạng thái và ledger | Crash/retry/nhiều instance không dở dang hoặc ghi trùng |
+
+Liên quan: [01 nghiệp vụ](01-business-analysis.md), [03 luồng](03-workflow.md), [05 kiểm thử](05-testing-strategy.md), [09 cấu hình](09-deploy-detail.md).
