@@ -1,10 +1,18 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Plus, Lock, LockOpen } from "lucide-react";
-import { PageHeader, Card, Busy, Callout, Button, Field } from "../../components/ui";
+import { Plus, Lock, LockOpen, Shield, MapPin } from "lucide-react";
+import {
+  Toolbar,
+  Busy,
+  Callout,
+  Button,
+  Field,
+  SelectField,
+  Modal,
+  StatusBadge,
+} from "../../components/ui";
 import { api, type Staff } from "../../lib/api";
 import { VirtualizedTable, type Column } from "../../components/VirtualizedTable";
-import { clsx } from "clsx";
 
 interface StaffForm {
   fullName: string;
@@ -73,36 +81,64 @@ export default function StaffPage() {
     id == null ? "—" : branches.find((b) => b.id === id)?.name ?? `#${id}`;
 
   const columns: Column<Staff>[] = [
-    { key: "fullName", label: "Họ tên", width: 160, sortable: true, render: (s) => <span className="font-medium">{s.fullName}</span> },
-    { key: "phoneNumber", label: "SĐT", width: 130, render: (s) => <span className="tnum text-muted">{s.phoneNumber}</span> },
     {
-      key: "role", label: "Vai trò", width: 100, sortable: true,
+      key: "fullName",
+      label: "Họ tên",
+      width: 200,
+      sortable: true,
       render: (s) => (
-        <span className={clsx("rounded-full px-2 py-0.5 text-xs font-medium",
-          s.role === "Admin" ? "bg-primary/10 text-primary" : "bg-bg text-muted")}>
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+            {s.fullName.charAt(0).toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{s.fullName}</p>
+            <p className="text-[11px] text-muted tnum">{s.phoneNumber}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "role",
+      label: "Vai trò",
+      width: 130,
+      sortable: true,
+      render: (s) => (
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs font-semibold text-muted">
+          <Shield className="h-3 w-3" />
           {s.role}
         </span>
       ),
     },
     {
-      key: "status", label: "Trạng thái", width: 110,
+      key: "status",
+      label: "Trạng thái",
+      width: 130,
+      render: (s) => <StatusBadge status={s.status === "Active" ? "Active" : "Locked"} size="sm" />,
+    },
+    {
+      key: "branch",
+      label: "Cơ sở",
+      width: 180,
       render: (s) => (
-        <span className={clsx("rounded-full px-2 py-0.5 text-xs",
-          s.status === "Active" ? "bg-slot-free-bg text-slot-free-fg" : "bg-slot-booked-bg text-slot-booked-fg")}>
-          {s.status === "Active" ? "Đang hoạt động" : "Đã khóa"}
+        <span className="inline-flex items-center gap-1 text-sm text-muted">
+          <MapPin className="h-3.5 w-3.5" />
+          {branchName(s.branchId)}
         </span>
       ),
     },
-    { key: "branch", label: "Cơ sở", width: 160, render: (s) => <span className="text-muted">{branchName(s.branchId)}</span> },
     {
-      key: "actions", label: "", width: 220, align: "right",
+      key: "actions",
+      label: "",
+      width: 280,
+      align: "right",
       render: (s) => (
-        <div className="flex items-center justify-end gap-1">
+        <div className="flex items-center justify-end gap-2">
           <select
             aria-label={`Cơ sở của ${s.fullName}`}
             value={s.branchId ?? ""}
             onChange={(e) => e.target.value && assignBranch.mutate({ id: s.id, branchId: Number(e.target.value) })}
-            className="max-w-32 rounded border border-border bg-card px-1.5 py-1 text-xs text-muted"
+            className="h-8 max-w-[120px] rounded-lg border border-border bg-card px-2 text-xs text-muted outline-none focus:border-primary"
           >
             <option value="">Gán cơ sở…</option>
             {branches.map((b) => (
@@ -113,18 +149,18 @@ export default function StaffPage() {
             aria-label={`Vai trò của ${s.fullName}`}
             value={s.role}
             onChange={(e) => changeRole.mutate({ id: s.id, role: e.target.value })}
-            className="rounded border border-border bg-card px-1.5 py-1 text-xs text-muted"
+            className="h-8 rounded-lg border border-border bg-card px-2 text-xs text-muted outline-none focus:border-primary"
           >
             <option value="Manager">Manager</option>
             <option value="Admin">Admin</option>
           </select>
           <button
+            type="button"
             aria-label={s.status === "Active" ? "Khóa tài khoản" : "Mở khóa"}
-            onClick={() => s.status === "Active" ? lock.mutate(s.id) : unlock.mutate(s.id)}
-            className={clsx("flex h-8 w-8 items-center justify-center rounded border text-xs",
-              s.status === "Active" ? "border-border text-muted hover:text-state-error" : "border-state-success text-state-success")}
+            onClick={() => (s.status === "Active" ? lock.mutate(s.id) : unlock.mutate(s.id))}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-bg hover:text-fg"
           >
-            {s.status === "Active" ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
+            {s.status === "Active" ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5 text-state-success" />}
           </button>
         </div>
       ),
@@ -133,11 +169,11 @@ export default function StaffPage() {
 
   return (
     <div>
-      <PageHeader
+      <Toolbar
         title="Nhân viên"
         subtitle="Quản lý tài khoản Manager / Admin"
-        right={
-          <Button variant="accent" onClick={() => setForm(emptyForm())}>
+        actions={
+          <Button variant="accent" size="sm" onClick={() => setForm(emptyForm())}>
             <Plus className="h-4 w-4" /> Tạo nhân viên
           </Button>
         }
@@ -149,15 +185,34 @@ export default function StaffPage() {
         {isFetching && staff.length === 0 ? (
           <Busy label="Đang tải nhân viên…" />
         ) : (
-          <VirtualizedTable rows={staff} columns={columns} rowKey={(s) => s.id}
-            maxHeight={460} emptyLabel="Chưa có nhân viên nào." />
+          <VirtualizedTable
+            rows={staff}
+            columns={columns}
+            rowKey={(s) => s.id}
+            rowHeight={56}
+            maxHeight={460}
+            emptyLabel="Chưa có nhân viên nào."
+          />
         )}
       </div>
 
       {form && (
-        <Card className="mt-5 border-primary p-4">
-          <p className="mb-3 font-semibold">Nhân viên mới</p>
-          <div className="grid gap-3 sm:grid-cols-2">
+        <Modal
+          title="Nhân viên mới"
+          onClose={() => setForm(null)}
+          width="max-w-2xl"
+          footer={
+            <>
+              <Button variant="ghost" size="sm" onClick={() => setForm(null)}>
+                Hủy
+              </Button>
+              <Button variant="accent" size="sm" disabled={create.isPending} onClick={() => create.mutate(form)}>
+                {create.isPending ? "Đang tạo…" : "Tạo nhân viên"}
+              </Button>
+            </>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Họ và tên" value={form.fullName}
               onChange={(e) => setForm({ ...form, fullName: e.target.value })} required />
             <Field label="Số điện thoại" value={form.phoneNumber}
@@ -167,35 +222,26 @@ export default function StaffPage() {
               onChange={(e) => setForm({ ...form, password: e.target.value })} required />
             <Field label="Email (tuỳ chọn)" value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })} type="email" />
-            <label className="text-sm">
-              <span className="mb-1 block text-muted">Vai trò</span>
-              <select value={form.role}
-                onChange={(e) => setForm({ ...form, role: e.target.value as "Manager" | "Admin" })}
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 outline-none focus:border-primary">
-                <option value="Manager">Manager</option>
-                <option value="Admin">Admin</option>
-              </select>
-            </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-muted">Cơ sở (tuỳ chọn)</span>
-              <select value={form.branchId ?? ""}
-                onChange={(e) => setForm({ ...form, branchId: e.target.value ? Number(e.target.value) : null })}
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 outline-none focus:border-primary">
-                <option value="">Không gán</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </label>
+            <SelectField
+              label="Vai trò"
+              value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value as "Manager" | "Admin" })}
+            >
+              <option value="Manager">Manager</option>
+              <option value="Admin">Admin</option>
+            </SelectField>
+            <SelectField
+              label="Cơ sở (tuỳ chọn)"
+              value={form.branchId ?? ""}
+              onChange={(e) => setForm({ ...form, branchId: e.target.value ? Number(e.target.value) : null })}
+            >
+              <option value="">Không gán</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </SelectField>
           </div>
-          <div className="mt-4 flex gap-2">
-            <Button variant="accent" disabled={create.isPending}
-              onClick={() => create.mutate(form)}>
-              {create.isPending ? "Đang tạo…" : "Tạo nhân viên"}
-            </Button>
-            <Button variant="ghost" onClick={() => setForm(null)}>Hủy</Button>
-          </div>
-        </Card>
+        </Modal>
       )}
     </div>
   );

@@ -2,15 +2,31 @@ using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Report;
 using M.Core.Enums;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Services
 {
     public sealed class ReportService : BaseService, IReportService
     {
-        public ReportService(IUnitOfWork uow, Microsoft.AspNetCore.Http.IHttpContextAccessor http)
-            : base(uow, http) { }
+        private readonly IMemoryCache _cache;
+        // 5-minute TTL (docs: Redis ≤5m for volatile data; MemoryCache keeps it
+        // dependency-free in dev. Swap for ICache in prod without touching callers.)
+        private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
+
+        public ReportService(IUnitOfWork uow, Microsoft.AspNetCore.Http.IHttpContextAccessor http,
+            IMemoryCache cache)
+            : base(uow, http) { _cache = cache; }
 
         public async Task<DashboardSummary> GetSummaryAsync(int? branchId = null)
+        {
+            var key = $"report:summary:{branchId?.ToString() ?? "all"}";
+            if (_cache.TryGetValue(key, out DashboardSummary? hit)) return hit!;
+            var result = await LoadSummaryAsync(branchId);
+            _cache.Set(key, result, CacheTtl);
+            return result;
+        }
+
+        private async Task<DashboardSummary> LoadSummaryAsync(int? branchId)
         {
             var today = DateOnly.FromDateTime(DateTime.Now);
             var thirtyAgo = today.AddDays(-30);
@@ -54,6 +70,8 @@ namespace Services
         public async Task<IReadOnlyList<RevenueByDay>> GetRevenueAsync(
             DateOnly from, DateOnly to, int? branchId = null)
         {
+            var key = $"report:revenue:{from:yyyy-MM-dd}:{to:yyyy-MM-dd}:{branchId?.ToString() ?? "all"}";
+            if (_cache.TryGetValue(key, out IReadOnlyList<RevenueByDay>? revHit)) return revHit!;
             var bi = branchId;
             var bookings = await Repository<Booking>().GetByConditionAsync(b =>
                 b.DeletedAt == null
@@ -80,14 +98,18 @@ namespace Services
                 .GroupBy(p => DateOnly.FromDateTime(p.RefundedAt!.Value))
                 .ToDictionary(g => g.Key, g => g.Sum(x => x.RefundAmount));
 
-            return byDay.Select(r => new RevenueByDay(
+            var result = byDay.Select(r => new RevenueByDay(
                 r.Date, r.Bookings, r.Revenue,
                 refundByDay.TryGetValue(r.Date, out var v) ? v : 0)).ToList();
+            _cache.Set(key, result, CacheTtl);
+            return result;
         }
 
         public async Task<IReadOnlyList<OccupancyByDay>> GetOccupancyAsync(
             DateOnly from, DateOnly to, int? branchId = null)
         {
+            var key = $"report:occupancy:{from:yyyy-MM-dd}:{to:yyyy-MM-dd}:{branchId?.ToString() ?? "all"}";
+            if (_cache.TryGetValue(key, out IReadOnlyList<OccupancyByDay>? occHit)) return occHit!;
             var bi = branchId;
             var courts = await Repository<Court>().GetByConditionAsync(c =>
                 c.IsActive && c.DeletedAt == null && (bi == null || c.BranchId == bi));
@@ -118,7 +140,9 @@ namespace Services
                     Math.Round(100m * (decimal)dayPeak / peakSlotsDay, 1)));
                 d = d.AddDays(1);
             }
+            _cache.Set(key, list, CacheTtl);
             return list;
         }
     }
 }
+

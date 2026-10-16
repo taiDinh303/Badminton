@@ -348,6 +348,12 @@ namespace Services
             if (redemption is not null)
                 await _vouchers.ReleaseVoucherAsync(b.VoucherRedemptionId!.Value);
 
+            // Restore any points the customer redeemed toward this (pending)
+            // booking so they aren't silently lost on a pre-payment cancel
+            // (mirrors RefundAsync, which also calls RestoreAsync).
+            if (b.PointsRedeemed > 0)
+                await _points.RestoreAsync(b.UserId, b.Id, b.PointsRedeemed, b.BookingCode);
+
             await SaveAsync();
             await _audit.LogAsync(actorId, "booking.cancel", "Booking", b.Id.ToString(),
                 before, new { b.Status, b.CancelledAt }, b.CancelReason);

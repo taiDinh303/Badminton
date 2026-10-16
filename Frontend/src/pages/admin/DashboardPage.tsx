@@ -1,55 +1,37 @@
 import { useQuery } from "@tanstack/react-query";
-import { TrendingUp, Clock, Users, Wrench, CircleDollarSign, Gauge } from "lucide-react";
-import { api, formatVnd, type ReportSummary, type RevenueByDay, type OccupancyByDay } from "../../lib/api";
-import { Card, PageHeader, Busy, Callout } from "../../components/ui";
-
-function Kpi({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub?: string }) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-center gap-2 text-muted">
-        {icon}
-        <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
-      </div>
-      <p className="mt-2 text-2xl font-bold tnum">{value}</p>
-      {sub && <p className="text-xs text-muted">{sub}</p>}
-    </Card>
-  );
-}
-
-/** Horizontal bar chart (no chart lib → tiny bundle, docs 07 §6). */
-function BarChart({ data, color = "bg-primary" }: { data: { label: string; value: number }[]; color?: string }) {
-  const max = Math.max(1, ...data.map((d) => d.value));
-  return (
-    <div className="space-y-2">
-      {data.map((d) => (
-        <div key={d.label}>
-          <div className="mb-0.5 flex justify-between text-xs text-muted">
-            <span>{d.label}</span>
-            <span className="tnum">{formatVnd(d.value)}</span>
-          </div>
-          <div className="h-2 rounded-full bg-bg">
-            <div className={`h-2 rounded-full ${color}`} style={{ width: `${(d.value / max) * 100}%` }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+import {
+  TrendingUp,
+  Clock,
+  Users,
+  Wrench,
+  CircleDollarSign,
+  Gauge,
+  BarChart3,
+  PieChart,
+} from "lucide-react";
+import {
+  api,
+  formatVnd,
+  type ReportSummary,
+  type RevenueByDay,
+  type OccupancyByDay,
+} from "../../lib/api";
+import { Card, KpiCard, Busy, Callout, BarChart, ProgressBar } from "../../components/ui";
 
 /**
- * Tổng quan (docs 07 §4): 4 KPI (doanh thu hôm nay, % lấp đầy cao điểm,
- * đặt chờ, no-show 30d) + doanh thu theo ngày + lấp đầy.
+ * Tổng quan (docs 07 §4): việc cần xử lý trước biểu đồ —
+ * 4 KPI + doanh thu 7 ngày + lấp đầy + cảnh báo.
  */
 export default function DashboardPage() {
-  const { data: s, isFetching, isError } = useQuery({
+  const { data: s, isFetching, isError, refetch } = useQuery({
     queryKey: ["report", "summary"],
     queryFn: () => api.admin.report.summary(),
   });
 
+  const toStr = new Date().toISOString().slice(0, 10);
   const from = new Date();
   from.setDate(from.getDate() - 6);
   const fromStr = from.toISOString().slice(0, 10);
-  const toStr = new Date().toISOString().slice(0, 10);
 
   const { data: revenue } = useQuery({
     queryKey: ["report", "revenue", fromStr, toStr],
@@ -61,80 +43,185 @@ export default function DashboardPage() {
     queryFn: () => api.admin.report.occupancy(fromStr, toStr),
   });
 
-  if (isFetching && !s) return <div className="p-4"><Busy label="Đang tải tổng quan…" /></div>;
+  if (isFetching && !s)
+    return <div className="p-4"><Busy label="Đang tải tổng quan…" /></div>;
+
+  const revenueData = (revenue ?? [])
+    .slice(-7)
+    .map((r) => ({
+      label: r.date.slice(5).replace("-", "/"),
+      value: r.revenue,
+      valueLabel: formatVnd(r.revenue),
+    }));
+
+  const occ = occupancy ?? [];
+  const latestOcc = occ.length > 0 ? occ[occ.length - 1] : null;
 
   return (
     <div>
-      <PageHeader
-        title="Tổng quan"
-        subtitle="Chỉ số vận hành hôm nay + xu hướng 7 ngày"
-      />
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Tổng quan</h1>
+        <p className="mt-1 text-sm text-muted">
+          Chỉ số vận hành hôm nay + xu hướng 7 ngày
+        </p>
+      </div>
 
-      {isError && <Callout tone="error" className="mt-4">Không tải được dữ liệu tổng quan.</Callout>}
+      {isError && (
+        <div className="mt-4">
+          <Callout tone="error">Không tải được dữ liệu tổng quan.</Callout>
+        </div>
+      )}
 
       {s && (
         <>
+          {/* KPI grid */}
           <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Kpi
+            <KpiCard
               icon={<CircleDollarSign className="h-4 w-4" />}
               label="Doanh thu hôm nay"
               value={formatVnd(Math.max(0, s.revenueToday))}
-              sub={`${s.todayBookings} đơn`}
+              sub={`${s.todayBookings} đơn · ${s.usersToday} khách`}
+              tone="success"
             />
-            <Kpi
+            <KpiCard
               icon={<Gauge className="h-4 w-4" />}
               label="Lấp đầy cao điểm"
               value={`${s.peakFillRatePct}%`}
-              sub={`${s.activeCourts} sân hoạt động`}
+              sub={`${s.activeCourts} sân · ${s.activeBranches} cơ sở`}
+              tone="default"
             />
-            <Kpi
+            <KpiCard
               icon={<Clock className="h-4 w-4" />}
-              label="Đang chờ"
+              label="Đang chờ thanh toán"
               value={String(s.pendingCount)}
-              sub="đơn chưa thanh toán"
+              sub="cần xử lý trong 10 phút"
+              tone="warning"
             />
-            <Kpi
+            <KpiCard
               icon={<Users className="h-4 w-4" />}
-              label="No-show (30d)"
+              label="No-show (30 ngày)"
               value={String(s.noShowCount30d)}
-              sub={`${s.activeBranches} cơ sở`}
+              sub="khách không đến sân"
+              tone="danger"
             />
           </div>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-2">
-            <Card>
-              <p className="mb-3 flex items-center gap-1 text-sm font-semibold">
-                <TrendingUp className="h-4 w-4 text-primary" /> Doanh thu 7 ngày
-              </p>
-              {revenue && revenue.length > 0 ? (
-                <BarChart
-                  data={revenue.slice(-7).map((r) => ({
-                    label: r.date.slice(5).replace("-", "/"),
-                    value: r.revenue,
-                  }))}
-                />
-              ) : (
-                <p className="text-sm text-muted">Chưa có dữ liệu doanh thu.</p>
-              )}
+          {/* Charts */}
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <Card className="p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <p className="flex items-center gap-1.5 text-sm font-bold">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <BarChart3 className="h-4 w-4" />
+                  </span>
+                  Doanh thu 7 ngày
+                </p>
+                <span className="text-xs text-muted tnum">
+                  {formatVnd(revenueData.reduce((a, b) => a + b.value, 0))}
+                </span>
+              </div>
+              <BarChart data={revenueData} />
             </Card>
 
-            <Card>
-              <p className="mb-3 flex items-center gap-1 text-sm font-semibold">
-                <Wrench className="h-4 w-4 text-primary" /> Lấp đầy 7 ngày
-              </p>
-              {occupancy && occupancy.length > 0 ? (
-                <BarChart
-                  color="bg-accent"
-                  data={occupancy.slice(-7).map((o) => ({
-                    label: `${o.date.slice(5).replace("-", "/")} • ${o.fillRatePct}%`,
-                    value: o.bookedSlots,
-                  }))}
-                />
+            <Card className="p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <p className="flex items-center gap-1.5 text-sm font-bold">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/20 text-fg">
+                    <PieChart className="h-4 w-4" />
+                  </span>
+                  Lấp đầy slot
+                </p>
+                <span className="text-xs text-muted">
+                  {latestOcc ? `${latestOcc.date.slice(5).replace("-", "/")} · peak ${latestOcc.peakFillRatePct}%` : "Chưa có dữ liệu"}
+                </span>
+              </div>
+
+              {latestOcc ? (
+                <div className="space-y-4">
+                  <div>
+                    <div className="mb-1 flex justify-between text-xs">
+                      <span className="text-muted">Lấp đầy chung</span>
+                      <span className="font-bold tnum">{latestOcc.fillRatePct}%</span>
+                    </div>
+                    <ProgressBar
+                      value={latestOcc.bookedSlots}
+                      max={Math.max(1, latestOcc.totalSlots)}
+                      label="Lấp đầy chung"
+                    />
+                    <p className="mt-1 text-xs text-muted tnum">
+                      {latestOcc.bookedSlots}/{latestOcc.totalSlots} slot đã đặt
+                    </p>
+                  </div>
+                  <div>
+                    <div className="mb-1 flex justify-between text-xs">
+                      <span className="text-muted">Lấp đầy giờ cao điểm</span>
+                      <span className="font-bold tnum">{latestOcc.peakFillRatePct}%</span>
+                    </div>
+                    <ProgressBar
+                      tone="accent"
+                      value={latestOcc.peakBooked}
+                      max={Math.max(1, latestOcc.peakTotal)}
+                      label="Lấp đầy cao điểm"
+                    />
+                    <p className="mt-1 text-xs text-muted tnum">
+                      {latestOcc.peakBooked}/{latestOcc.peakTotal} slot cao điểm
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-bg p-3">
+                    <div className="mb-1 flex justify-between text-xs">
+                      <span className="text-muted">Xu hướng lấp đầy 7 ngày</span>
+                    </div>
+                    <BarChart
+                      data={occ
+                        .slice(-7)
+                        .map((o) => ({
+                          label: o.date.slice(5).replace("-", "/"),
+                          value: o.fillRatePct,
+                        }))}
+                    />
+                  </div>
+                </div>
               ) : (
-                <p className="text-sm text-muted">Chưa có dữ liệu lấp đầy.</p>
+                <p className="py-8 text-center text-sm text-muted">
+                  Chưa có dữ liệu lấp đầy.
+                </p>
               )}
             </Card>
           </div>
+
+          {/* Alert strip */}
+          {(s.pendingCount > 0 || s.noShowCount30d > 0) && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {s.pendingCount > 0 && (
+                <Card className="border-state-warning/30 bg-state-warning/10 p-4">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-state-warning">
+                    <Wrench className="h-4 w-4" /> {s.pendingCount} đơn đang chờ thanh toán
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    Slot được giữ tối đa 10 phút. Kiểm tra mục "Đặt chỗ" để xác nhận hoặc hủy.
+                  </p>
+                </Card>
+              )}
+              {s.noShowCount30d > 0 && (
+                <Card className="border-slot-booked-bg bg-slot-booked-bg p-4">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-slot-booked-fg">
+                    <TrendingUp className="h-4 w-4" /> {s.noShowCount30d} no-show trong 30 ngày
+                  </p>
+                  <p className="mt-1 text-xs text-slot-booked-fg/80">
+                    Khách đủ 3 lần no-show/tháng sẽ bị chặn đặt tháng sau (quy tắc docs 01 §4).
+                  </p>
+                </Card>
+              )}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="mt-4 text-xs font-medium text-muted underline-offset-2 hover:text-fg hover:underline"
+          >
+            Làm mới dữ liệu
+          </button>
         </>
       )}
     </div>

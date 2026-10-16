@@ -1,7 +1,17 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
-import { PageHeader, Card, Busy, Callout, Button, Field } from "../../components/ui";
+import { Plus, Ticket, Trash2 } from "lucide-react";
+import {
+  Toolbar,
+  Busy,
+  Callout,
+  Button,
+  Field,
+  SelectField,
+  Modal,
+  StatusBadge,
+  ProgressBar,
+} from "../../components/ui";
 import { api, formatVnd, type Voucher } from "../../lib/api";
 import { VirtualizedTable, type Column } from "../../components/VirtualizedTable";
 
@@ -9,18 +19,19 @@ interface VoucherForm {
   code: string;
   type: "Percent" | "Fixed";
   value: number;
+  maxValue: number;
   minSpend: number;
   totalQty: number;
   validUntil: string;
 }
 
 const emptyForm = (): VoucherForm => ({
-  code: "", type: "Percent", value: 10, minSpend: 0, totalQty: 1000,
+  code: "", type: "Percent", value: 10, maxValue: 50000, minSpend: 0, totalQty: 1000,
   validUntil: new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10),
 });
 
 /**
- * Admin "Voucher" (docs 07 §4): paged/virtualized list + create + deactivate.
+ * Admin "Voucher" (docs 07 §4): list + usage progress + create modal + deactivate.
  */
 export default function VouchersPage() {
   const [form, setForm] = useState<VoucherForm | null>(null);
@@ -33,8 +44,12 @@ export default function VouchersPage() {
   const create = useMutation({
     mutationFn: (f: VoucherForm) =>
       api.vouchers.create({
-        code: f.code.toUpperCase(), type: f.type, value: f.value,
-        minSpend: f.minSpend, totalQty: f.totalQty,
+        code: f.code.toUpperCase(),
+        type: f.type,
+        value: f.value,
+        maxValue: f.type === "Percent" ? f.maxValue || null : undefined,
+        minSpend: f.minSpend,
+        totalQty: f.totalQty,
         validFrom: new Date().toISOString().slice(0, 10),
         validUntil: f.validUntil,
       }),
@@ -50,15 +65,74 @@ export default function VouchersPage() {
     (deactivate.error as Error | undefined)?.message ?? null;
 
   const columns: Column<Voucher>[] = [
-    { key: "code", label: "Mã", width: 140, sortable: true, render: (v) => <span className="font-mono text-xs font-semibold">{v.code}</span> },
-    { key: "type", label: "Loại", width: 100, render: (v) => (v.type === "Percent" ? `${v.value}%` : formatVnd(v.value)) },
-    { key: "minSpend", label: "Tối thiểu", width: 120, align: "right", render: (v) => <span className="tnum text-muted">{formatVnd(v.minSpend)}</span> },
-    { key: "used", label: "Đã dùng", width: 120, align: "right", render: (v) => <span className="tnum">{v.usedQty} / {v.totalQty}</span> },
-    { key: "validUntil", label: "Hết hạn", width: 120, render: (v) => <span className="text-muted">{v.validUntil ?? "Vĩnh viễn"}</span> },
     {
-      key: "actions", label: "", width: 90, align: "right",
+      key: "code",
+      label: "Mã",
+      width: 150,
+      sortable: true,
       render: (v) => (
-        <Button variant="danger" className="h-8 min-h-0 px-2 text-xs" onClick={() => deactivate.mutate(v.id)} disabled={!v.isActive}>
+        <span className="inline-flex items-center gap-1.5">
+          <Ticket className="h-3.5 w-3.5 text-primary" />
+          <span className="font-mono text-xs font-bold tracking-wide">{v.code}</span>
+        </span>
+      ),
+    },
+    {
+      key: "type",
+      label: "Loại",
+      width: 120,
+      render: (v) =>
+        v.type === "Percent" ? (
+          <span className="font-semibold text-primary">{v.value}%</span>
+        ) : (
+          <span className="font-semibold text-primary">{formatVnd(v.value)}</span>
+        ),
+    },
+    {
+      key: "minSpend",
+      label: "Tối thiểu",
+      width: 120,
+      align: "right",
+      render: (v) => <span className="text-muted tnum">{formatVnd(v.minSpend)}</span>,
+    },
+    {
+      key: "used",
+      label: "Đã dùng",
+      width: 180,
+      align: "right",
+      render: (v) => (
+        <div className="w-full pr-2">
+          <div className="mb-1 text-xs tnum text-muted">
+            {v.usedQty} / {v.totalQty}
+          </div>
+          <ProgressBar value={v.usedQty} max={Math.max(1, v.totalQty)} />
+        </div>
+      ),
+    },
+    {
+      key: "validUntil",
+      label: "Hết hạn",
+      width: 120,
+      render: (v) => <span className="text-muted tnum">{v.validUntil ?? "Vĩnh viễn"}</span>,
+    },
+    {
+      key: "state",
+      label: "Trạng thái",
+      width: 120,
+      render: (v) => <StatusBadge status={v.isActive ? "Open" : "Closed"} size="sm" />,
+    },
+    {
+      key: "actions",
+      label: "",
+      width: 120,
+      align: "right",
+      render: (v) => (
+        <Button
+          variant="danger"
+          size="xs"
+          onClick={() => deactivate.mutate(v.id)}
+          disabled={!v.isActive}
+        >
           <Trash2 className="h-3 w-3" /> Vô hiệu
         </Button>
       ),
@@ -67,11 +141,11 @@ export default function VouchersPage() {
 
   return (
     <div>
-      <PageHeader
+      <Toolbar
         title="Voucher"
         subtitle="Mã giảm giá cho khách hàng"
-        right={
-          <Button variant="accent" onClick={() => setForm(emptyForm())}>
+        actions={
+          <Button variant="accent" size="sm" onClick={() => setForm(emptyForm())}>
             <Plus className="h-4 w-4" /> Tạo voucher
           </Button>
         }
@@ -83,47 +157,85 @@ export default function VouchersPage() {
         {isFetching && vouchers.length === 0 ? (
           <Busy label="Đang tải voucher…" />
         ) : (
-          <VirtualizedTable rows={vouchers} columns={columns} rowKey={(v) => v.id} maxHeight={480}
-            emptyLabel="Chưa có voucher nào." />
+          <VirtualizedTable
+            rows={vouchers}
+            columns={columns}
+            rowKey={(v) => v.id}
+            maxHeight={480}
+            emptyLabel="Chưa có voucher nào."
+          />
         )}
       </div>
 
       {form && (
-        <Card className="mt-5 border-primary p-4">
-          <p className="mb-3 font-semibold">Voucher mới</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Mã voucher" value={form.code}
+        <Modal
+          title="Voucher mới"
+          onClose={() => setForm(null)}
+          width="max-w-2xl"
+          footer={
+            <>
+              <Button variant="ghost" size="sm" onClick={() => setForm(null)}>
+                Hủy
+              </Button>
+              <Button variant="accent" size="sm" disabled={create.isPending} onClick={() => create.mutate(form)}>
+                {create.isPending ? "Đang tạo…" : "Tạo voucher"}
+              </Button>
+            </>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Mã voucher"
+              value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-              placeholder="VD: RAMDien10" />
-            <label className="text-sm">
-              <span className="mb-1 block text-muted">Loại</span>
-              <select value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value as "Percent" | "Fixed" })}
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 outline-none focus:border-primary">
-                <option value="Percent">Phần trăm (%)</option>
-                <option value="Fixed">Cố định (VNĐ)</option>
-              </select>
-            </label>
-            <Field label={form.type === "Percent" ? "Giảm (%)" : "Giảm (VNĐ)"} type="number" min={0}
+              placeholder="VD: RAMDien10"
+            />
+            <SelectField
+              label="Loại"
+              value={form.type}
+              onChange={(e) => setForm({ ...form, type: e.target.value as "Percent" | "Fixed" })}
+            >
+              <option value="Percent">Phần trăm (%)</option>
+              <option value="Fixed">Cố định (VNĐ)</option>
+            </SelectField>
+            <Field
+              label={form.type === "Percent" ? "Giảm (%)" : "Giảm (VNĐ)"}
+              type="number"
+              min={0}
               value={form.value}
-              onChange={(e) => setForm({ ...form, value: Number(e.target.value) })} />
-            <Field label="Đơn tối thiểu (VNĐ)" type="number" min={0}
+              onChange={(e) => setForm({ ...form, value: Number(e.target.value) })}
+            />
+            {form.type === "Percent" && (
+              <Field
+                label="Trần giảm tối đa (VNĐ, có thể bỏ)"
+                type="number"
+                min={0}
+                value={form.maxValue}
+                onChange={(e) => setForm({ ...form, maxValue: Number(e.target.value) })}
+              />
+            )}
+            <Field
+              label="Đơn tối thiểu (VNĐ)"
+              type="number"
+              min={0}
               value={form.minSpend}
-              onChange={(e) => setForm({ ...form, minSpend: Number(e.target.value) })} />
-            <Field label="Số lượng phát hành" type="number" min={1}
+              onChange={(e) => setForm({ ...form, minSpend: Number(e.target.value) })}
+            />
+            <Field
+              label="Số lượng phát hành"
+              type="number"
+              min={1}
               value={form.totalQty}
-              onChange={(e) => setForm({ ...form, totalQty: Number(e.target.value) })} />
-            <Field label="Hết hạn" type="date" value={form.validUntil}
-              onChange={(e) => setForm({ ...form, validUntil: e.target.value })} />
+              onChange={(e) => setForm({ ...form, totalQty: Number(e.target.value) })}
+            />
+            <Field
+              label="Hết hạn"
+              type="date"
+              value={form.validUntil}
+              onChange={(e) => setForm({ ...form, validUntil: e.target.value })}
+            />
           </div>
-          <div className="mt-4 flex gap-2">
-            <Button variant="accent" disabled={create.isPending}
-              onClick={() => create.mutate(form)}>
-              {create.isPending ? "Đang tạo…" : "Tạo voucher"}
-            </Button>
-            <Button variant="ghost" onClick={() => setForm(null)}>Hủy</Button>
-          </div>
-        </Card>
+        </Modal>
       )}
     </div>
   );

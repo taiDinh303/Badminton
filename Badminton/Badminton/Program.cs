@@ -94,6 +94,7 @@ namespace BadmintonBE.API
 
             builder.Services.AddBookingServices();
             builder.Services.AddHttpContextAccessor();
+            builder.Services.AddMemoryCache();
 
             builder.Services.AddHostedService<PendingBookingExpiryJob>();
             builder.Services.AddHostedService<AutoCompleteJob>();
@@ -144,7 +145,11 @@ namespace BadmintonBE.API
             {
                 var db = scope.ServiceProvider.GetRequiredService<BadmintonBookingDbContext>();
                 db.Database.Migrate();
-                SeedData.Seed(db);
+                // Seed demo data ONLY in Development. A fresh production DB
+                // must NOT be populated with the default admin (Admin@123) and
+                // 500 demo customers.
+                if (app.Environment.IsDevelopment())
+                    SeedData.Seed(db);
             }
 
             app.UseMiddleware<BadmintonBE.API.Middleware.ExceptionMiddleware>();

@@ -1,9 +1,16 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PageHeader, Busy, Button } from "../../components/ui";
+import { ScrollText } from "lucide-react";
+import {
+  Toolbar,
+  Busy,
+  Button,
+  Pills,
+  Pagination,
+  Callout,
+} from "../../components/ui";
 import { api, type AuditEntry, type Paged } from "../../lib/api";
 import { VirtualizedTable, type Column } from "../../components/VirtualizedTable";
-import { clsx } from "clsx";
 
 const ENTITY_FILTERS = [
   { key: "", label: "Tất cả" },
@@ -22,13 +29,12 @@ function tsToVi(iso: string): string {
 
 /**
  * Admin "Nhật ký" (docs 07 §4): audit log paged + filter theo entity.
- * Virtualized để mượt khi có nhiều entry (500 user seeded → hàng trăm log).
  */
 export default function AuditPage() {
   const [entity, setEntity] = useState("");
   const [page, setPage] = useState(1);
 
-  const { data, isFetching } = useQuery({
+  const { data, isFetching, isError } = useQuery({
     queryKey: ["audit", entity, page],
     queryFn: () =>
       api.admin.audit.query({
@@ -41,39 +47,65 @@ export default function AuditPage() {
 
   const columns: Column<AuditEntry>[] = [
     { key: "time", label: "Thời gian", width: 180, sortable: true, render: (a) => <span className="tnum text-muted">{tsToVi(a.createdAt)}</span> },
-    { key: "actor", label: "Người thao tác", width: 180, render: (a) => a.actorName ?? (a.actorId ? `User #${a.actorId}` : "system") },
     {
-      key: "action", label: "Thao tác", width: 160, sortable: true,
+      key: "actor",
+      label: "Người thao tác",
+      width: 180,
+      render: (a) => (
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+            {(a.actorName ?? "S").charAt(0).toUpperCase()}
+          </span>
+          {a.actorName ?? (a.actorId ? `User #${a.actorId}` : "system")}
+        </span>
+      ),
+    },
+    {
+      key: "action",
+      label: "Thao tác",
+      width: 160,
+      sortable: true,
       render: (a) => (
         <span className="rounded bg-bg px-1.5 py-0.5 font-mono text-xs text-muted">{a.action}</span>
       ),
     },
-    { key: "entity", label: "Đối tượng", width: 160, render: (a) => `${a.entityType}${a.entityId ? ` #${a.entityId}` : ""}` },
+    {
+      key: "entity",
+      label: "Đối tượng",
+      width: 160,
+      render: (a) => (
+        <span className="inline-flex items-center gap-1 text-sm">
+          <ScrollText className="h-3.5 w-3.5 text-muted" />
+          {a.entityType}{a.entityId ? ` #${a.entityId}` : ""}
+        </span>
+      ),
+    },
     { key: "reason", label: "Lý do", width: 200, render: (a) => <span className="text-xs text-muted">{a.reason ?? "—"}</span> },
   ];
 
   return (
     <div>
-      <PageHeader title="Nhật ký" subtitle="Toàn bộ thao tác quản trị (audit log)" />
+      <Toolbar
+        title="Nhật ký"
+        subtitle="Toàn bộ thao tác quản trị (audit log)"
+        actions={
+          <Button variant="ghost" size="sm" onClick={() => setPage(1)}>
+            Làm mới
+          </Button>
+        }
+      />
 
-      <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Lọc theo đối tượng">
-        {ENTITY_FILTERS.map((f) => (
-          <button
-            key={f.key}
-            role="tab"
-            aria-selected={entity === f.key}
-            onClick={() => { setEntity(f.key); setPage(1); }}
-            className={clsx(
-              "rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
-              entity === f.key ? "bg-primary text-white" : "border border-border text-muted hover:text-fg",
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="mt-4">
+        <Pills
+          options={ENTITY_FILTERS.map((f) => ({ key: f.key, label: f.label }))}
+          value={entity as (typeof ENTITY_FILTERS)[number]["key"]}
+          onChange={(v) => { setEntity(v); setPage(1); }}
+          ariaLabel="Lọc theo đối tượng"
+        />
       </div>
 
       <div className="mt-4">
+        {isError && <Callout tone="error">Không tải được nhật ký.</Callout>}
         {isFetching && !data ? (
           <Busy label="Đang tải nhật ký…" />
         ) : (
@@ -85,12 +117,14 @@ export default function AuditPage() {
               maxHeight={520}
               emptyLabel="Không có nhật ký nào."
             />
-            <div className="mt-3 flex items-center justify-between text-sm text-muted">
-              <span>{data?.totalItems ?? 0} bản ghi · Trang {data?.currentPage ?? 1}</span>
-              <div className="flex gap-2">
-                <Button variant="ghost" className="h-9 min-h-0 px-3 text-xs" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Trước</Button>
-                <Button variant="ghost" className="h-9 min-h-0 px-3 text-xs" disabled={page >= (data?.totalPages ?? 1)} onClick={() => setPage((p) => p + 1)}>Sau</Button>
-              </div>
+            <div className="mt-3">
+              <Pagination
+                page={data?.currentPage ?? page}
+                totalPages={data?.totalPages ?? 1}
+                totalItems={data?.totalItems}
+                onPrev={() => setPage((p) => Math.max(1, p - 1))}
+                onNext={() => setPage((p) => p + 1)}
+              />
             </div>
           </>
         )}

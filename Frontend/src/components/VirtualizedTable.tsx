@@ -1,12 +1,10 @@
 import { useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
+import { ArrowUp, ArrowDown, ArrowUpDown, Inbox } from "lucide-react";
 
 /**
- * Lightweight virtualized table.
- * - Only rows near the viewport are rendered (~30 at a time).
- * - 200-row demo renders in <2ms instead of O(n) DOM builds.
- * - Sticky header + sort icons per column; row-click / cell-click.
- * - Used by all admin list views (bookings, staff, audit, vouchers, slots).
+ * Lightweight virtualized table (docs 07 §6: sticky header, virtualize > 100
+ * rows, sortable columns). Only ~30 rows in the DOM at a time.
  */
 
 export interface Column<T> {
@@ -34,8 +32,8 @@ export function VirtualizedTable<T>({
   rows,
   columns,
   rowKey,
-  rowHeight = 44,
-  headerHeight = 40,
+  rowHeight = 48,
+  headerHeight = 44,
   maxHeight = 480,
   onRowClick,
   emptyLabel = "Không có dữ liệu.",
@@ -46,7 +44,6 @@ export function VirtualizedTable<T>({
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<1 | -1>(1);
 
-  // Compute total column width (auto = 100% if no width).
   const totalW = useMemo(() => {
     const fixed = columns.reduce((sum, c) => sum + (c.width ?? 0), 0);
     return fixed > 0 ? fixed : 800;
@@ -54,8 +51,6 @@ export function VirtualizedTable<T>({
 
   const sorted = useMemo(() => {
     if (!sortKey) return rows;
-    const col = columns.find((c) => c.key === sortKey);
-    if (!col) return rows;
     const arr = [...rows];
     arr.sort((a, b) => {
       const av = (a as Record<string, unknown>)[sortKey];
@@ -65,7 +60,7 @@ export function VirtualizedTable<T>({
       return String(av ?? "").localeCompare(String(bv ?? "")) * sortDir;
     });
     return arr;
-  }, [rows, sortKey, sortDir, columns]);
+  }, [rows, sortKey, sortDir]);
 
   const overscan = 6;
   const totalH = sorted.length * rowHeight;
@@ -91,10 +86,20 @@ export function VirtualizedTable<T>({
     }
   }
 
+  function SortIcon({ colKey }: { colKey: string }) {
+    if (sortKey !== colKey)
+      return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+    return sortDir === 1 ? (
+      <ArrowUp className="h-3 w-3" />
+    ) : (
+      <ArrowDown className="h-3 w-3" />
+    );
+  }
+
   return (
     <div
       className={clsx(
-        "flex flex-col overflow-hidden rounded-lg border border-border bg-card",
+        "flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm shadow-black/[0.03]",
         className,
       )}
     >
@@ -104,77 +109,79 @@ export function VirtualizedTable<T>({
         style={{ maxHeight }}
         onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
       >
-        {/* Header */}
-        <div
-          className="sticky top-0 z-10 flex border-b border-border bg-card text-xs font-semibold text-muted"
-          style={{ height: headerHeight, minWidth: totalW }}
-        >
-          {columns.map((c) => (
-            <div
-              key={c.key}
-              className={clsx(
-                "flex items-center px-3",
-                c.sortable && "cursor-pointer select-none hover:text-fg",
-                c.align === "right" && "justify-end",
-                c.align === "center" && "justify-center",
-              )}
-              style={{ width: c.width, flexShrink: 0 }}
-              onClick={() => toggleSort(c.key, !!c.sortable)}
-              role={c.sortable ? "button" : undefined}
-              tabIndex={c.sortable ? 0 : undefined}
-            >
-              {c.label}
-              {c.sortable && (
-                <span className="ml-1 text-[10px]">
-                  {sortKey === c.key ? (sortDir === 1 ? "▲" : "▼") : "↕"}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-
         {sorted.length === 0 ? (
-          <div className="flex items-center justify-center py-16 text-sm text-muted">
+          <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-muted">
+            <Inbox className="h-6 w-6 opacity-50" />
             {emptyLabel}
           </div>
         ) : (
-          <div style={{ height: totalH, position: "relative" }}>
+          <>
+            {/* Header */}
             <div
-              style={{
-                position: "absolute",
-                top: offsetTop,
-                left: 0,
-                right: 0,
-                width: totalW,
-              }}
+              className="sticky top-0 z-10 flex border-b border-border bg-bg/80 text-[11px] font-semibold tracking-wide text-muted uppercase backdrop-blur"
+              style={{ height: headerHeight, minWidth: totalW }}
             >
-              {visible.map((row) => (
+              {columns.map((c) => (
                 <div
-                  key={rowKey(row)}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  key={c.key}
                   className={clsx(
-                    "flex border-b border-border/50 text-sm hover:bg-bg",
-                    onRowClick && "cursor-pointer",
+                    "flex items-center gap-1 px-3",
+                    c.sortable && "cursor-pointer select-none hover:text-fg",
+                    c.align === "right" && "justify-end",
+                    c.align === "center" && "justify-center",
+                    sortKey === c.key && "text-fg",
                   )}
-                  style={{ height: rowHeight }}
+                  style={{ width: c.width, flexShrink: 0 }}
+                  onClick={() => toggleSort(c.key, !!c.sortable)}
+                  role={c.sortable ? "button" : undefined}
+                  tabIndex={c.sortable ? 0 : undefined}
                 >
-                  {columns.map((c) => (
-                    <div
-                      key={c.key}
-                      className={clsx(
-                        "flex items-center px-3",
-                        c.align === "right" && "justify-end",
-                        c.align === "center" && "justify-center",
-                      )}
-                      style={{ width: c.width, flexShrink: 0 }}
-                    >
-                      {c.render(row)}
-                    </div>
-                  ))}
+                  <span className="truncate">{c.label}</span>
+                  {c.sortable && <SortIcon colKey={c.key} />}
                 </div>
               ))}
             </div>
-          </div>
+
+            <div style={{ height: totalH, position: "relative", minWidth: totalW }}>
+              <div
+                style={{
+                  position: "absolute",
+                  top: offsetTop,
+                  left: 0,
+                  right: 0,
+                  width: totalW,
+                }}
+              >
+                {visible.map((row, i) => (
+                  <div
+                    key={rowKey(row)}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    className={clsx(
+                      "flex items-stretch border-b border-border/60 text-sm transition-colors",
+                      i % 2 === 1 && "bg-bg/40",
+                      "hover:bg-primary/[0.04]",
+                      onRowClick && "cursor-pointer",
+                    )}
+                    style={{ height: rowHeight }}
+                  >
+                    {columns.map((c) => (
+                      <div
+                        key={c.key}
+                        className={clsx(
+                          "flex items-center px-3",
+                          c.align === "right" && "justify-end",
+                          c.align === "center" && "justify-center",
+                        )}
+                        style={{ width: c.width, flexShrink: 0 }}
+                      >
+                        {c.render(row)}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>

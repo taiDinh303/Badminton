@@ -46,10 +46,11 @@ export const options = {
       preAllocatedVUs: 50, maxVUs: 100,
     },
     concurrent_logins: {
-      executor: 'ramping-arrival-rate',
-      startTime: '0s', duration: '30s',
-      preAllocatedVUs: 5, maxVUs: 1000,
-      ramps: [{ time: '0s', rate: 1 }, { time: '10s', rate: N_USERS / 20 }],
+      // 1000 VUs authenticate concurrently for 30s. constant-vus is the cleanest
+      // valid executor here; the auth bucket (5/60s) is expected to return 429s
+      // on most — the point is measuring p95 latency + 2xx-rate under storm.
+      executor: 'constant-vus',
+      vus: N_USERS, duration: '30s',
       exec: 'login',
     },
     dashboard_fanout: {

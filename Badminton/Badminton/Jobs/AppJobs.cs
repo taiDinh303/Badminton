@@ -31,7 +31,15 @@ namespace BadmintonBE.API.Jobs
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                await RunOnceAsync();
+                try { await RunOnceAsync(); }
+                catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+                {
+                    // A transient DB/EF error in one tick must NOT crash the
+                    // whole host — log and retry next interval instead.
+                    _logger.LogError(ex,
+                        "{Job} tick failed; will retry on the next interval.",
+                        nameof(PendingBookingExpiryJob));
+                }
                 try { await Task.Delay(Interval, stoppingToken); }
                 catch (TaskCanceledException) { break; }
             }
@@ -128,7 +136,13 @@ namespace BadmintonBE.API.Jobs
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                await RunOnceAsync();
+                try { await RunOnceAsync(); }
+                catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+                {
+                    _logger.LogError(ex,
+                        "{Job} tick failed; will retry on the next interval.",
+                        nameof(AutoCompleteJob));
+                }
                 try { await Task.Delay(Interval, stoppingToken); }
                 catch (TaskCanceledException) { break; }
             }
@@ -189,7 +203,13 @@ namespace BadmintonBE.API.Jobs
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                await RunOnceAsync();
+                try { await RunOnceAsync(); }
+                catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+                {
+                    _logger.LogError(ex,
+                        "{Job} tick failed; will retry on the next interval.",
+                        nameof(VoucherExpiryJob));
+                }
                 try { await Task.Delay(Interval, stoppingToken); }
                 catch (TaskCanceledException) { break; }
             }
@@ -239,7 +259,13 @@ namespace BadmintonBE.API.Jobs
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                await RunOnceAsync();
+                try { await RunOnceAsync(); }
+                catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+                {
+                    _logger.LogError(ex,
+                        "{Job} tick failed; will retry on the next interval.",
+                        nameof(NoShowResetJob));
+                }
                 try { await Task.Delay(Interval, stoppingToken); }
                 catch (TaskCanceledException) { break; }
             }

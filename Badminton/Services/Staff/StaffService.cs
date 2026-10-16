@@ -24,8 +24,12 @@ namespace Services
                 throw new BadRequestException("Số điện thoại là bắt buộc.");
             if (request.Password.Length < 8)
                 throw new BadRequestException("Mật khẩu tối thiểu 8 ký tự.");
-            if (request.Role is not (Role.Manager or Role.Admin))
-                throw new BadRequestException("Chỉ tạo được Manager hoặc Admin.");
+            // Invariant (docs 01 §2): system có DÚNG 1 nick Admin. Admin chỉ
+            // được tạo/phân quyền Manager (hoặc Customer), KHÔNG tạo Admin mới.
+            if (request.Role is not Role.Manager)
+                throw new BadRequestException(
+                    "Chỉ tạo được Manager. Hệ thống giữ đúng 1 nick Admin — " +
+                    "không thể cấp role Admin cho nhân viên mới.");
 
             // "Exactly one active Admin" invariant.
             if (request.Role == Role.Admin)
@@ -87,15 +91,20 @@ namespace Services
         public async Task SetRoleAsync(int userId, Role role, int actorId)
         {
             var u = await MustGetStaff(userId);
+            // Invariant (docs 01 §2): Admin không cấp được role Admin cho ai.
+            // Không có path nào từ Manager → Admin; duy trì đúng 1 nick Admin.
+            if (role == Role.Admin)
+                throw new BadRequestException(
+                    "Không thể cấp role Admin — hệ thống giữ đúng 1 nick Admin.");
+            if (role is not Role.Manager)
+                throw new BadRequestException("Chỉ đổi được role Manager (Admin không cấp, Customer không phải nhân viên).");
             // An active Admin cannot be demoted while the system needs exactly one admin.
-            if (u.Role == Role.Admin && role != Role.Admin
-                && u.Status == UserStatus.Active
-                && userId != actorId)
+            if (u.Role == Role.Admin && u.Status == UserStatus.Active)
             {
                 var activeAdmins = await Repo.CountByConditionAsync(
                     x => x.Role == Role.Admin && x.Status == UserStatus.Active && x.DeletedAt == null);
                 if (activeAdmins <= 1)
-                    throw new ConflictException("Không thể hạ role admin cuối cùng đang active.");
+                    throw new ConflictException("Không thể hạ role admin duy nhất đang active.");
             }
             var before = new { u.Role, u.BranchId };
             u.Role = role;

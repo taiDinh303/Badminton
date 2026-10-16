@@ -136,10 +136,14 @@ namespace Services
                 // but "" is a valid, non-null value; ExecuteSqlRaw has no
                 // DBNull mapping).
                 string rawBody = Trunc(raw.RawResponse) ?? string.Empty;
+                // Allow Failed→Success too: a gateway may report a failure
+                // webhook first and then re-notify success for the same ref;
+                // the booking must still be confirmable instead of rotting
+                // until the pending-expiry job cancels it.
                 int claimed = await Uow.ExecuteSqlRawAsync(
                     "UPDATE Payments SET Status = 'Success', PaidAt = @p0, " +
                     "  RawResponse = @p1 " +
-                    "WHERE GatewayRef = @p2 AND Status = 'Pending'",
+                    "WHERE GatewayRef = @p2 AND Status IN ('Pending', 'Failed')",
                     DateTime.UtcNow, rawBody, refNo);
                 if (claimed == 0) return; // lost a same-instant race → skip
 
@@ -226,13 +230,6 @@ namespace Services
 
         // ── Refund: claim → gateway → record (race-safe + idempotent) ──────
 
-        /// <summary>
-        /// Per-booking lock that serializes concurrent refund attempts on the
-        /// same order, so the external gateway is told to refund at most once
-        /// and the "existing refund" fast path reliably sees a committed row.
-        /// (The deterministic <c>REFUND-&lt;bookingId&gt;</c> unique index is the
-        /// database-level backstop for cross-process callers.)
-        /// </summary>
         private static System.Threading.SemaphoreSlim GetRefundLock(int bookingId) =>
             _refundLocks.GetOrAdd(bookingId, _ => new System.Threading.SemaphoreSlim(1, 1));
 
@@ -390,11 +387,6 @@ namespace Services
             _http.HttpContext?.User.IsInRole("Admin") == true
             || _http.HttpContext?.User.IsInRole("Manager") == true;
 
-        /// <summary>
-        /// Branch-scope check (Q3=A: 1 manager = 1 cơ sở):
-        /// Admin has global access; Manager may only touch bookings at
-        /// their own BranchId.
-        /// </summary>
         private async Task AuthorizeStaffScope(Booking booking, int actorId)
         {
             var ctx = _http.HttpContext;

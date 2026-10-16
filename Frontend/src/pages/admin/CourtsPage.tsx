@@ -1,7 +1,17 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
-import { PageHeader, Card, Busy, Callout, Button, Field } from "../../components/ui";
+import { Pencil, Plus, Trash2, Star, Dumbbell } from "lucide-react";
+import {
+  Toolbar,
+  Card,
+  Busy,
+  Callout,
+  Button,
+  Field,
+  SelectField,
+  Modal,
+  StatusBadge,
+} from "../../components/ui";
 import { api, formatVnd, type Court } from "../../lib/api";
 
 interface CourtForm {
@@ -10,7 +20,7 @@ interface CourtForm {
   name: string;
   priceLowPeak: number;
   pricePeak: number;
-  weekendSurcharge: number; // stored as percent 0-100
+  weekendSurcharge: number; // percent 0-100
   capacity: number;
   surface: string;
   isActive?: boolean;
@@ -23,8 +33,8 @@ const emptyForm = (): CourtForm => ({
 });
 
 /**
- * Admin "Sân & giá" (docs 07 §4): CRUD courts across branches,
- * card grid of all courts, form with price + capacity + surface.
+ * Admin "Sân & giá" (docs 07 §4): card grid of all courts (giá peak/low,
+ * phụ thu, sức chứa, rating) + form modal (tạo / sửa).
  */
 export default function CourtsPage() {
   const [form, setForm] = useState<CourtForm | null>(null);
@@ -87,11 +97,11 @@ export default function CourtsPage() {
 
   return (
     <div>
-      <PageHeader
+      <Toolbar
         title="Sân & giá"
         subtitle="Quản lý sân, giá giờ thường / cao điểm, phụ thu cuối tuần"
-        right={
-          <Button variant="accent" onClick={() => { setEditId(null); setForm(emptyForm()); }}>
+        actions={
+          <Button variant="accent" size="sm" onClick={() => { setEditId(null); setForm(emptyForm()); }}>
             <Plus className="h-4 w-4" /> Thêm sân
           </Button>
         }
@@ -102,31 +112,52 @@ export default function CourtsPage() {
       {isFetching && courts.length === 0 ? (
         <Busy label="Đang tải danh sách sân…" />
       ) : (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {courts.map((c) => (
-            <Card key={c.id} className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-semibold">{c.name}</p>
-                  <p className="text-xs text-muted">{branchName(c.branchId)}</p>
+            <Card key={c.id} className="flex flex-col p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Dumbbell className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate font-bold">{c.name}</p>
+                      <p className="text-[11px] text-muted">{branchName(c.branchId)}</p>
+                    </div>
+                  </div>
                 </div>
-                <span className={c.isActive ? "text-xs text-state-success" : "text-xs text-state-error"}>
-                  {c.isActive ? "Đang hoạt động" : "Ngừng"}
+                <StatusBadge status={c.isActive ? "Open" : "Closed"} size="sm" />
+              </div>
+
+              {/* Price */}
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-bg p-2.5">
+                  <p className="text-[11px] font-medium text-muted">Giờ thường</p>
+                  <p className="text-sm font-bold tnum">{formatVnd(c.priceLowPeak)}</p>
+                </div>
+                <div className="rounded-lg bg-accent/15 p-2.5">
+                  <p className="text-[11px] font-medium text-muted">Cao điểm</p>
+                  <p className="text-sm font-bold tnum">{formatVnd(c.pricePeak)}</p>
+                </div>
+              </div>
+
+              {/* Meta */}
+              <div className="mt-3 flex items-center justify-between text-xs text-muted">
+                <span>Phụ thu CN {Math.round((c.weekendSurcharge as number) * 100)}% · Sức chứa {c.capacity}</span>
+                <span className="inline-flex items-center gap-1">
+                  <Star className="h-3.5 w-3.5 text-accent" />
+                  {c.ratingAvg != null ? c.ratingAvg.toFixed(1) : "Mới"}
                 </span>
               </div>
-              <div className="mt-3 flex items-center justify-between text-sm">
-                <span className="text-muted">Giờ thường: <span className="tnum font-medium text-fg">{formatVnd(c.priceLowPeak)}</span></span>
-                <span className="text-muted">Cao điểm: <span className="tnum font-medium text-fg">{formatVnd(c.pricePeak)}</span></span>
-              </div>
-              <p className="mt-1 text-xs text-muted">
-                Phụ thu CN {Math.round((c.weekendSurcharge as number) * 100)}% · Sức chứa {c.capacity} · {c.surface}
-              </p>
-              <div className="mt-3 flex gap-2">
-                <Button variant="ghost" className="h-8 min-h-0 px-2 text-xs" onClick={() => openEdit(c)}>
-                  <Pencil className="h-3 w-3" /> Sửa
+              <p className="mt-1 text-[11px] text-muted">{c.surface} · Mã {c.code}</p>
+
+              <div className="mt-4 flex gap-2 border-t border-border pt-3">
+                <Button variant="ghost" size="xs" className="flex-1" onClick={() => openEdit(c)}>
+                  <Pencil className="h-3 w-3" /> Chỉnh sửa
                 </Button>
-                <Button variant="danger" className="h-8 min-h-0 px-2 text-xs" onClick={() => del.mutate(c.id)}>
-                  <Trash2 className="h-3 w-3" /> Vô hiệu
+                <Button variant="danger" size="xs" className="flex-1" onClick={() => del.mutate(c.id)}>
+                  <Trash2 className="h-3 w-3" /> Xóa
                 </Button>
               </div>
             </Card>
@@ -135,23 +166,29 @@ export default function CourtsPage() {
       )}
 
       {form && (
-        <Card className="mt-5 border-primary p-4">
-          <p className="mb-3 font-semibold">{editId == null ? "Thêm sân mới" : "Chỉnh sửa sân"}</p>
-          <div className="grid gap-3 sm:grid-cols-2">
+        <Modal
+          title={editId == null ? "Thêm sân mới" : "Chỉnh sửa sân"}
+          onClose={() => { setForm(null); setEditId(null); }}
+          width="max-w-2xl"
+          footer={
+            <>
+              <Button variant="ghost" size="sm" onClick={() => { setForm(null); setEditId(null); }}>
+                Hủy
+              </Button>
+              <Button variant="accent" size="sm" disabled={create.isPending || update.isPending} onClick={submit}>
+                {create.isPending || update.isPending ? "Đang lưu…" : editId == null ? "Thêm sân" : "Lưu thay đổi"}
+              </Button>
+            </>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
             {editId == null && (
-              <label className="text-sm">
-                <span className="mb-1 block text-muted">Cơ sở</span>
-                <select
-                  value={form.branchId || ""}
-                  onChange={(e) => setForm({ ...form, branchId: Number(e.target.value) })}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 outline-none focus:border-primary"
-                >
-                  <option value="" disabled>Chọn cơ sở…</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </label>
+              <SelectField label="Cơ sở" value={form.branchId || ""} onChange={(e) => setForm({ ...form, branchId: Number(e.target.value) })}>
+                <option value="" disabled>Chọn cơ sở…</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </SelectField>
             )}
             <Field label="Mã sân" value={form.code} disabled={editId != null}
               onChange={(e) => setForm({ ...form, code: e.target.value })} />
@@ -169,14 +206,19 @@ export default function CourtsPage() {
             <Field label="Phụ thu cuối tuần (%, vd 20)" type="number" min={0} max={100}
               value={form.weekendSurcharge}
               onChange={(e) => setForm({ ...form, weekendSurcharge: Number(e.target.value) })} />
+            {editId != null && (
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={!!form.isActive}
+                  onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                  className="h-4 w-4 accent-primary"
+                />
+                Sân đang hoạt động
+              </label>
+            )}
           </div>
-          <div className="mt-4 flex gap-2">
-            <Button variant="accent" disabled={create.isPending || update.isPending} onClick={submit}>
-              {create.isPending || update.isPending ? "Đang lưu…" : editId == null ? "Thêm sân" : "Lưu"}
-            </Button>
-            <Button variant="ghost" onClick={() => { setForm(null); setEditId(null); }}>Hủy</Button>
-          </div>
-        </Card>
+        </Modal>
       )}
     </div>
   );
