@@ -27,12 +27,12 @@ Giải pháp `Backend/Badminton.slnx` gồm các project (module theo chức nă
 
 | Layer | Project | Trách nhiệm |
 | --- | --- | --- |
-| API | `Backend/Badminton/BadmintonBE.API.csproj` (API) | Controllers (1 thư mục/feature), Middleware, Jobs, `Program.cs` (auto-migrate + seed), DI. |
+| API | `Backend/API/Badminton.API.csproj` (API) | Controllers (1 thư mục/feature), Middleware, Jobs, `Program.cs` (auto-migrate + seed), DI. |
 | Services | `Services` + `Contract.Services` | Implementation + interface mỗi feature (Booking, Payment, Voucher, Pricing, …). |
 | Repository | `Repositories` + `Contract.Repositories` | `BadmintonBookingDbContext` (15 bảng + index), UnitOfWork, Migrations, Entity classes. |
 | Core | `Core` | `Base` (BaseEntity, BaseResponse, BaseException, StatusCode), `Domain` (`IPaymentGateway`), `Enums`, `Store` (JwtSettings), `Utils` (`HanoiTime`, `TimeHelper`, `EnumHelper`). |
 | DTO | `ModelViews` | Record DTO per feature (request/response, camelCase). |
-| Tests | `Badminton.Tests` | xUnit, integration trên SQL Server thật. |
+| Tests | `Backend/Tests/Badminton.Tests.csproj` | xUnit, integration trên SQL Server thật. |
 
 Mỗi module nghiệp vụ tách riêng trong `Services/<Feature>/`, interface định nghĩa ở `Contract.Services/<Feature>/`, DTO ở `ModelViews/<Feature>/`. `Services/DI/ServiceRegistration.cs` là composition root.
 
@@ -156,3 +156,9 @@ ID/ngày là ví dụ, phải lấy dữ liệu thật hợp lệ. Mutation crea
 | 500/network | Không kết luận create thất bại chắc chắn; xác minh idempotency trước gửi lại |
 
 CURRENT có lỗi quyền trả 409 và validation không đồng nhất; chuẩn hóa error contract là việc code cần kiểm thử HTTP, không chỉ sửa docs. Quyền endpoint cụ thể đọc controller và [01 §9](01-business-analysis.md#9-sai-khác-current-đã-xác-minh-trong-source).
+
+## 9. Quy ước project và namespace
+
+Thư mục layer API dùng project Badminton.API.csproj, namespace Badminton.API; test nằm trong Tests và giữ assembly/namespace Badminton.Tests. Core dùng Badminton.Core thay tiền tố M.Core cũ. RootNamespace được khai báo cho API/Core/Tests để file mới không sinh namespace lệch.
+
+Tên các tầng Contract.Services/Contract.Repositories/Services/Repositories/ModelViews được giữ. Solution groups dùng API/Services/Repositories/Models/Core/Tests, bỏ tiền tố số và nhãn SERVER. Xem [Backend/ARCHITECTURE.md](../Backend/ARCHITECTURE.md) và [10](10-setup-local.md).

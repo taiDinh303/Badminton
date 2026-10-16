@@ -1,13 +1,13 @@
 # 10 — Thiết lập và chạy local
 
 > Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **16/10/2026**.
-> Lệnh theo checkout Backend/Frontend; chưa chạy build/test trong lần sửa docs.
+> Lệnh theo cấu trúc API/Tests chuẩn hóa 16/10/2026. Kết quả build/test hiện hành ở worklog.
 
 ## 1. Yêu cầu
 
 - Windows + SQL Server Express/LocalDB cho integrated authentication hiện tại.
-- SDK build được net8.0 và đọc .slnx. Máy rà soát có SDK 9.0.317; ghi SDK 8.0 bất kỳ chưa đủ bảo đảm đọc solution.
-- Node tương thích engines Vite trong lockfile; máy rà soát có Node 24.21.0. Không mặc định Node 20 bất kỳ.
+- SDK 9.0 theo global.json (baseline 9.0.300, latestFeature); máy kiểm tra dùng 9.0.317. Project vẫn target net8.0, cần runtime ASP.NET Core/.NET 8 khi chạy/test.
+- Node 24 như CI hiện tại; máy kiểm tra dùng 24.21.0. Dùng npm ci theo lockfile.
 - Git; k6/dotnet-ef khi chạy kiểm tra tương ứng.
 
 Không cần Docker/Supabase local cho baseline SQL Server.
@@ -22,7 +22,7 @@ dotnet restore .\Backend\Badminton.slnx
 dotnet build .\Backend\Badminton.slnx -c Debug --no-restore
 ```
 
-build.ps1 và CI còn tham chiếu Badminton/ cũ; chưa dùng làm bằng chứng build. Script còn dừng API đang mở, nên dùng lệnh trực tiếp ở trên. Backlog DEV-01.
+Từ root có thể chạy .\build.ps1; thêm -Run để chạy API, -StopApi nếu cần dừng API trước build. Script dùng đường dẫn theo PSScriptRoot, không đổi thư mục terminal và không mặc định dừng process. CI đã dùng Backend/API và Backend/Tests, SDK 9 + runtime 8.
 
 ## 3. Cấu hình backend
 
@@ -43,7 +43,7 @@ Startup áp migration/seed trên DB đã chọn; dùng DB riêng dự án. `.env
 Backend từ root repo, sau đặt env:
 
 ```powershell
-dotnet run --project .\Backend\Badminton\BadmintonBE.API.csproj --launch-profile http
+dotnet run --project .\Backend\API\Badminton.API.csproj --launch-profile http
 ```
 
 API http://localhost:5131; Swagger Development http://localhost:5131/swagger. Profile http đặt Development.
@@ -60,7 +60,7 @@ SPA http://localhost:5173; proxy /api → :5131. Không cần VITE_API_URL khi d
 
 ## 5. Tài khoản và smoke test
 
-Tài khoản mẫu xem [SeedData.cs](../Backend/Badminton/SeedData.cs); manager SĐT 0900000002–0900000004, customer bắt đầu 0910000000. DB cũ không tự bảo đảm có seed mới.
+Tài khoản mẫu xem [SeedData.cs](../Backend/API/SeedData.cs); manager SĐT 0900000002–0900000004, customer bắt đầu 0910000000. DB cũ không tự bảo đảm có seed mới.
 
 1. Đăng nhập khách; đọc availability với ngày yyyy-MM-dd.
 2. Chọn sân/slot active, bắt đầu ít nhất 30 phút trong tương lai; tạo Pending.
@@ -76,7 +76,7 @@ Root repo:
 
 ```powershell
 $env:BADMINTON_TEST_SQLSERVER = '.\SQLEXPRESS'
-dotnet test .\Backend\Badminton.Tests\Badminton.Tests.csproj -c Debug
+dotnet test .\Backend\Tests\Badminton.Tests.csproj -c Debug
 ```
 
 Test tạo/xóa DB BadmintonTest_* trên instance chọn; không chạy server live. Suite service/EF chưa bao phủ middleware/JWT/controller.
@@ -94,7 +94,7 @@ Ghi lệnh/phiên bản/môi trường/kết quả vào [worklog](worklog.md). C
 
 | Lỗi | Kiểm tra |
 | --- | --- |
-| Không thấy project | Backend và tên BadmintonBE.API.csproj |
+| Không thấy project | Backend và tên Badminton.API.csproj |
 | SQL connect fail | Instance/quyền Windows/connection string |
 | DLL khóa | Dừng đúng process API dự án trước build |
 | Engine Vite | Node và engines node_modules/vite/package.json |
@@ -102,3 +102,14 @@ Ghi lệnh/phiên bản/môi trường/kết quả vào [worklog](worklog.md). C
 | Clock test lệch | HanoiTime.NowUtc reset; không test xung đột global clock |
 
 Không import SQL script rồi áp migrations cùng DB khi chưa đối chiếu lịch sử schema.
+
+## 8. EF tool và kiểm tra model
+
+Từ root repo:
+
+```powershell
+dotnet tool restore
+dotnet ef migrations has-pending-model-changes --project Backend/Repositories --startup-project Backend/API
+```
+
+Tool manifest pin dotnet-ef 8.0.28 theo EF packages. Design-time factory ưu tiên ConnectionStrings__BadmintonBooking, vẫn hỗ trợ biến legacy BadmintonBooking__ConnectionStrings__BadmintonBooking; kiểm tra model drift không áp migration. Khi thực sự update DB, xác nhận connection đúng môi trường trước chạy.

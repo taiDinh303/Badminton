@@ -5,7 +5,7 @@
 
 ## 1. Nguồn kiểm chứng
 
-[Program.cs](../Backend/Badminton/Program.cs), [launchSettings.json](../Backend/Badminton/Properties/launchSettings.json), [API client](../Frontend/src/lib/api.ts), [Vite config](../Frontend/vite.config.ts), [CI](../.github/workflows/ci.yml), [EF mapping](../Backend/Repositories/Context/DbContext.cs).
+[Program.cs](../Backend/API/Program.cs), [launchSettings.json](../Backend/API/Properties/launchSettings.json), [API client](../Frontend/src/lib/api.ts), [Vite config](../Frontend/vite.config.ts), [CI](../.github/workflows/ci.yml), [EF mapping](../Backend/Repositories/Context/BadmintonBookingDbContext.cs).
 
 ## 2. Hợp đồng biến môi trường CURRENT
 
@@ -24,7 +24,7 @@ Server không tự nạp file `.env`; copy `.env.example` chưa làm biến có 
 
 ## 3. Database và startup có ghi dữ liệu
 
-`Program.cs` dùng `UseSqlServer`, gọi `Database.Migrate()` trước phục vụ request; Development gọi `SeedData.Seed`. Không có toggle tắt migrate. Phải kiểm soát quyền DDL và migration khi nhiều instance startup.
+`Program.cs` dùng `UseSqlServer`, gọi `Database.Migrate()` trước phục vụ request; Development gọi `SeedData.Seed`. Không có toggle tắt migrate. Design-time factory dùng ConnectionStrings__BadmintonBooking (fallback biến legacy có tiền tố BadmintonBooking__). Phải kiểm soát quyền DDL và migration khi nhiều instance startup.
 
 Seed gồm admin, ba manager, 500 customer; manager thứ ba gán cùng cơ sở manager thứ hai. Không mô tả một manager cho mỗi trong ba cơ sở. Tài khoản mẫu chỉ dùng dev; không sao chép lên production.
 
@@ -32,7 +32,7 @@ Seed gồm admin, ba manager, 500 customer; manager thứ ba gán cùng cơ sở
 | --- | --- |
 | [EF migrations](../Backend/Repositories/Migrations) | Lịch sử nâng cấp runtime |
 | [BadmintonBooking.sql](../BadmintonBooking.sql) | Script tham khảo; chưa chứng minh đồng bộ migration |
-| [TestHost](../Backend/Badminton.Tests/TestHost.cs) | EnsureDeleted/EnsureCreated; không kiểm tra đường nâng cấp migration |
+| [TestHost](../Backend/Tests/TestHost.cs) | EnsureDeleted/EnsureCreated; không kiểm tra đường nâng cấp migration |
 
 ## 4. Giới hạn còn mở
 
@@ -58,8 +58,8 @@ OTP, Storage, scheduler, Redis và gateway thật đều PENDING; chưa có env 
 
 | Triệu chứng | Kiểm tra | Xác nhận sau xử lý |
 | --- | --- | --- |
-| Không thấy solution/project | Backend/Badminton.slnx; script/CI còn path cũ | Restore/build tìm đúng project |
-| Không đọc .slnx | SDK và hỗ trợ định dạng | Build solution, target vẫn net8.0 |
+| Không thấy solution/project | Backend/Badminton.slnx; API/Badminton.API.csproj; Tests/Badminton.Tests.csproj | Restore/build tìm đúng project |
+| Không đọc .slnx | SDK theo global.json, CI cài SDK 9/runtime 8 | Build solution, target vẫn net8.0 |
 | Chết trước Swagger | SQL instance/quyền/JWT/migration | Startup và API đọc DB đúng |
 | Browser 404 API | Base thiếu /api/v1; rewrite SPA nuốt /api | Request đến host API đúng |
 | CORS | Origin scheme/host/port, env chuỗi | Preflight và mutation browser đúng |

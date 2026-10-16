@@ -22,3 +22,7 @@ appsettings.Production.json
 .agnes/
 *.log
 Thumbs.db
+
+# Frontend dependencies and generated bundles
+node_modules/
+dist/

@@ -9,7 +9,7 @@ class Program
     static void Main(string[] args)
     {
         string path = args.Length >= 1 ? args[0]
-            : @"D:\BadmintonBooking\loadtest\k6_results.json";
+            : Path.Combine("loadtest", "k6_results.json");
         if (!File.Exists(path))
         {
             Console.WriteLine($"file not found: {path}");

@@ -1,7 +1,7 @@
 # 05 — Chiến lược kiểm thử và nghiệm thu Badminton
 
 > Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **16/10/2026**.
-> Rà source thấy 23 phương thức Fact; chưa chạy lại test trong nhiệm vụ docs. Worklog cũ ghi 23/23 pass là bằng chứng lịch sử, không phải kết quả lượt này.
+> Sau chuẩn hóa tên 16/10/2026: 23/23 test service/SQL Server pass trên instance local mặc định. Phạm vi/lệnh ở worklog; chưa là HTTP/browser/live nghiệm thu.
 
 ## 1. Phạm vi kiểm tra
 
@@ -20,7 +20,7 @@
 
 ## 2. Suite hiện có và giới hạn
 
-Nguồn [Badminton.Tests](../Backend/Badminton.Tests); TestHost tạo service provider, principal test và DB riêng; EnsureCreated thay vì migrate. 23 Fact gồm các file:
+Nguồn [Badminton.Tests](../Backend/Tests); TestHost tạo service provider, principal test và DB riêng; EnsureCreated thay vì migrate. 23 Fact gồm các file:
 
 | File | Coverage tìm thấy trong source |
 | --- | --- |
@@ -39,10 +39,10 @@ Hướng dẫn đầy đủ ở [10](10-setup-local.md). Từ root repo:
 
 ```powershell
 $env:BADMINTON_TEST_SQLSERVER = '.\SQLEXPRESS'
-dotnet test .\Backend\Badminton.Tests\Badminton.Tests.csproj -c Debug
+dotnet test .\Backend\Tests\Badminton.Tests.csproj -c Debug
 ```
 
-Test tạo/xóa BadmintonTest_*; chỉ dùng instance test/local. LocalDB override khi cài sẵn. DB ứng dụng không dùng EnsureDeleted. Build.ps1/CI hiện path cũ và cần DEV-01; đừng báo pipeline xanh từ mô tả cũ.
+Test tạo/xóa BadmintonTest_*; chỉ dùng instance test/local. LocalDB override khi cài sẵn. DB ứng dụng không dùng EnsureDeleted. Build.ps1/CI đã sửa path API/Tests và SDK; local checks được ghi ở worklog. CI remote cần đọc run thực tế sau push.
 
 Frontend từ Frontend: npm ci → npm run lint → npm run build. Chưa có npm test trong package.json. Migration test cần DB sạch và DB từ bản trước; service tests EnsureCreated không thay thế.
 

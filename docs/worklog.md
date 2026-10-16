@@ -7,11 +7,11 @@
 ## 1. Trạng thái hiện tại — rà source 16/10/2026, UTC+7
 
 - CURRENT: .NET 8/EF SQL Server/JWT BCrypt/BackgroundService/mock payment + React 19/Vite/Tailwind 4. Backend nằm trong Backend/, frontend trong Frontend/.
-- Tìm thấy 23 phương thức Fact ở 6 file test; chưa chạy build/test/API/browser/live trong nhiệm vụ sửa tài liệu này. Kết quả 23/23 của bản ghi 14/10 là lịch sử, chưa xác minh lại.
+- Chuẩn hóa API/Tests ngày 16/10: 23/23 test service/DB pass trên SQL Server local mặc định (BADMINTON_TEST_SQLSERVER=.). Backend build và EF model check đạt; chi tiết sự kiện mới bên dưới. Chưa nghiệm thu HTTP/browser/live.
 - Suite dùng DI/service và SQL Server thật, không phải suite HTTP middleware/controller. TestHost EnsureCreated không kiểm migration nâng cấp.
 - Production/PostgreSQL/OTP/Storage/gateway thật/scheduler phân tán chưa tích hợp; chưa xác nhận hosting Badminton live.
 - Rà source phát hiện P0 quyền hủy, scope manager, hủy–hoàn tiền, báo cáo; QR chỉ tile minh họa. Chi tiết và backlog chuẩn ở [08-plan.md](08-plan.md).
-- Có thay đổi local ngoài docs (cấu trúc Backend thay đường dẫn Badminton cũ); nhiệm vụ này bảo toàn, không chỉnh mã nguồn/build script/CI.
+- Người dùng đã yêu cầu chuẩn hóa tên và push toàn bộ ngày 16/10: đưa relocation Backend lên Git, đổi API/project/Core namespace/Tests/DbContext, cập nhật build/CI/docs. Giữ logic nghiệp vụ và schema.
 
 | Quyết định lịch sử | Hiện trạng rà source | Giới hạn |
 | --- | --- | --- |
@@ -74,13 +74,28 @@
 
 ### Kết quả lịch sử trong bản ghi cũ
 
-Ngày 14/10 ghi build 0 warning/error, 23 test pass với SQL Express; chưa có log runtime mới. Lệnh cũ dùng thư mục Badminton/ hiện không còn phù hợp. Lệnh hiện hành ở [10-setup-local.md](10-setup-local.md). Build script/CI còn path cũ, DEV-01 vẫn mở.
+Ngày 14/10 ghi build 0 warning/error, 23 test pass với SQL Express; chưa có log runtime mới. Lệnh cũ dùng thư mục Badminton/ hiện không còn phù hợp. Lệnh hiện hành ở [10-setup-local.md](10-setup-local.md). Lượt chuẩn hóa tên tiếp theo đã sửa script/CI và xác minh local; xem sự kiện mới nhất.
 
 ## 5. Việc tiếp theo
 
-Nguồn duy nhất quản lý backlog/ưu tiên/tiêu chí đóng: [08-plan.md §3](08-plan.md#3-backlog-và-phụ-thuộc). P0 đầu tiên là quyền hủy và manager scope, hủy–hoàn, giá lịch sử/báo cáo, sửa path CI và kiểm thử thực. Không bắt đầu load lớn trên ứng dụng chưa đóng lỗi quyền/tiền.
+Nguồn duy nhất quản lý backlog/ưu tiên/tiêu chí đóng: [08-plan.md §3](08-plan.md#3-backlog-và-phụ-thuộc). P0 đầu tiên là quyền hủy và manager scope, hủy–hoàn, giá lịch sử/báo cáo, kiểm thử HTTP/browser thực; path CI đã sửa trong lượt chuẩn hóa tên. Không bắt đầu load lớn trên ứng dụng chưa đóng lỗi quyền/tiền.
 
 ## 6. Log sự kiện (mới trên cùng)
+
+### 16/10/2026 — Chuẩn hóa tên backend và push toàn bộ theo yêu cầu
+
+- Chuyển cấu trúc Backend đang có vào Git; API/Badminton.API.csproj, namespace Badminton.API; Tests/Badminton.Tests.csproj; Core namespace Badminton.Core; Context/BadmintonBookingDbContext.cs. Solution groups và RootNamespace đồng bộ.
+- Giữ tên các tầng và database/migration/API contract; không sửa các lỗi nghiệp vụ SEC/PAY/REP trong nhiệm vụ đổi tên.
+- Sửa build.ps1 dùng path theo script, chỉ dừng API khi -StopApi; cập nhật CI SDK 9 + runtime 8, EF tool manifest 8.0.28, thêm lint/build frontend. global.json chọn SDK 9.0.300/latestFeature (máy dùng 9.0.317).
+- Cập nhật docs và helper loadtest theo đường dẫn mới; design-time factory hỗ trợ env chuẩn cùng alias legacy. Không chạy helper reset DB/load test.
+- dotnet build Backend/Badminton.slnx -c Debug: đạt, 0 error, 1 warning CS1998 có sẵn trong TimezoneGuardTests.
+- BADMINTON_TEST_SQLSERVER=. dotnet test Backend/Tests/Badminton.Tests.csproj -c Debug --no-build --no-restore: 23 passed, 0 failed/skipped.
+- dotnet tool restore: đạt; EF has-pending-model-changes: No changes have been made to the model since the last migration.
+- npm ci, npm run lint, npm run build: đạt. Vite cảnh báo chunk chính >500 KB minified (gzip 170.23 KB), chưa tối ưu bundle trong nhiệm vụ này. build.ps1 đạt (incremental 0 warning/error); full build trước đó có warning CS1998 như ghi trên.
+- Kiểm 110 link nội bộ, table/fence/H1, solution/ProjectReference và JSON config: 0 lỗi; PowerShell parser cho build.ps1/start_api.ps1 đạt. Git diff --check kiểm trước commit.
+- File cấu hình Visual Studio *.user không được đưa lại vào Git ở cấu trúc mới; giữ local theo .gitignore. Node_modules/dist/bin/obj không được commit.
+- Chưa chạy smoke API/browser/cloud hoặc load k6; CI remote chưa xác minh. Các P0 nghiệp vụ vẫn mở.
+
 
 ### 16/10/2026 — Chuẩn hóa bổ sung theo bộ docs Marixa, dành riêng Badminton
 
@@ -116,7 +131,7 @@ Nguồn duy nhất quản lý backlog/ưu tiên/tiêu chí đóng: [08-plan.md �
 | PAY-01 | CancelAsync đổi Cancelled nhưng không gọi RefundAsync; refund chỉ nhận Confirmed/Completed | Hủy đã trả mất đường refund hiện tại; chưa sửa |
 | DATA-01 | Lookup IdempotencyKey không bind actor/payload; ToView tính giá tham chiếu sân hiện tại | Retry có thể nhận kết quả sai; breakdown lịch sử lệch; chưa sửa |
 | REP-01 | Summary/Revenue dùng Bookings, refunds=0, peak tử số chưa IsPeak, DateTime.Now | KPI sai nghĩa/giờ; chưa sửa |
-| DEV-01 | build.ps1/ci.yml dùng Badminton/ thay Backend/ | Lệnh hiện tại không khớp checkout; chưa sửa |
+| DEV-01 | Đã chuẩn hóa API/Tests, build.ps1, CI, SDK/tools | Đã sửa và kiểm local; CI remote chưa xác minh |
 | UI-01 | Detail QrTile display-only, method mock, init success chưa điều hướng/refresh | Chưa nghiệm thu payment/QR thực; chưa sửa |
 | OPS-01 | global limiter chưa áp, CORS rỗng any-origin, request_id chưa tạo | Không coi cấu hình là bảo vệ/quan sát đã đầy đủ |
 | DEC-01/02/03 | Điểm/no-show khác đặc tả hoặc thiếu mốc | Cần owner chốt trước sửa chính sách |

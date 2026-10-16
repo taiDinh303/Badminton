@@ -6,12 +6,12 @@
  * ONE booking wins and the other 49 receive SLOT_CONFLICT (409). This is the
  * acceptance test that catches overbooking regressions.
  *
- * How to run (needs the API running on :5000 + a test JWT token):
- *   1. dotnet run --project Badminton/Badminton   (or deploy)
+ * How to run (needs the API running on :5131 + a test JWT token):
+ *   1. dotnet run --project Backend/API/Badminton.API.csproj   (or deploy)
  *   2. k6 run loadtest/concurrency_booking.js
  *
  * Override with env vars:
- *   API_URL      (default http://localhost:5000/api/v1)
+ *   API_URL      (default http://localhost:5131/api/v1)
  *   TEST_TOKEN   (a valid customer JWT access token)
  *   BRANCH_ID / COURT_ID / SLOT_ID / BOOKING_DATE
  */

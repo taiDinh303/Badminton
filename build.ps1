@@ -1,18 +1,19 @@
-﻿# Stop any running BadmintonBE.API (it locks bin DLLs and blocks MSBuild copy),
-# then build. Optionally -Run to start the API afterwards.
-param([switch]$Run)
+# Build the backend solution; optionally stop the API or run it afterwards.
+param([switch]$Run, [switch]$StopApi)
 
-Get-Process -Name BadmintonBE.API -ErrorAction SilentlyContinue | ForEach-Object {
-    Write-Host "Stopping API pid $($_.Id)"
-    Stop-Process -Id $_.Id -Force
+$ErrorActionPreference = 'Stop'
+$solutionPath = Join-Path $PSScriptRoot 'Backend/Badminton.slnx'
+$apiProjectPath = Join-Path $PSScriptRoot 'Backend/API/Badminton.API.csproj'
+
+if ($StopApi) {
+    Get-Process -Name 'Badminton.API', 'BadmintonBE.API' -ErrorAction SilentlyContinue |
+        Stop-Process -Force
 }
-Start-Sleep -Milliseconds 500
 
-Set-Location $PSScriptRoot\Badminton
-dotnet build Badminton.slnx -c Debug -v q
-if ($LASTEXITCODE -ne 0) { Write-Error "Build failed."; exit 1 }
+dotnet build $solutionPath -c Debug -v minimal
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if ($Run) {
-    Write-Host "Starting API on :5131 (Dev)"
-    dotnet run --project Badminton -c Debug --no-build
+    dotnet run --project $apiProjectPath -c Debug --no-build --launch-profile http
+    exit $LASTEXITCODE
 }

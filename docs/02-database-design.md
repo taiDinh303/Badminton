@@ -1,7 +1,7 @@
 # 02 — Thiết kế dữ liệu hệ thống đặt sân cầu lông
 
 > **Chủ tài liệu: Đinh Văn Tài.** Cập nhật: 16/10/2026.
-> **EN/AI:** This doc describes the **source EF Core model** (`Repositories/Context/DbContext.cs`, 15 tables).
+> **EN/AI:** This doc describes the **source EF Core model** (`Repositories/Context/BadmintonBookingDbContext.cs`, 15 tables).
 > **Dev baseline = SQL Server, `int` PKs, enums as `nvarchar`.** Production target = Supabase Postgres (target only; provider, migration and raw SQL must be reviewed).
 
 ## 1. Nguyên tắc dữ liệu
@@ -35,7 +35,7 @@ erDiagram
   USERS ||--o{ AUDIT_LOGS : acts
 ```
 
-> Bảng entity (C#) nằm ở `Contract.Repositories/Entity/*.cs`; mapping + index ở `Repositories/Context/DbContext.cs`. Các bảng dưới dùng **tên bảng DB** (singular/plural theo mapping).
+> Bảng entity (C#) nằm ở `Contract.Repositories/Entity/*.cs`; mapping + index ở `Repositories/Context/BadmintonBookingDbContext.cs`. Các bảng dưới dùng **tên bảng DB** (singular/plural theo mapping).
 
 ## 3. Bảng và trường cốt lõi (kết hợp thực tế)
 
@@ -62,7 +62,7 @@ erDiagram
 ## 4. Chống overbooking (critical)
 
 ```csharp
-// Repositories/Context/DbContext.cs — Bookings:
+// Repositories/Context/BadmintonBookingDbContext.cs — Bookings:
 e.HasIndex(x => new { x.CourtId, x.Date, x.SlotId })
    .IsUnique()
    .HasFilter("[Status] IN (N'Pending', N'Confirmed')")
@@ -98,7 +98,7 @@ Storage bucket (prod):
 | `user-uploads` | RLS (owner) | Avatar, ảnh review |
 | `receipts` | service-role only | Hóa đơn, proof thanh toán |
 
-## 7. Indexing strategy (đã code trong `DbContext.cs`)
+## 7. Indexing strategy (đã code trong `BadmintonBookingDbContext.cs`)
 
 | Index (DB name) | Loại | Mục đích |
 | --- | --- | --- |
@@ -126,7 +126,7 @@ Storage bucket (prod):
 
 ## 9. Migration, backup và retention
 
-Nguồn model là [DbContext](../Backend/Repositories/Context/DbContext.cs); lịch sử runtime ở [Migrations](../Backend/Repositories/Migrations). SQL root là tham khảo; TestHost dùng EnsureCreated nên không chứng minh migration nâng cấp chạy được.
+Nguồn model là [DbContext](../Backend/Repositories/Context/BadmintonBookingDbContext.cs); lịch sử runtime ở [Migrations](../Backend/Repositories/Migrations). SQL root là tham khảo; TestHost dùng EnsureCreated nên không chứng minh migration nâng cấp chạy được.
 
 Quy trình TARGET: kiểm tra drift → sinh/rà migration → thử DB sạch và nâng DB cũ → so số dòng/FK/index/tổng tiền/ledger → backup/restore → release tương thích ngược. Không chạy EnsureDeleted trên DB ứng dụng. Cutover PostgreSQL phải rà raw SQL, filtered index, generated key, transaction, provider error và chính sách quyền.
 

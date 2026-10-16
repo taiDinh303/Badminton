@@ -72,3 +72,9 @@ Nhiệm vụ: <kết quả cần đạt và phạm vi>.
 Thực hiện phần được giao, cập nhật docs chuyên trách và worklog.
 Báo kiểm tra đã chạy, kết quả, giới hạn và phần chưa hoàn tất.
 ```
+
+## 6. Quy ước tên và đường dẫn sau chuẩn hóa
+
+Backend/API chứa Badminton.API.csproj (namespace Badminton.API); Backend/Tests chứa Badminton.Tests.csproj; Core dùng namespace Badminton.Core. Giữ tên các tầng Services, Contract.Services, Repositories, Contract.Repositories, ModelViews, Core. File BadmintonBookingDbContext.cs khớp tên lớp; migration/table/API URL không đổi.
+
+Solution ở Backend/Badminton.slnx. SDK theo [global.json](../global.json), target ứng dụng vẫn net8.0; EF tool theo [.config/dotnet-tools.json](../.config/dotnet-tools.json). Build script và CI đã cập nhật path; kết quả kiểm tra mới ở [worklog](worklog.md).

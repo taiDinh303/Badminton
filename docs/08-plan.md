@@ -40,7 +40,7 @@
 | PAY-02 | P0 | Gateway thật, callback muộn/hoàn lỗi | Sandbox chữ ký sai/lặp/đảo thứ tự/timeout; đối soát |
 | DATA-01 | P0 | Idempotency theo actor/payload; giá lịch sử không tính lại từ cấu hình mới | Retry cùng yêu cầu cùng đơn; không lộ đơn actor khác |
 | REP-01 | P0 | Đúng doanh thu, hoàn tiền, peak occupancy và UTC+7 | Dataset Pending/Refunded/low/peak; tổng khớp payment |
-| DEV-01 | P0 | Sửa path build.ps1/CI; xác minh SDK đọc .slnx | Pipeline restore/build/model drift/test đúng checkout |
+| DEV-01 | Đã sửa 16/10 | API/Tests, build.ps1/CI, SDK và EF manifest chuẩn hóa | Local build/model/test đạt; CI remote cần xác minh run sau push |
 | QA-01 | P0 | HTTP/browser/load và assertion đúng | Bằng chứng [05](05-testing-strategy.md); 0 đặt trùng |
 | INF-01 | P0 khi chuyển cloud | Provider/migration/raw SQL/Auth/Storage | Phụ thuộc DEC-06; suite PostgreSQL test, restore |
 | OPS-01 | P1 | Jobs đa instance; rate-limit/lockout/cache/token khóa | Không xử lý trùng; tài khoản khóa không mutation |
