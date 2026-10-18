@@ -11,7 +11,8 @@ namespace ModelViews.Booking
         string Date, string SlotLabel, int PlayerCount, string Status,
         int TotalAmount, int DiscountAmount, int PayableAmount, int PointsEarned,
         int PointsRedeemed, int? GroupId, int? VoucherRedemptionId, DateTime CreatedAt,
-        string? UserName, BookingPriceBreakdown Price, string? CancelReason);
+        string? UserName, BookingPriceBreakdown Price, string? CancelReason,
+        string? QrToken = null, DateTime? CheckedInAt = null);
 
     public record CourtAvailabilityView(int CourtId, string CourtCode, string CourtName,
         int PriceLowPeak, int PricePeak, List<SlotView> Slots);

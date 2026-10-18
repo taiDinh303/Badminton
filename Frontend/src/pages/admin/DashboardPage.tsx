@@ -8,6 +8,8 @@ import {
   Gauge,
   BarChart3,
   PieChart,
+  Crown,
+  Hourglass,
 } from "lucide-react";
 import {
   api,
@@ -17,12 +19,14 @@ import {
   type OccupancyByDay,
 } from "../../lib/api";
 import { Card, KpiCard, Busy, Callout, BarChart, ProgressBar } from "../../components/ui";
+import { isAdmin, useAuth } from "../../store/auth";
 
 /**
  * Tổng quan (docs 07 §4): việc cần xử lý trước biểu đồ —
  * 4 KPI + doanh thu 7 ngày + lấp đầy + cảnh báo.
  */
 export default function DashboardPage() {
+  const isAdminUser = isAdmin(useAuth((s) => s.user));
   const { data: s, isFetching, isError, refetch } = useQuery({
     queryKey: ["report", "summary"],
     queryFn: () => api.admin.report.summary(),
@@ -33,14 +37,17 @@ export default function DashboardPage() {
   from.setDate(from.getDate() - 6);
   const fromStr = from.toISOString().slice(0, 10);
 
+  // Revenue/occupancy charts are [Admin] on the backend (docs 03 role matrix).
   const { data: revenue } = useQuery({
     queryKey: ["report", "revenue", fromStr, toStr],
     queryFn: () => api.admin.report.revenue(fromStr, toStr),
+    enabled: isAdminUser,
   });
 
   const { data: occupancy } = useQuery({
     queryKey: ["report", "occupancy", fromStr, toStr],
     queryFn: () => api.admin.report.occupancy(fromStr, toStr),
+    enabled: isAdminUser,
   });
 
   if (isFetching && !s)
@@ -106,8 +113,27 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* Charts */}
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          {/* FEAT KPI row */}
+          <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-2">
+            <KpiCard
+              icon={<Crown className="h-4 w-4" />}
+              label="Thân chủ Silver/Gold"
+              value={String(s.activeMembers ?? 0)}
+              sub="membership đang hiệu lực (điểm ×1.5–×2)"
+              tone="default"
+            />
+            <KpiCard
+              icon={<Hourglass className="h-4 w-4" />}
+              label="Đang chờ slot full"
+              value={String(s.waitingListCount ?? 0)}
+              sub="khách trong danh sách chờ (xếp hạng FIFO)"
+              tone="warning"
+            />
+          </div>
+
+          {/* Charts (Admin-only: backend gates these endpoints) */}
+          {isAdminUser ? (
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <Card className="p-5">
               <div className="mb-4 flex items-center justify-between">
                 <p className="flex items-center gap-1.5 text-sm font-bold">
@@ -188,6 +214,13 @@ export default function DashboardPage() {
               )}
             </Card>
           </div>
+          ) : (
+            <div className="mt-4">
+              <Callout tone="info">
+                Biểu đồ doanh thu & lấp đầy chỉ hiển thị cho vai trò Admin.
+              </Callout>
+            </div>
+          )}
 
           {/* Alert strip */}
           {(s.pendingCount > 0 || s.noShowCount30d > 0) && (

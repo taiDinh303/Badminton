@@ -155,6 +155,10 @@ export interface Booking {
   userName: string | null;
   price: PriceBreakdown;
   cancelReason: string | null;
+  /** FEAT check-in: server-generated 64-hex token shown as the QR (docs 03 §3). */
+  qrToken?: string | null;
+  checkedInAt?: string | null;
+  cancelledAt?: string | null;
 }
 
 export interface Paged<T> {
@@ -234,6 +238,77 @@ export interface ReportSummary {
   usersToday: number;
   activeCourts: number;
   activeBranches: number;
+  /** FEAT 4 — paid members currently active (Silver + Gold, not lapsed). */
+  activeMembers?: number;
+  /** FEAT 2 — count of customers currently waiting on a full slot. */
+  waitingListCount?: number;
+}
+
+// ── FEAT 4: Membership V2 ─────────────────────────────────────────────
+export type MembershipTier = "None" | "Silver" | "Gold";
+
+export interface MembershipView {
+  id: number;
+  fullName: string;
+  phoneNumber: string;
+  tier: MembershipTier;
+  expiresAt: string | null;
+  lapsed: boolean;
+  multiplier: number;
+}
+
+// ── FEAT 2: Waitlist ───────────────────────────────────────────────────
+export interface WaitlistEntryView {
+  id: number;
+  courtId: number;
+  courtName: string;
+  slotLabel: string;
+  date: string;
+  playerCount: number;
+  status: "Waiting" | "Promoted" | "Declined" | "Cancelled" | "Expired";
+  createdAt: string;
+  promotedBookingId: number | null;
+}
+
+// ── FEAT 7: Groups (docs 03 §7) ───────────────────────────────────────
+export interface GroupView {
+  id: number;
+  name: string;
+  ownerId: number;
+  ownerName: string;
+  maxMembers: number;
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface GroupMemberView {
+  userId: number;
+  fullName: string;
+  phoneNumber: string;
+  isCreator: boolean;
+  joinedAt: string;
+}
+
+// ── FEAT 8: Reviews (docs 03 §7) ──────────────────────────────────────
+export interface ReviewView {
+  id: number;
+  bookingId: number;
+  courtId: number;
+  courtName: string;
+  userName: string;
+  rating: number;
+  comment: string | null;
+  images: string[] | null;
+  createdAt: string;
+  flaggedRefunded: boolean;
+}
+
+// ── FEAT 9: Staff check-in (docs 03 §3) ───────────────────────────────
+export interface SlotCheckinView {
+  id: number;
+  bookingCode: string;
+  status: string;
+  checkedInAt: string | null;
 }
 
 export interface RevenueByDay {
@@ -506,6 +581,63 @@ export const api = {
           { from, to, branchId },
         ),
     },
+    // ── FEAT 4: Membership V2 (admin assigns paid tiers) ───────────
+    membership: {
+      assign: (userId: number, tier: MembershipTier) =>
+        request<unknown>("POST", "/admin/membership/assign", { userId, tier }),
+      members: () =>
+        request<MembershipView[]>("GET", "/admin/membership/members"),
+    },
+  },
+
+  // ── FEAT 2: Waitlist (customer joins a full slot's queue) ─────────
+  waitlist: {
+    join: (b: {
+      courtId: number;
+      slotId: number;
+      date: string;
+      playerCount?: number;
+      note?: string | null;
+    }) => request<unknown>("POST", "/waitlist/join", b),
+    leave: (id: number) => request<unknown>("POST", `/waitlist/${id}/leave`),
+    mine: () => request<WaitlistEntryView[]>("GET", "/waitlist/mine"),
+  },
+
+  // ── FEAT 7: Groups (docs 03 §7) ───────────────────────────────────
+  groups: {
+    mine: () => request<GroupView[]>("GET", "/groups/mine"),
+    create: (name: string, maxMembers = 10) =>
+      request<GroupView>("POST", "/groups", { name, maxMembers }),
+    join: (id: number) => request<unknown>("POST", `/groups/${id}/join`),
+    members: (id: number) =>
+      request<GroupMemberView[]>("GET", `/groups/${id}/members`),
+  },
+
+  // ── FEAT 8: Reviews (docs 03 §7) ──────────────────────────────────
+  reviews: {
+    forCourt: (courtId: number) =>
+      request<ReviewView[]>("GET", "/reviews", undefined, { courtId }),
+    create: (b: { bookingId: number; rating: number; comment?: string | null }) =>
+      request<ReviewView>("POST", "/reviews", b),
+  },
+
+  // ── FEAT 9: Staff check-in (docs 03 §3) ───────────────────────────
+  checkin: {
+    byCode: (code: string) =>
+      request<{ BookingId: number; Message: string }>(
+        "POST",
+        `/checkin/code/${encodeURIComponent(code)}`,
+      ),
+    byQr: (token: string) =>
+      request<{ BookingId: number; Message: string }>(
+        "POST",
+        `/checkin/qr/${encodeURIComponent(token)}`,
+      ),
+    slot: (courtId: number, date: string, slotLabel: string) =>
+      request<SlotCheckinView[]>(
+        "GET",
+        `/checkin/slot/${courtId}/${date}/${encodeURIComponent(slotLabel)}`,
+      ),
   },
 };
 
@@ -516,7 +648,29 @@ export function formatVnd(n: number): string {
 }
 
 export function formatDay(date: string): string {
-  // Backend sends DateOnly as "yyyy-MM-dd".
-  const [y, m, d] = date.split("-");
-  return `${d}/${m}/${y}`;
+  // Backend is mixed: BookingView.Date & membership are "dd/MM/yyyy" (Vietnamian
+  // day-first), report dates are "yyyy-MM-dd", some are ISO datetimes.
+  // Handle all three and always return dd/MM/yyyy.
+  if (!date) return "—";
+  const s = String(date).trim();
+  // Already day-first (dd/MM/yyyy or d/M/yyyy) → pass through.
+  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) return s;
+  // yyyy-MM-dd or ISO datetime → split on '-'.
+  if (s.includes("-")) {
+    const [y, m, d] = s.split("-");
+    if (y && m && d) return `${d}/${m}/${y}`;
+  }
+  // ISO datetime fallback.
+  const dt = new Date(s);
+  if (!Number.isNaN(dt.getTime())) {
+    return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
+  }
+  return s;
+}
+
+/** Backend slotLabel = "14:00 (02:00-03:00)" — the parenthetical is a
+ *  12-hour time that confuses users. Keep just the label portion ("14:00"). */
+export function slotLabelClean(label: string | null | undefined): string {
+  if (!label) return "—";
+  return label.includes("(") ? label.split("(")[0].trim() : label;
 }

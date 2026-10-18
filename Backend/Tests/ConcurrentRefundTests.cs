@@ -34,8 +34,6 @@ namespace Badminton.Tests
         {
             var bookingId = await MakeConfirmedBookingAsync(_h.Alice, _h.Court1, _h.SlotPeak);
 
-            // Two managers refund the same confirmed booking at the same
-            // instant, each in its own scope.
             var tasks = Enumerable.Range(0, 2).Select(_ =>
                 _h.RunScopeAsync(sp =>
                     sp.GetRequiredService<IPaymentService>()
@@ -43,8 +41,6 @@ namespace Badminton.Tests
                 .ToList();
             var results = await Task.WhenAll(tasks);
 
-            // Both return a refund view; the loser returns the winner's row
-            // (same deterministic GatewayRef), so no exception is expected.
             var refundRows = await _h.CountRefundRowsAsync(bookingId);
             Assert.Equal(1, refundRows);
 
@@ -71,26 +67,45 @@ namespace Badminton.Tests
             Assert.Equal(1, await _h.CountRefundRowsAsync(bookingId));
         }
 
-        [Fact(DisplayName = "Clawback mirrors the refund: points are reversed exactly once")]
-        public async Task Refund_ClawsBackPointsOnce()
+        [Fact(DisplayName = "DEC-01: a confirmed-but-never-completed booking banks no points, so a full refund claws back nothing")]
+        public async Task Refund_UncompletedBooking_HasNoPointsToClawback()
         {
             var bookingId = await MakeConfirmedBookingAsync(_h.Carol, _h.Court1, _h.SlotNoon);
 
-            // After confirm: 1 earn row.
-            var beforeRefund = await _h.CountPointRowsAsync(bookingId);
-            Assert.True(beforeRefund == 1, "expected exactly 1 earn row after confirm");
+            // DEC-01: points bank at Completed, not Confirmed → zero rows now.
+            Assert.Equal(0, await _h.CountPointRowsAsync(bookingId));
 
-            // A full refund (≥2h out) claws back the whole credit.
             await _h.RunScopeAsync(sp =>
-                sp.GetRequiredService<IPaymentService>().RefundAsync(bookingId, _h.Manager));
-            var afterRefund = await _h.CountPointRowsAsync(bookingId);
-            Assert.True(afterRefund == 2, $"expected earn+clawback=2 rows, got {afterRefund}");
+                sp.GetRequiredService<IPaymentService>()
+                 .RefundAsync(bookingId, _h.Manager, "full refund"));
+            Assert.Equal(0, await _h.CountPointRowsAsync(bookingId));
+        }
 
-            // A second refund must not add another clawback.
+        [Fact(DisplayName = "DEC-02: a completed booking's points are clawed back exactly once on a full refund")]
+        public async Task Refund_CompletedBooking_ClawsBackPointsOnce()
+        {
+            var bookingId = await MakeConfirmedBookingAsync(_h.Carol, _h.Court1, _h.SlotNoon);
+
+            // Complete it first (DEC-01 banks the earn row now).
+            _h.ActAs(_h.Manager, Role.Manager);
             await _h.RunScopeAsync(sp =>
-                sp.GetRequiredService<IPaymentService>().RefundAsync(bookingId, _h.Manager));
-            Assert.True(await _h.CountPointRowsAsync(bookingId) == 2,
-                "replayed refund must not add a second clawback row");
+                sp.GetRequiredService<IBookingService>()
+                 .MarkCompletedAsync(bookingId, _h.Manager, "da choi"));
+            Assert.Equal(1, await _h.CountPointRowsAsync(bookingId));
+
+            // A full refund (≥2h out) claws back the whole credit — once.
+            await _h.RunScopeAsync(sp =>
+                sp.GetRequiredService<IPaymentService>()
+                 .RefundAsync(bookingId, _h.Manager, "full refund test"));
+            Assert.Equal(2, await _h.CountPointRowsAsync(bookingId)); // earn + clawback
+
+            // A replayed refund must not add another clawback.
+            await _h.RunScopeAsync(sp =>
+                sp.GetRequiredService<IPaymentService>()
+                 .RefundAsync(bookingId, _h.Manager, "replay"));
+            var finalRows = await _h.CountPointRowsAsync(bookingId);
+            Assert.True(finalRows == 2,
+                $"replayed refund must not add a second clawback row (got {finalRows})");
         }
     }
 }

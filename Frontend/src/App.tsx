@@ -9,13 +9,16 @@ import {
   RouterProvider,
 } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useAuth, isStaff } from "./store/auth";
+import { useAuth, isStaff, isAdmin } from "./store/auth";
 import AuthPage from "./pages/AuthPage";
 import HomePage from "./pages/HomePage";
 import BookPage from "./pages/BookPage";
 import MyBookingsPage from "./pages/MyBookingsPage";
 import BookingDetailPage from "./pages/BookingDetailPage";
 import AccountPage from "./pages/AccountPage";
+import WaitlistPage from "./pages/WaitlistPage";
+import GroupsPage from "./pages/GroupsPage";
+import ReviewsPage from "./pages/ReviewsPage";
 import Layout from "./components/Layout";
 import { Busy } from "./components/ui";
 
@@ -27,6 +30,8 @@ const AdminVouchersPage = lazy(() => import("./pages/admin/VouchersPage"));
 const AdminSlotsPage = lazy(() => import("./pages/admin/SlotsPage"));
 const AdminStaffPage = lazy(() => import("./pages/admin/StaffPage"));
 const AdminAuditPage = lazy(() => import("./pages/admin/AuditPage"));
+const AdminMembershipPage = lazy(() => import("./pages/admin/MembershipPage"));
+const CheckinPage_ = lazy(() => import("./pages/CheckinPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -55,6 +60,21 @@ function Staff() {
   );
 }
 
+/**
+ * Admin-only guard (Manager vs Admin, docs 03 role matrix). The backend
+ * enforces [Authorize(Roles="Admin")] on staff/audit/membership — this just
+ * keeps the UI honest so a Manager never sees an action that will 403.
+ */
+function AdminOnly() {
+  const user = useAuth((s) => s.user);
+  if (!isAdmin(user)) return <Navigate to="/admin" replace />;
+  return (
+    <Suspense fallback={<div className="p-4"><Busy /></div>}>
+      <Outlet />
+    </Suspense>
+  );
+}
+
 const router = createBrowserRouter([
   { path: "/auth", element: <AuthPage /> },
   {
@@ -68,6 +88,11 @@ const router = createBrowserRouter([
           { path: "bookings", element: <MyBookingsPage /> },
           { path: "bookings/:id", element: <BookingDetailPage /> },
           { path: "account", element: <AccountPage /> },
+          // FEAT 2 — customer waitlist (protected, not staff-only).
+          { path: "waitlist", element: <WaitlistPage /> },
+          // FEAT 7/8 — customer groups + public reviews.
+          { path: "groups", element: <GroupsPage /> },
+          { path: "reviews", element: <ReviewsPage /> },
           {
             element: <Staff />,
             children: [
@@ -76,8 +101,18 @@ const router = createBrowserRouter([
               { path: "admin/courts", element: <AdminCourtsPage /> },
               { path: "admin/vouchers", element: <AdminVouchersPage /> },
               { path: "admin/slots", element: <AdminSlotsPage /> },
-              { path: "admin/staff", element: <AdminStaffPage /> },
-              { path: "admin/audit", element: <AdminAuditPage /> },
+              // FEAT 9 — staff check-in (Manager/Admin, docs 03 §3).
+              { path: "checkin", element: <CheckinPage_ /> },
+              // ── Admin-only: backend enforces [Authorize(Roles="Admin")] ──
+              {
+                element: <AdminOnly />,
+                children: [
+                  { path: "admin/staff", element: <AdminStaffPage /> },
+                  { path: "admin/audit", element: <AdminAuditPage /> },
+                  // FEAT 4 — admin membership management.
+                  { path: "admin/membership", element: <AdminMembershipPage /> },
+                ],
+              },
             ],
           },
         ],

@@ -30,7 +30,6 @@ namespace Badminton.Tests
         public int Carol { get; private set; }
         public int Manager { get; private set; }
         public int ManagerOtherBranch { get; private set; }
-
         public int BranchId { get; private set; }
         public int BranchId2 { get; private set; }
         public int Court1 { get; private set; }
@@ -47,10 +46,7 @@ namespace Badminton.Tests
         public TestHost(string? dbName = null)
         {
             DbName = dbName ?? "BadmintonTest_" + Guid.NewGuid().ToString("N")[..8];
-            // Local dev defaults to .\SQLEXPRESS. CI (GitHub's windows-latest
-            // runner) sets BADMINTON_TEST_SQLSERVER=(localdb)\MSSQLLocalDB,
-            // because the runner image only ships SQL Server LocalDB, not a
-            // SQL Express instance (see .github/workflows/ci.yml).
+
             var server =
                 Environment.GetEnvironmentVariable("BADMINTON_TEST_SQLSERVER")
                 ?? ".\\SQLEXPRESS";
@@ -82,6 +78,28 @@ namespace Badminton.Tests
             services.AddScoped<IVoucherService, VoucherService>();
             services.AddScoped<IBookingService, BookingService>();
             services.AddScoped<IPaymentService, PaymentService>();
+
+            // ── FEAT defaults: in-memory / no external HTTP in tests ───
+            services.AddLogging();
+            services.AddSingleton<Microsoft.Extensions.Options.IOptions<Badminton.Core.Store.NotifySettings>>(_ =>
+                Microsoft.Extensions.Options.Options.Create(
+                    new Badminton.Core.Store.NotifySettings { Channels = "log" }));
+            services.AddSingleton<Microsoft.Extensions.Options.IOptions<Badminton.Core.Store.MembershipSettings>>(_ =>
+                Microsoft.Extensions.Options.Options.Create(
+                    new Badminton.Core.Store.MembershipSettings
+                    {
+                        MultiplierSilver = 1.5m,
+                        MultiplierGold = 2.0m,
+                        SilverDays = 30,
+                        GoldDays = 90
+                    }));
+            services.AddSingleton<Contract.Services.Notify.INotifyChannel>(sp =>
+                new LogNotifyChannel(
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LogNotifyChannel>>()));
+            services.AddScoped<Contract.Services.Notify.INotifyService, NotifyService>();
+            services.AddScoped<Contract.Services.Membership.IMembershipService, MembershipService>();
+            services.AddScoped<Contract.Services.Booking.ICheckinService, CheckinService>();
+            services.AddScoped<Contract.Services.Waitlist.IWaitlistService, WaitlistService>();
 
             _services = services.BuildServiceProvider();
             EnsureCreatedAndSeed();
@@ -154,8 +172,6 @@ namespace Badminton.Tests
             Alice = alice.Id; Bob = bob.Id; Carol = carol.Id;
             Manager = manager.Id; ManagerOtherBranch = manager2.Id;
 
-            // Pin the ambient HTTP context to the manager by default so
-            // branch-scoped staff endpoints work out of the box.
             ActAs(Manager, Role.Manager);
         }
 
@@ -235,8 +251,7 @@ namespace Badminton.Tests
             var v = await RunScopeAsync(async sp =>
             {
                 var db = sp.GetRequiredService<BadmintonBookingDbContext>();
-                // ValidFrom/ValidUntil based on ACTUAL UTC today, not the
-                // pinned HanoiTime (which is at FutureDate = today+5 days).
+
                 var actualToday = DateOnly.FromDateTime(DateTime.UtcNow);
                 var row = new Voucher
                 {

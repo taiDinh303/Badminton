@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ScrollText } from "lucide-react";
 import {
@@ -9,7 +9,7 @@ import {
   Pagination,
   Callout,
 } from "../../components/ui";
-import { api, type AuditEntry, type Paged } from "../../lib/api";
+import { api, formatDay, type AuditEntry, type Paged } from "../../lib/api";
 import { VirtualizedTable, type Column } from "../../components/VirtualizedTable";
 
 const ENTITY_FILTERS = [
@@ -17,9 +17,45 @@ const ENTITY_FILTERS = [
   { key: "Booking", label: "Đặt chỗ" },
   { key: "Branch", label: "Cơ sở" },
   { key: "Court", label: "Sân" },
+  { key: "CourtDateStatus", label: "Bảo trì sân" },
   { key: "Voucher", label: "Voucher" },
   { key: "User", label: "Tài khoản" },
+  { key: "TimeSlot", label: "Khung giờ" },
+  { key: "Payment", label: "Thanh toán" },
+  { key: "Review", label: "Đánh giá" },
 ];
+
+/** Human label for a backend entity type (docs 03: mọi entity được audit). */
+const ENTITY_LABEL: Record<string, string> = {
+  Booking: "Đơn đặt",
+  Branch: "Cơ sở",
+  Court: "Sân",
+  CourtDateStatus: "Bảo trì sân",
+  Voucher: "Voucher",
+  User: "Tài khoản",
+  Staff: "Nhân viên",
+  TimeSlot: "Khung giờ",
+  Payment: "Thanh toán",
+  Review: "Đánh giá",
+};
+
+/**
+ * Decode an audit entityId. Most are plain ids, but the maintenance service
+ * logs a composite "courtId@yyyy-MM-dd" (docs 03 §8) → render it readably.
+ */
+function renderEntityId(entityType: string, entityId: string | null): ReactNode {
+  if (!entityId) return null;
+  if (entityType === "CourtDateStatus" && entityId.includes("@")) {
+    const [courtId, day] = entityId.split("@");
+    return (
+      <>
+        Sân #{courtId} · <span className="tnum">{formatDay(day)}</span>
+      </>
+    );
+  }
+  if (/^\d+$/.test(entityId)) return <span className="tnum">#{entityId}</span>;
+  return entityId;
+}
 
 function tsToVi(iso: string): string {
   if (!iso) return "—";
@@ -72,11 +108,12 @@ export default function AuditPage() {
     {
       key: "entity",
       label: "Đối tượng",
-      width: 160,
+      width: 200,
       render: (a) => (
-        <span className="inline-flex items-center gap-1 text-sm">
-          <ScrollText className="h-3.5 w-3.5 text-muted" />
-          {a.entityType}{a.entityId ? ` #${a.entityId}` : ""}
+        <span className="inline-flex items-center gap-1.5 text-sm">
+          <ScrollText className="h-3.5 w-3.5 shrink-0 text-muted" />
+          <span className="font-medium">{ENTITY_LABEL[a.entityType] ?? a.entityType}</span>
+          {renderEntityId(a.entityType, a.entityId)}
         </span>
       ),
     },

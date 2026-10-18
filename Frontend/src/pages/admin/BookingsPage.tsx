@@ -1,5 +1,13 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMemo, useState, type ReactNode } from "react";
+import { useMutation, useQuery, type UseMutationResult } from "@tanstack/react-query";
+import {
+  CalendarDays,
+  Dumbbell,
+  User,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import {
   StatusBadge,
   Busy,
@@ -7,9 +15,17 @@ import {
   Button,
   Toolbar,
   Pills,
+  Card,
 } from "../../components/ui";
-import { VirtualizedTable, type Column } from "../../components/VirtualizedTable";
-import { api, formatDay, formatVnd, type Booking } from "../../lib/api";
+import {
+  api,
+  formatDay,
+  formatVnd,
+  slotLabelClean,
+  type Booking,
+} from "../../lib/api";
+
+const PAGE_SIZE = 10;
 
 const STATUS_TABS: { key: string; label: string }[] = [
   { key: "", label: "Tất cả" },
@@ -22,8 +38,11 @@ const STATUS_TABS: { key: string; label: string }[] = [
 ];
 
 /**
- * Admin "Đặt chỗ" (docs 07 §4): paged, virtualized, filter theo trạng thái
- * + cơ sở + tìm kiếm (mã đơn / khách), thao tác Manager/Admin.
+ * Admin "Đặt chỗ" (docs 07 §4) — layout card (mỗi đơn 1 thẻ):
+ *   - Toolbar: tìm kiếm + lọc cơ sở + làm mới
+ *   - Pills: lọc theo trạng thái
+ *   - Card: badge trạng thái + mã đơn, 3 dòng (ngày, sân, khách),
+ *     thanh giá + nút thao tác theo trạng thái
  */
 export default function BookingsPage() {
   const [status, setStatus] = useState("");
@@ -43,13 +62,18 @@ export default function BookingsPage() {
         status || undefined,
         branchId === "" ? undefined : branchId,
         page,
-        100,
+        PAGE_SIZE,
       ),
     placeholderData: (prev) => prev,
   });
 
+  const onSite = useMutation({
+    mutationFn: (id: number) => api.payments.onSite(id),
+    onSuccess: () => refetch(),
+  });
   const complete = useMutation({
-    mutationFn: (id: number) => api.booking.complete(id, "Quản trị viên xác nhận"),
+    mutationFn: (id: number) =>
+      api.booking.complete(id, "Quản trị viên xác nhận"),
     onSuccess: () => refetch(),
   });
   const noShow = useMutation({
@@ -57,17 +81,18 @@ export default function BookingsPage() {
     onSuccess: () => refetch(),
   });
   const refund = useMutation({
-    mutationFn: (id: number) => api.payments.refund(id, "Quản trị hoàn tiền"),
+    mutationFn: (id: number) =>
+      api.payments.refund(id, "Quản trị hoàn tiền"),
     onSuccess: () => refetch(),
   });
 
   const err =
+    (onSite.error as Error | undefined)?.message ??
     (complete.error as Error | undefined)?.message ??
     (noShow.error as Error | undefined)?.message ??
     (refund.error as Error | undefined)?.message ??
     null;
 
-  // Client-side filter over the current page (search mã đơn / khách / sân).
   const items = useMemo(() => {
     const list = data?.items ?? [];
     if (!q.trim()) return list;
@@ -79,85 +104,38 @@ export default function BookingsPage() {
     );
   }, [data, q]);
 
-  const columns: Column<Booking>[] = [
-    {
-      key: "bookingCode",
-      label: "Mã đơn",
-      width: 130,
-      sortable: true,
-      render: (b) => <span className="font-mono text-xs font-semibold tnum">{b.bookingCode}</span>,
-    },
-    {
-      key: "date",
-      label: "Ngày · Giờ",
-      width: 160,
-      sortable: true,
-      render: (b) => <span className="text-muted tnum">{formatDay(b.date)} · {b.slotLabel}</span>,
-    },
-    { key: "courtName", label: "Sân", width: 140, sortable: true, render: (b) => b.courtName },
-    {
-      key: "userName",
-      label: "Khách",
-      width: 150,
-      render: (b) => b.userName ?? <span className="text-muted">—</span>,
-    },
-    {
-      key: "payableAmount",
-      label: "Thanh toán",
-      width: 120,
-      align: "right",
-      sortable: true,
-      render: (b) => <span className="tnum font-semibold">{formatVnd(b.payableAmount)}</span>,
-    },
-    { key: "status", label: "Trạng thái", width: 150, render: (b) => <StatusBadge status={b.status} size="sm" /> },
-    {
-      key: "actions",
-      label: "Thao tác",
-      width: 260,
-      align: "right",
-      render: (b) => (
-        <div className="flex items-center justify-end gap-1.5">
-          {b.status === "Confirmed" ? (
-            <>
-              <Button variant="ghost" size="xs" onClick={() => complete.mutate(b.id)} disabled={complete.isPending}>
-                Hoàn thành
-              </Button>
-              <Button variant="ghost" size="xs" onClick={() => noShow.mutate(b.id)} disabled={noShow.isPending}>
-                No-show
-              </Button>
-              <Button variant="danger" size="xs" onClick={() => refund.mutate(b.id)} disabled={refund.isPending}>
-                Hoàn tiền
-              </Button>
-            </>
-          ) : (
-            <span className="text-xs text-muted">—</span>
-          )}
-        </div>
-      ),
-    },
-  ];
+  const totalPages = data?.totalPages ?? 1;
 
   return (
     <div>
       <Toolbar
         title="Đặt chỗ"
         subtitle="Tất cả đơn của mọi khách (quản trị)"
-        search={{ value: q, onChange: (v) => { setQ(v); }, placeholder: "Tìm mã đơn, khách, sân…" }}
+        search={{
+          value: q,
+          onChange: setQ,
+          placeholder: "Tìm mã đơn, khách, sân…",
+        }}
         actions={
           <>
             <select
               value={branchId}
-              onChange={(e) => { setBranchId(e.target.value === "" ? "" : Number(e.target.value)); setPage(1); }}
+              onChange={(e) => {
+                setBranchId(e.target.value === "" ? "" : Number(e.target.value));
+                setPage(1);
+              }}
               aria-label="Lọc theo cơ sở"
               className="h-9 rounded-lg border border-border bg-card px-3 text-sm text-fg outline-none focus:border-primary"
             >
               <option value="">Tất cả cơ sở</option>
               {branches.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
               ))}
             </select>
             <Button variant="ghost" size="sm" onClick={() => refetch()}>
-              Làm mới
+              <RefreshCw className="h-4 w-4" /> Làm mới
             </Button>
           </>
         }
@@ -167,7 +145,10 @@ export default function BookingsPage() {
         <Pills
           options={STATUS_TABS.map((t) => ({ key: t.key, label: t.label }))}
           value={status as (typeof STATUS_TABS)[number]["key"]}
-          onChange={(v) => { setStatus(v); setPage(1); }}
+          onChange={(v) => {
+            setStatus(v);
+            setPage(1);
+          }}
           ariaLabel="Lọc theo trạng thái"
         />
       </div>
@@ -175,33 +156,223 @@ export default function BookingsPage() {
       <div className="mt-4">
         {isFetching && !data ? (
           <Busy label="Đang tải đơn…" />
+        ) : items.length === 0 ? (
+          <Callout tone="info">Không có đơn nào khớp bộ lọc.</Callout>
         ) : (
-          <>
-            <VirtualizedTable
-              rows={items}
-              columns={columns}
-              rowKey={(b) => b.id}
-              maxHeight={520}
-              emptyLabel="Không có đơn nào khớp bộ lọc."
-            />
-            <div className="mt-3 flex items-center justify-between text-sm text-muted">
-              <span className="tnum">
-                {items.length} đơn · Trang {data?.currentPage ?? page}/{data?.totalPages ?? 1}
-              </span>
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" disabled={page <= 1 || !data?.hasPreviousPage} onClick={() => setPage((p) => p - 1)}>
-                  Trước
-                </Button>
-                <Button variant="ghost" size="sm" disabled={page >= (data?.totalPages ?? 1) || !data?.hasNextPage} onClick={() => setPage((p) => p + 1)}>
-                  Sau
-                </Button>
-              </div>
-            </div>
-          </>
+          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+            {items.map((b) => (
+              <BookingCard
+                key={b.id}
+                b={b}
+                onSite={onSite}
+                complete={complete}
+                noShow={noShow}
+                refund={refund}
+              />
+            ))}
+          </div>
         )}
+
+        {/* Pagination */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-muted">
+          <span className="tnum">
+            {items.length} đơn · Trang {data?.currentPage ?? page}/{totalPages}
+          </span>
+          <div className="flex items-center gap-1">
+            <PageBtn
+              disabled={page <= 1 || !data?.hasPreviousPage}
+              onClick={() => setPage(1)}
+              ariaLabel="Trang đầu"
+            >
+              «
+            </PageBtn>
+            <PageBtn
+              disabled={page <= 1 || !data?.hasPreviousPage}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              ariaLabel="Trang trước"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </PageBtn>
+            {pageNumbers(page, totalPages).map((n, i) =>
+              n === "…" ? (
+                <span key={`gap-${i}`} className="px-1.5 text-muted">
+                  …
+                </span>
+              ) : (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setPage(n)}
+                  aria-current={page === n ? "page" : undefined}
+                  className={
+                    "flex h-8 min-w-8 items-center justify-center rounded-lg px-1.5 text-sm font-semibold transition-colors tnum " +
+                    (page === n
+                      ? "bg-primary text-white"
+                      : "border border-border bg-card text-muted hover:text-fg")
+                  }
+                >
+                  {n}
+                </button>
+              ),
+            )}
+            <PageBtn
+              disabled={page >= totalPages || !data?.hasNextPage}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              ariaLabel="Trang sau"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </PageBtn>
+            <PageBtn
+              disabled={page >= totalPages || !data?.hasNextPage}
+              onClick={() => setPage(totalPages)}
+              ariaLabel="Trang cuối"
+            >
+              »
+            </PageBtn>
+          </div>
+        </div>
       </div>
 
       {err && <Callout tone="error" className="mt-3">{err}</Callout>}
     </div>
+  );
+}
+
+/** Số trang cần hiển thị: đầu 1–2, … quanh trang hiện, … cuối. */
+function pageNumbers(page: number, totalPages: number): (number | "…")[] {
+  if (totalPages <= 7)
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  const pages: (number | "…")[] = [1];
+  const lo = Math.max(2, page - 1);
+  const hi = Math.min(totalPages - 1, page + 1);
+  if (lo > 2) pages.push("…");
+  for (let i = lo; i <= hi; i++) pages.push(i);
+  if (hi < totalPages - 1) pages.push("…");
+  pages.push(totalPages);
+  return pages;
+}
+
+function PageBtn({
+  children,
+  disabled,
+  onClick,
+  ariaLabel,
+}: {
+  children: ReactNode;
+  disabled: boolean;
+  onClick: () => void;
+  ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      aria-label={ariaLabel}
+      className="flex h-8 min-w-8 items-center justify-center rounded-lg border border-border bg-card px-1.5 text-sm text-muted transition-colors hover:text-fg disabled:opacity-40"
+    >
+      {children}
+    </button>
+  );
+}
+
+// ── Booking card ──────────────────────────────────────────────────────
+function BookingCard({
+  b,
+  onSite,
+  complete,
+  noShow,
+  refund,
+}: {
+  b: Booking;
+  onSite: UseMutationResult<unknown, Error, number, unknown>;
+  complete: UseMutationResult<Booking, Error, number, unknown>;
+  noShow: UseMutationResult<Booking, Error, number, unknown>;
+  refund: UseMutationResult<unknown, Error, number, unknown>;
+}) {
+  const busy =
+    onSite.isPending ||
+    complete.isPending ||
+    noShow.isPending ||
+    refund.isPending;
+
+  return (
+    <Card className="p-4">
+      {/* Header: status + code */}
+      <div className="flex items-center justify-between gap-2">
+        <StatusBadge status={b.status} />
+        <span className="font-mono text-xs font-semibold text-muted tnum">
+          {b.bookingCode}
+        </span>
+      </div>
+
+      {/* Meta: date · court · customer */}
+      <dl className="mt-3 space-y-2 text-sm">
+        <div className="flex items-center gap-2 text-muted">
+          <CalendarDays className="h-4 w-4 shrink-0" />
+          <span className="tnum">
+            {formatDay(b.date)} · {slotLabelClean(b.slotLabel)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-muted">
+          <Dumbbell className="h-4 w-4 shrink-0" />
+          <span className="text-fg">{b.courtName}</span>
+        </div>
+        <div className="flex items-center gap-2 text-muted">
+          <User className="h-4 w-4 shrink-0" />
+          <span className="text-fg">
+            {b.userName ?? <span className="text-muted">—</span>}
+          </span>
+        </div>
+      </dl>
+
+      {/* Price */}
+      <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+        <span className="text-xs text-muted">Thanh toán</span>
+        <span className="text-base font-bold tnum">
+          {formatVnd(b.payableAmount)}
+        </span>
+      </div>
+
+      {/* Actions */}
+      {b.status === "Pending" ? (
+        <Button
+          variant="primary"
+          size="sm"
+          className="mt-3 w-full"
+          onClick={() => onSite.mutate(b.id)}
+          disabled={busy}
+        >
+          {onSite.isPending ? "Đang xác nhận…" : "Xác nhận tại quầy"}
+        </Button>
+      ) : b.status === "Confirmed" ? (
+        <div className="mt-3 grid grid-cols-3 gap-1.5">
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => complete.mutate(b.id)}
+            disabled={busy}
+          >
+            Hoàn thành
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => noShow.mutate(b.id)}
+            disabled={busy}
+          >
+            No-show
+          </Button>
+          <Button
+            variant="danger"
+            size="xs"
+            onClick={() => refund.mutate(b.id)}
+            disabled={busy}
+          >
+            Hoàn tiền
+          </Button>
+        </div>
+      ) : null}
+    </Card>
   );
 }

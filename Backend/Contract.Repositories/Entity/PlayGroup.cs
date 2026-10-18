@@ -8,7 +8,6 @@ namespace Contract.Repositories.Entity
         public int OwnerId { get; set; }
         public User? Owner { get; set; }
         public int MaxMembers { get; set; } = 10;
-
         public ICollection<GroupMember> Members { get; set; } = new List<GroupMember>();
     }
 }

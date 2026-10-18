@@ -25,6 +25,12 @@ namespace Badminton.Tests
                  .MarkCompletedAsync(view!.Id, _h.Manager, "da choi"));
             Assert.Equal("Completed", completed.Status);
 
+            // DEC-01: completing the booking banks its points.
+            var balance = await _h.RunScopeAsync(sp =>
+                sp.GetRequiredService<Contract.Services.Points.IPointService>()
+                 .GetBalanceAsync(_h.Alice));
+            Assert.True(balance > 0, "completing a paid booking must bank points");
+
             // Re-marking a Completed booking must fail.
             Exception? err = null;
             try
@@ -37,17 +43,28 @@ namespace Badminton.Tests
             Assert.IsType<Badminton.Core.Base.ConflictException>(err);
         }
 
-        [Fact(DisplayName = "3 no-shows in one month block the customer next month (Q2=A)")]
+        [Fact(DisplayName = "3 no-shows in one month block the customer next month (Q2=A, DEC-03)")]
         public async Task ThreeNoShows_InAMonth_BookingsBlocked()
         {
             var slots = new[] { _h.SlotMorning, _h.SlotNoon, _h.SlotPeak };
+            var starts = new[] { new TimeOnly(10, 0), new TimeOnly(12, 0), new TimeOnly(18, 0) };
+            var hostNowUtc = HanoiTime.NowUtc; // the default 09:00 Hanoi pin
+            var offset = HanoiTime.FixedOffset;
+
             for (var i = 0; i < 3; i++)
             {
                 var b = await _h.MakeConfirmedBookingAsync(_h.Bob, _h.Court1, slots[i]);
+
+                // 1 minute past this slot's start → the no-show guard passes.
+                var targetHanoi = HanoiTime.SlotStart(_h.FutureDate, starts[i]).AddMinutes(1);
+                var utcInstant = targetHanoi - offset;
+                HanoiTime.NowUtc = () => DateTime.SpecifyKind(utcInstant, DateTimeKind.Utc);
                 _h.ActAs(_h.Manager, Role.Manager);
                 await _h.RunScopeAsync(sp =>
                     sp.GetRequiredService<IBookingService>()
                      .MarkNoShowAsync(b!.Id, _h.Manager));
+
+                HanoiTime.NowUtc = hostNowUtc; // back to default for next booking
             }
 
             var bob = await _h.GetUserAsync(_h.Bob);
@@ -55,15 +72,14 @@ namespace Badminton.Tests
             Assert.True(bob.NoShowLimited);
             Assert.NotNull(bob.NoShowLimitedPeriod);
 
-            var blockedMonth = bob.NoShowLimitedPeriod!.Value;
-            var savedNowUtc = HanoiTime.NowUtc;
+            // Inside the blocked month the customer cannot book again.
+            var savedNow = HanoiTime.NowUtc;
             try
             {
-                // 09:00 Hanoi on the 15th of the blocked month = 02:00 UTC.
+                var blockedMonth = bob.NoShowLimitedPeriod!.Value;
                 HanoiTime.NowUtc = () => new DateTime(
                     blockedMonth.Year, blockedMonth.Month, 15, 2, 0, 0,
-                    DateTimeKind.Utc);
-                // Booking date = 21st of the blocked month (after "now", within 30 days).
+                    DateTimeKind.Utc); // 09:00 Hanoi on the 15th of blocked month
                 var bookDate = blockedMonth.AddDays(20);
                 Exception? blocked = null;
                 try
@@ -78,8 +94,20 @@ namespace Badminton.Tests
             }
             finally
             {
-                HanoiTime.NowUtc = savedNowUtc; // restore the host's pinned clock
+                HanoiTime.NowUtc = savedNow;
             }
+        }
+
+        [Fact(DisplayName = "DEC-03: a no-show before the slot has started is rejected")]
+        public async Task MarkNoShow_BeforeSlotStart_IsRejected()
+        {
+            var view = await _h.MakeConfirmedBookingAsync(_h.Bob, _h.Court1, _h.SlotPeak);
+            // Pinned host clock is 09:00 Hanoi; SlotPeak starts 18:00 → 9h out.
+            _h.ActAs(_h.Manager, Role.Manager);
+            var err = await Record.ExceptionAsync(() => _h.RunScopeAsync(sp =>
+                sp.GetRequiredService<IBookingService>()
+                 .MarkNoShowAsync(view!.Id, _h.Manager)));
+            Assert.IsType<Badminton.Core.Base.ConflictException>(err);
         }
 
         [Fact(DisplayName = "Redeeming 5,000 points deducts 100k VND and 5,000 pts from balance (Q4=A)")]
@@ -101,7 +129,7 @@ namespace Badminton.Tests
             Assert.Equal(0, balance); // 5,000 seeded − 5,000 redeemed
         }
 
-        [Fact(DisplayName = "A full refund restores redeemed points (Q4=A mirror)")]
+        [Fact(DisplayName = "A full refund restores redeemed points (Q4=A mirror, DEC-02)")]
         public async Task FullRefund_RestoresRedeemedPoints()
         {
             await _h.CountPointsIntoAsync(_h.Carol, 3_000, "seed");
@@ -116,8 +144,6 @@ namespace Badminton.Tests
                 sp.GetRequiredService<IPaymentService>()
                  .RefundAsync(view!.Id, _h.Manager, "full refund test"));
 
-            // Balance: 3,000 seed − 1,000 redeemed + 1,000 restored
-            //        + earned(payable 90,000) − clawed-back(90,000) = 3,000 net.
             var balance = await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<Contract.Services.Points.IPointService>()
                  .GetBalanceAsync(_h.Carol));

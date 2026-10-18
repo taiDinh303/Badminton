@@ -1,10 +1,12 @@
 using Badminton.Core.Base;
 using Badminton.Core.Store;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
 namespace Badminton.API.Controllers
 {
+    [EnableRateLimiting("public")]
     public abstract class BaseApiController : ControllerBase
     {
         protected int CurrentUserId =>

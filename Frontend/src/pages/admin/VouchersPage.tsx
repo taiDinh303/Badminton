@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Plus, Ticket, Trash2 } from "lucide-react";
+import { Plus, Ticket, Lock } from "lucide-react";
 import {
   Toolbar,
   Busy,
@@ -12,7 +12,8 @@ import {
   StatusBadge,
   ProgressBar,
 } from "../../components/ui";
-import { api, formatVnd, type Voucher } from "../../lib/api";
+import { api, formatDay, formatVnd, type Voucher } from "../../lib/api";
+import { isAdmin, useAuth } from "../../store/auth";
 import { VirtualizedTable, type Column } from "../../components/VirtualizedTable";
 
 interface VoucherForm {
@@ -35,10 +36,14 @@ const emptyForm = (): VoucherForm => ({
  */
 export default function VouchersPage() {
   const [form, setForm] = useState<VoucherForm | null>(null);
+  // Voucher create/deactivate are [Admin] in the backend; a Manager can only list.
+  const canManage = isAdmin(useAuth((s) => s.user));
 
+  // Show ALL vouchers (active + deactivated) so "Vô hiệu" flips the row to a
+  // locked state instead of making it vanish (it was hidden by activeOnly).
   const { data: vouchers = [], isFetching, refetch } = useQuery({
     queryKey: ["vouchers"],
-    queryFn: () => api.vouchers.list(true),
+    queryFn: () => api.vouchers.list(false),
   });
 
   const create = useMutation({
@@ -99,9 +104,8 @@ export default function VouchersPage() {
       key: "used",
       label: "Đã dùng",
       width: 180,
-      align: "right",
       render: (v) => (
-        <div className="w-full pr-2">
+        <div className="w-40">
           <div className="mb-1 text-xs tnum text-muted">
             {v.usedQty} / {v.totalQty}
           </div>
@@ -113,13 +117,17 @@ export default function VouchersPage() {
       key: "validUntil",
       label: "Hết hạn",
       width: 120,
-      render: (v) => <span className="text-muted tnum">{v.validUntil ?? "Vĩnh viễn"}</span>,
+      render: (v) => (
+        <span className="text-muted tnum">{v.validUntil ? formatDay(v.validUntil) : "Vĩnh viễn"}</span>
+      ),
     },
     {
       key: "state",
       label: "Trạng thái",
       width: 120,
-      render: (v) => <StatusBadge status={v.isActive ? "Open" : "Closed"} size="sm" />,
+      render: (v) => (
+        <StatusBadge status={v.isActive ? "Open" : "Locked"} size="sm" />
+      ),
     },
     {
       key: "actions",
@@ -127,14 +135,23 @@ export default function VouchersPage() {
       width: 120,
       align: "right",
       render: (v) => (
-        <Button
-          variant="danger"
-          size="xs"
-          onClick={() => deactivate.mutate(v.id)}
-          disabled={!v.isActive}
-        >
-          <Trash2 className="h-3 w-3" /> Vô hiệu
-        </Button>
+        canManage ? (
+          v.isActive ? (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => deactivate.mutate(v.id)}
+            >
+              <Lock className="h-3 w-3" /> Khóa
+            </Button>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-xs text-muted">
+              <Lock className="h-3 w-3" /> Đã khóa
+            </span>
+          )
+        ) : (
+          <span className="text-xs text-muted">—</span>
+        )
       ),
     },
   ];
@@ -145,9 +162,11 @@ export default function VouchersPage() {
         title="Voucher"
         subtitle="Mã giảm giá cho khách hàng"
         actions={
-          <Button variant="accent" size="sm" onClick={() => setForm(emptyForm())}>
-            <Plus className="h-4 w-4" /> Tạo voucher
-          </Button>
+          canManage ? (
+            <Button variant="accent" size="sm" onClick={() => setForm(emptyForm())}>
+              <Plus className="h-4 w-4" /> Tạo voucher
+            </Button>
+          ) : undefined
         }
       />
 

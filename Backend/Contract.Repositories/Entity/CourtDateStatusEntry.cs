@@ -7,7 +7,6 @@ namespace Contract.Repositories.Entity
         public int CourtId { get; set; }
         public Court? Court { get; set; }
         public DateOnly Date { get; set; }
-
         public CourtDateStatus Status { get; set; } = CourtDateStatus.Open;
         public string? Note { get; set; }
         public int? CreatedById { get; set; }

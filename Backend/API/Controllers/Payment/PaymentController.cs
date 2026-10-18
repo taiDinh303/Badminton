@@ -12,25 +12,31 @@ namespace Badminton.API.Controllers
     public class PaymentController : BaseApiController
     {
         private readonly IPaymentService _svc;
-        public PaymentController(IPaymentService svc) => _svc = svc;
+        private readonly Badminton.Core.Domain.IMetricsReporter? _metrics;
+        public PaymentController(IPaymentService svc,
+            Badminton.Core.Domain.IMetricsReporter? metrics = null)
+        {
+            _svc = svc;
+            _metrics = metrics;
+        }
 
         [HttpPost("init")]
         [Authorize]
         public async Task<IActionResult> Init(InitPaymentRequest request) =>
             Resp(await _svc.InitAsync(request, CurrentUserId), "Khởi tạo thanh toán thành công.");
 
-        /// <summary>
-        /// Gateway webhook callback. Returns 2xx so the provider stops retrying
-        /// when the payload was accepted or was an idempotent duplicate;
-        /// returns 4xx when the payload was rejected (bad signature / unknown
-        /// ref) so the provider does NOT keep hammering a permanently-broken
-        /// call.
-        /// </summary>
         [HttpPost("webhook/{provider}")]
         [AllowAnonymous]
         public async Task<IActionResult> Webhook(string provider, [FromBody] PaymentWebhookRequest raw)
         {
             var result = await _svc.HandleWebhookAsync(provider, raw);
+            try
+            {
+                var outcome = result.IdempotentDuplicate ? "duplicate"
+                    : result.Accepted ? "applied" : "rejected";
+                _metrics?.CountWebhook(provider, outcome);
+            }
+            catch { /* metrics must never block webhook ack */ }
             if (result.Accepted)
                 return Ok(new BaseResponse<string>(StatusCodeHelper.OK,
                     ResponseCodeConstants.SUCCESS,

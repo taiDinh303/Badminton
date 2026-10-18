@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Plus, Trash2, Pencil, Clock } from "lucide-react";
 import {
@@ -12,6 +12,7 @@ import {
 } from "../../components/ui";
 import { api, type TimeSlot } from "../../lib/api";
 import { clsx } from "clsx";
+import { isAdmin, useAuth } from "../../store/auth";
 import { VirtualizedTable, type Column } from "../../components/VirtualizedTable";
 
 interface SlotForm {
@@ -34,11 +35,26 @@ const emptyForm = (): SlotForm => ({
 export default function SlotsPage() {
   const [form, setForm] = useState<SlotForm | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
+  // Slot delete is [Admin] in the backend; create/update are Manager+.
+  const canDelete = isAdmin(useAuth((s) => s.user));
 
-  const { data: slots = [], isFetching, refetch } = useQuery({
+  const { data: rawSlots = [], isFetching, refetch } = useQuery({
     queryKey: ["time-slots"],
     queryFn: api.timeSlots.list,
   });
+
+  // Docs 07 §4: order slots chronologically so a re-created slot lands in
+  // its time-of-day position instead of appended at the end.
+  const slots = useMemo(
+    () =>
+      [...rawSlots].sort(
+        (a, b) =>
+          a.startTime.localeCompare(b.startTime) ||
+          a.endTime.localeCompare(b.endTime) ||
+          a.label.localeCompare(b.label),
+      ),
+    [rawSlots],
+  );
 
   const create = useMutation({
     mutationFn: (f: SlotForm) =>
@@ -77,11 +93,10 @@ export default function SlotsPage() {
   }
 
   const columns: Column<TimeSlot>[] = [
-    { key: "id", label: "ID", width: 70, sortable: true, render: (s) => <span className="tnum text-muted">{s.id}</span> },
     {
       key: "label",
       label: "Khung giờ",
-      width: 180,
+      width: 160,
       sortable: true,
       render: (s) => (
         <span className="inline-flex items-center gap-1.5 font-semibold tnum">
@@ -118,9 +133,11 @@ export default function SlotsPage() {
           <Button variant="ghost" size="xs" onClick={() => openEdit(s)}>
             <Pencil className="h-3 w-3" /> Sửa
           </Button>
-          <Button variant="danger" size="xs" onClick={() => del.mutate(s.id)}>
-            <Trash2 className="h-3 w-3" /> Xóa
-          </Button>
+          {canDelete ? (
+            <Button variant="danger" size="xs" onClick={() => del.mutate(s.id)}>
+              <Trash2 className="h-3 w-3" /> Xóa
+            </Button>
+          ) : null}
         </div>
       ),
     },

@@ -4,6 +4,7 @@ using Contract.Services.Audit;
 using Contract.Services.Voucher;
 using Badminton.Core.Base;
 using Badminton.Core.Enums;
+using Badminton.Core.Utils;
 using Microsoft.AspNetCore.Http;
 using ModelViews.Voucher;
 
@@ -47,7 +48,7 @@ namespace Services
                 MaxPerUser = request.MaxPerUser,
                 TotalQty = request.TotalQty,
                 ValidFrom = string.IsNullOrWhiteSpace(request.ValidFrom)
-                    ? DateOnly.FromDateTime(DateTime.UtcNow)
+                    ? HanoiTime.HanoiToday()
                     : ParseDate(request.ValidFrom),
                 ValidUntil = string.IsNullOrWhiteSpace(request.ValidUntil)
                     ? null
@@ -76,7 +77,8 @@ namespace Services
             var v = (await Repo.GetByConditionAsync(x => x.Code == code)).FirstOrDefault();
             if (v is null || !v.IsActive) return 0;
 
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            // P1-4: Hanoi business day, not the machine clock.
+            var today = HanoiTime.HanoiToday();
             if (v.ValidUntil.HasValue && today > v.ValidUntil.Value) return 0;
             if (today < v.ValidFrom) return 0;
             if (baseAmount < v.MinSpend) return 0;
@@ -91,19 +93,6 @@ namespace Services
 
         // ── Atomic reservation (total-qty + per-user limits) ──────────────
 
-        /// <summary>
-        /// Reserve a voucher inside the caller's ambient transaction.
-        /// Stages (does NOT commit) so the caller's transaction owns the
-        /// single save:
-        ///   1. validate validity / min-spend / per-user cap;
-        ///   2. atomically bump <c>Voucher.UsedQty</c> guarded by
-        ///      <c>UsedQty &lt; TotalQty</c> — a 0-row result means the
-        ///      voucher is exhausted ("hết lượt") and the booking rolls back;
-        ///   3. stage a <see cref="VoucherRedemption"/> (the unique
-        ///      (VoucherId,UserId) index is the database backstop for
-        ///      MaxPerUser == 1) and return it so the caller links it to the
-        ///      order before the commit.
-        /// </summary>
         public async Task<(int Discount, VoucherRedemption Redemption)> ReserveVoucherAsync(
             string code, int userId, int baseAmount)
         {
@@ -111,7 +100,8 @@ namespace Services
             if (v is null || !v.IsActive)
                 throw new BadRequestException("Voucher khong ap dung cho don nay.");
 
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            // P1-4: Hanoi business day, not the machine clock.
+            var today = HanoiTime.HanoiToday();
             if (v.ValidUntil.HasValue && today > v.ValidUntil.Value)
                 throw new BadRequestException("Voucher da het han.");
             if (today < v.ValidFrom)
@@ -119,9 +109,6 @@ namespace Services
             if (baseAmount < v.MinSpend)
                 throw new BadRequestException("So tien don thap hon muc toi thieu cua voucher.");
 
-            // Per-user cap: enforce in-transaction. The (VoucherId,UserId)
-            // unique index is the hard backstop for MaxPerUser == 1; for
-            // larger caps the count is authoritative within this transaction.
             var redemptions = Repository<VoucherRedemption>();
             var prior = await redemptions.GetByConditionAsync(
                 r => r.VoucherId == v.Id && r.UserId == userId);
@@ -130,9 +117,6 @@ namespace Services
 
             var discount = ComputeDiscount(v, baseAmount);
 
-            // ATOMIC total-quantity guard: increment only while under the cap.
-            // A 0-row result means the voucher is exhausted — the whole
-            // booking transaction rolls back with it.
             int claimed = await Uow.ExecuteSqlRawAsync(
                 "UPDATE Vouchers SET UsedQty = UsedQty + 1 " +
                 "WHERE Code = @p0 AND IsActive = 1 AND UsedQty < TotalQty",
@@ -151,17 +135,8 @@ namespace Services
             return (discount, redemption);
         }
 
-        /// <summary>
-        /// Release a reserved voucher when the booking is cancelled before
-        /// payment: decrement <c>UsedQty</c> and drop the redemption so
-        /// another customer can still use it.
-        /// </summary>
         public async Task ReleaseVoucherAsync(int redemptionId)
         {
-            // Use the *tracked* lookup so that when the caller (e.g. BookingService
-            // .CancelAsync) has already loaded this redemption in the same scoped
-            // DbContext, we get the same instance rather than attaching a
-            // duplicate with the same key (which EF would reject).
             var redemption = await Repository<VoucherRedemption>().GetByIdAsync(redemptionId);
             if (redemption is null) return;
 
@@ -206,8 +181,9 @@ namespace Services
             s.Equals("percent", System.StringComparison.OrdinalIgnoreCase)
                 ? VoucherType.Percent : VoucherType.Fixed;
 
+        // P1-4: an unparseable date falls back to the Hanoi business day.
         private static DateOnly ParseDate(string s) =>
-            DateOnly.TryParse(s, out var d) ? d : DateOnly.FromDateTime(DateTime.UtcNow);
+            DateOnly.TryParse(s, out var d) ? d : HanoiTime.HanoiToday();
 
         private static VoucherView ToView(Voucher v) => new(
             v.Id, v.Code, v.Type.ToString(), v.Value, v.MaxValue, v.MinSpend,

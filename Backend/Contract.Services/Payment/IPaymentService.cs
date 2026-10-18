@@ -6,26 +6,10 @@ namespace Contract.Services.Payment
     public interface IPaymentService
     {
         Task<PaymentInitResponse> InitAsync(InitPaymentRequest request, int userId);
-
-        /// <summary>
-        /// Verify the provider's signature on <paramref name="raw"/> via the
-        /// gateway, then apply the result idempotently and atomically.
-        /// Safe to call any number of times with the same <c>GatewayRef</c>:
-        /// only the first call mutates; later calls return
-        /// <see cref="WebhookResult.Duplicate"/>.
-        /// </summary>
         Task<WebhookResult> HandleWebhookAsync(string provider, PaymentWebhookRequest raw);
-
-        Task<PaymentView> ConfirmOnSiteAsync(int bookingId, string method, int actorId,
-            string? note = null);
-
+        Task<PaymentView> ConfirmOnSiteAsync(int bookingId, string method, int actorId, string? note = null);
         Task<PaymentView> RefundAsync(int bookingId, int actorId, string? reason = null);
-
-        /// <summary>
-        /// Read the payment rows for <paramref name="bookingId"/>. Only the
-        /// booking owner or a staff member (Admin/Manager) may read them;
-        /// any other user is rejected (IDOR protection).
-        /// </summary>
+        Task<PaymentView> CancelRefundAsync(int bookingId, int actorId, string? reason = null);
         Task<IReadOnlyList<PaymentView>> GetByBookingAsync(int bookingId, int requestingUserId);
     }
 

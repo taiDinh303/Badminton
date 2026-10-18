@@ -1,6 +1,7 @@
 using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
+using Contract.Services.Membership;
 using Contract.Services.Points;
 using Badminton.Core.Base;
 using Microsoft.AspNetCore.Http;
@@ -9,24 +10,34 @@ namespace Services
 {
     public sealed class PointService : BaseService, IPointService
     {
-        /// <summary>1,000 points = 20,000 VND (docs 01 §5).</summary>
         private const int PointsPerVnd = 1_000;
         private const int VndPerPoints = 20_000;
 
-        public PointService(IUnitOfWork uow, IHttpContextAccessor http) : base(uow, http) { }
+        private readonly IMembershipService _membership;
+
+        public PointService(IUnitOfWork uow, IHttpContextAccessor http,
+            IMembershipService membership)
+            : base(uow, http)
+        {
+            _membership = membership;
+        }
 
         private IGenericRepository<PointLedger> Repo => Repository<PointLedger>();
 
         public Task<int> GetBalanceAsync(int userId) =>
             Repo.SumIntByConditionAsync(p => p.UserId == userId, p => p.Delta);
 
+        public async Task<bool> HasEarnedRowAsync(int bookingId)
+        {
+            var n = await Repo.CountByConditionAsync(p => p.LedgerKey == $"earn:{bookingId}");
+            return n > 0;
+        }
+
         public async Task<int> RedeemAsync(int userId, int bookingId,
             int pointsToRedeem, string bookingCode)
         {
             if (pointsToRedeem <= 0) return 0;
 
-            // Idempotency: if a redeem row for this booking already exists,
-            // return the same discount without writing a second row.
             var already = await Repo.CountByConditionAsync(
                 p => p.LedgerKey == $"redeem:{bookingId}");
             if (already > 0)
@@ -79,10 +90,16 @@ namespace Services
             var already = await Repo.CountByConditionAsync(p => p.LedgerKey == $"earn:{bookingId}");
             if (already > 0) return;
 
+            decimal mult = 1.0m;
+            try { mult = await _membership.EffectiveMultiplierAsync(userId); }
+            catch { mult = 1.0m; } // membership lookup must never block earn
+
+            int earned = (int)Math.Round(amount * mult, MidpointRounding.AwayFromZero);
+
             _ = Repo.AddAsync(new PointLedger
             {
                 UserId = userId,
-                Delta = amount,
+                Delta = earned,
                 BookingId = bookingId,
                 Reason = reason,
                 LedgerKey = $"earn:{bookingId}"

@@ -8,9 +8,7 @@ namespace Badminton.Core.Domain
 
         Task<PaymentInitResult> InitAsync(
             string bookingId, decimal amount, string returnUrl, CancellationToken ct = default);
-
         Task<WebhookOutcome> VerifyWebhookAsync(RawWebhook raw, CancellationToken ct = default);
-
         Task<RefundResult> RefundAsync(string bookingId, decimal amount, string reason,
             CancellationToken ct = default);
     }
@@ -46,7 +44,6 @@ namespace Badminton.Core.Domain
     public interface IPaymentGatewayFactory
     {
         IPaymentGateway GetGateway(PaymentMethod method);
-
         IPaymentGateway GetGatewayByProvider(string provider);
     }
 }

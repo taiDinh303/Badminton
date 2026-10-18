@@ -5,10 +5,6 @@ using System.Text.Json;
 
 namespace Badminton.API.Middleware
 {
-    /// <summary>docs 04 §4: every domain exception → a uniform
-    /// BaseResponse with a machine-readable <c>code</c> + a Vietnamese
-    /// <c>message</c> + the HTTP status. Unknown errors collapse to 500
-    /// without leaking internals.</summary>
     public sealed class ExceptionMiddleware
     {
         private readonly RequestDelegate _next;

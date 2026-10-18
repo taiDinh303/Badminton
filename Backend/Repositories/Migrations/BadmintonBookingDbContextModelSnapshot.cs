@@ -93,6 +93,9 @@ namespace Repositories.Migrations
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("CheckedInAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("CourtId")
                         .HasColumnType("int");
 
@@ -133,6 +136,10 @@ namespace Repositories.Migrations
                     b.Property<int>("PointsRedeemed")
                         .HasColumnType("int");
 
+                    b.Property<string>("QrToken")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<int>("SlotId")
                         .HasColumnType("int");
 
@@ -167,6 +174,10 @@ namespace Repositories.Migrations
                     b.HasIndex("IdempotencyKey")
                         .IsUnique()
                         .HasFilter("[IdempotencyKey] IS NOT NULL");
+
+                    b.HasIndex("QrToken")
+                        .IsUnique()
+                        .HasFilter("[QrToken] IS NOT NULL");
 
                     b.HasIndex("SlotId");
 
@@ -392,6 +403,76 @@ namespace Repositories.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("GroupMembers", (string)null);
+                });
+
+            modelBuilder.Entity("Contract.Repositories.Entity.Notification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("BookingId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("email");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Event")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ExternalRef")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("LedgerKey")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Pending");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("LedgerKey")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("Notifications", (string)null);
                 });
 
             modelBuilder.Entity("Contract.Repositories.Entity.Payment", b =>
@@ -656,6 +737,9 @@ namespace Repositories.Migrations
                     b.Property<bool>("IsVerified")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("MembershipExpiresAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("NoShowCount")
                         .HasColumnType("int");
 
@@ -691,6 +775,13 @@ namespace Repositories.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("Active");
+
+                    b.Property<string>("Tier")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("None");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -809,6 +900,77 @@ namespace Repositories.Migrations
                     b.ToTable("VoucherRedemptions", (string)null);
                 });
 
+            modelBuilder.Entity("Contract.Repositories.Entity.WaitlistEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BranchId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CourtId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<string>("DeclineReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("PlayerCount")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PromotedBookingId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("SlotId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Waiting");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SlotId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("CourtId", "Date", "SlotId", "CreatedAt");
+
+                    b.HasIndex("UserId", "CourtId", "Date", "SlotId")
+                        .IsUnique()
+                        .HasFilter("[Status] = N'Waiting'");
+
+                    b.ToTable("WaitlistEntries", (string)null);
+                });
+
             modelBuilder.Entity("Contract.Repositories.Entity.AuditLog", b =>
                 {
                     b.HasOne("Contract.Repositories.Entity.User", "Actor")
@@ -917,6 +1079,24 @@ namespace Repositories.Migrations
                         .IsRequired();
 
                     b.Navigation("Group");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Contract.Repositories.Entity.Notification", b =>
+                {
+                    b.HasOne("Contract.Repositories.Entity.Booking", "Booking")
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Contract.Repositories.Entity.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
 
                     b.Navigation("User");
                 });
@@ -1030,6 +1210,33 @@ namespace Repositories.Migrations
                     b.Navigation("User");
 
                     b.Navigation("Voucher");
+                });
+
+            modelBuilder.Entity("Contract.Repositories.Entity.WaitlistEntry", b =>
+                {
+                    b.HasOne("Contract.Repositories.Entity.Court", "Court")
+                        .WithMany()
+                        .HasForeignKey("CourtId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Contract.Repositories.Entity.TimeSlot", "Slot")
+                        .WithMany()
+                        .HasForeignKey("SlotId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Contract.Repositories.Entity.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Court");
+
+                    b.Navigation("Slot");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Contract.Repositories.Entity.Booking", b =>

@@ -24,7 +24,14 @@ namespace Services
             if (_http.HttpContext?.User.IsInRole("Manager") == true)
             {
                 var actor = await Repository<User>().GetByIdAsync(actorId);
-                if (actor is not null && actor.BranchId is { } ab && ab != court.BranchId)
+
+                if (actor is not { Role: Role.Manager })
+                    throw new ConflictException(
+                        "Tài khoản manager không hợp lệ, không thể thao tác bảo trì.");
+                if (actor.BranchId is not { } ab)
+                    throw new ConflictException(
+                        "Tài khoản manager chưa được gán cơ sở, không thể thao tác bảo trì.");
+                if (ab != court.BranchId)
                     throw new ConflictException(
                         $"Bạn chỉ được thao tác sân thuộc cơ sở của mình (cơ sở {ab}).");
             }

@@ -2,6 +2,7 @@ using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Report;
 using Badminton.Core.Enums;
+using Badminton.Core.Utils;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace Services
@@ -9,8 +10,6 @@ namespace Services
     public sealed class ReportService : BaseService, IReportService
     {
         private readonly IMemoryCache _cache;
-        // 5-minute TTL (docs: Redis ≤5m for volatile data; MemoryCache keeps it
-        // dependency-free in dev. Swap for ICache in prod without touching callers.)
         private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
 
         public ReportService(IUnitOfWork uow, Microsoft.AspNetCore.Http.IHttpContextAccessor http,
@@ -28,7 +27,7 @@ namespace Services
 
         private async Task<DashboardSummary> LoadSummaryAsync(int? branchId)
         {
-            var today = DateOnly.FromDateTime(DateTime.Now);
+            var today = HanoiTime.HanoiToday();
             var thirtyAgo = today.AddDays(-30);
             var bi = branchId;
 
@@ -41,8 +40,12 @@ namespace Services
                 b.DeletedAt == null && b.Status == BookingStatus.Pending && (bi == null || b.BranchId == bi));
             int noShow30 = await bookings.CountByConditionAsync(b =>
                 b.DeletedAt == null && b.Date >= thirtyAgo && b.Status == BookingStatus.NoShow && (bi == null || b.BranchId == bi));
+
             int revenueToday = await bookings.SumIntByConditionAsync(
-                b => b.DeletedAt == null && b.Date == today && b.Status != BookingStatus.Cancelled && (bi == null || b.BranchId == bi),
+                b => b.DeletedAt == null && b.Date == today
+                     && b.Status != BookingStatus.Cancelled
+                     && b.Status != BookingStatus.Pending
+                     && (bi == null || b.BranchId == bi),
                 b => b.PayableAmount);
             int usersToday = await users.CountByConditionAsync(u =>
                 u.DeletedAt == null
@@ -54,17 +57,34 @@ namespace Services
             int activeBranches = await Repository<Branch>().CountByConditionAsync(b =>
                 b.DeletedAt == null && b.Status == BranchStatus.Active);
 
-            // Peak fill rate for today: booked peak slots / (active courts x peak slots).
+            // FEAT 4: active paid members (Silver/Gold, not lapsed).
+            var nowUtc = DateTime.UtcNow;
+            int activeMembers = await users.CountByConditionAsync(u =>
+                u.DeletedAt == null && u.Role == Role.Customer
+                && (u.Tier == MembershipTier.Silver || u.Tier == MembershipTier.Gold)
+                && u.MembershipExpiresAt != null
+                && u.MembershipExpiresAt > nowUtc);
+
+            // FEAT 2: customers currently waiting on a full slot.
+            int waitingListCount = await Repository<WaitlistEntry>()
+                .CountByConditionAsync(w =>
+                    w.DeletedAt == null && w.Status == WaitlistStatus.Waiting);
+
+            // Peak fill rate for today: booked PEAK slots / (active courts x peak slots).
             var peakSlots = await Repository<TimeSlot>().GetByConditionAsync(s => s.IsActive && s.IsPeak && s.DeletedAt == null);
             int peakTotal = Math.Max(0, peakSlots.Count * activeCourts);
-            int peakBooked = await bookings.CountByConditionAsync(b =>
+
+            var peakSlotIds = peakSlots.Select(s => s.Id).ToHashSet();
+            var peakBooked = await bookings.GetByConditionAsync(b =>
                 b.DeletedAt == null && b.Date == today
                 && b.Status != BookingStatus.Cancelled && b.Status != BookingStatus.NoShow
                 && (bi == null || b.BranchId == bi));
-            decimal pct = peakTotal == 0 ? 0m : Math.Round(100m * (decimal)peakBooked / peakTotal, 1);
+            int peakBookedCount = peakBooked.Count(b => peakSlotIds.Contains(b.SlotId));
+            decimal pct = peakTotal == 0 ? 0m : Math.Round(100m * (decimal)peakBookedCount / peakTotal, 1);
 
             return new DashboardSummary(todayCount, pending, noShow30, revenueToday,
-                pct, usersToday, activeCourts, activeBranches);
+                pct, usersToday, activeCourts, activeBranches,
+                activeMembers, waitingListCount);
         }
 
         public async Task<IReadOnlyList<RevenueByDay>> GetRevenueAsync(
@@ -73,10 +93,12 @@ namespace Services
             var key = $"report:revenue:{from:yyyy-MM-dd}:{to:yyyy-MM-dd}:{branchId?.ToString() ?? "all"}";
             if (_cache.TryGetValue(key, out IReadOnlyList<RevenueByDay>? revHit)) return revHit!;
             var bi = branchId;
+
             var bookings = await Repository<Booking>().GetByConditionAsync(b =>
                 b.DeletedAt == null
                 && b.Date >= from && b.Date <= to
                 && b.Status != BookingStatus.Cancelled
+                && b.Status != BookingStatus.Pending
                 && (bi == null || b.BranchId == bi));
             var byDay = bookings
                 .GroupBy(b => b.Date)
@@ -93,9 +115,19 @@ namespace Services
             var toEnd = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
             var pmts = await Repository<Payment>().GetByConditionAsync(p =>
                 p.RefundedAt.HasValue && p.RefundedAt!.Value >= fromDt && p.RefundedAt.Value < toEnd);
+
+            if (bi is { } bScope)
+            {
+                var bookingIds = pmts.Select(p => p.BookingId).Distinct().ToList();
+                var branchOf = (await Repository<Booking>().GetByConditionAsync(
+                    x => bookingIds.Contains(x.Id) && x.BranchId == bScope))
+                    .Select(x => x.Id).ToHashSet();
+                pmts = pmts.Where(p => branchOf.Contains(p.BookingId)).ToList();
+            }
+
             var refundByDay = pmts
                 .Where(p => p.RefundedAt.HasValue)
-                .GroupBy(p => DateOnly.FromDateTime(p.RefundedAt!.Value))
+                .GroupBy(p => HanoiTime.HanoiDateOf(p.RefundedAt!.Value))
                 .ToDictionary(g => g.Key, g => g.Sum(x => x.RefundAmount));
 
             var result = byDay.Select(r => new RevenueByDay(
@@ -121,7 +153,9 @@ namespace Services
                 && (bi == null || b.BranchId == bi));
 
             int totalSlotsDay = Math.Max(1, courts.Count * slots.Count);
-            int peakSlotsDay = Math.Max(1, courts.Count * slots.Count(s => s.IsPeak));
+
+            var peakSlotIds = slots.Where(s => s.IsPeak).Select(s => s.Id).ToHashSet();
+            int peakSlotsDay = Math.Max(1, courts.Count * peakSlotIds.Count);
             string? name = bi == null
                 ? (branches.Count(b => b.Status == BranchStatus.Active) > 0 ? "Tất cả cơ sở" : null)
                 : branches.FirstOrDefault(b => b.Id == bi)?.Name;
@@ -131,7 +165,7 @@ namespace Services
             while (d <= to)
             {
                 var dayBooked = booked.Count(b => b.Date == d);
-                var dayPeak = booked.Count(b => b.Date == d);
+                var dayPeak = booked.Count(b => b.Date == d && peakSlotIds.Contains(b.SlotId));
                 list.Add(new OccupancyByDay(
                     d, bi, name,
                     dayBooked, totalSlotsDay,
@@ -145,4 +179,3 @@ namespace Services
         }
     }
 }
-

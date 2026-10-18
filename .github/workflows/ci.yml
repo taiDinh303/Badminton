@@ -5,7 +5,17 @@ on:
     branches: [ main, master ]
   pull_request:
 
+# Fast static guard first — fails immediately if a secret leaked into the
+# tree or the seed gate regressed. Cheap; runs in parallel with the rest.
 jobs:
+  ci-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run static guard (seed + secrets + migration presence)
+        shell: pwsh
+        run: ./scripts/CiGuard.ps1
+
   build-and-verify:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -63,3 +73,25 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+
+  # docs 04 §7 — E2E smoke via Playwright. The app is NOT running; all
+  # API calls are intercepted by page.route() with mock BaseResponse
+  # envelopes so the test suite is fully offline (no DB, no .NET runtime
+  # required in the CI runner).
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+        env:
+          E2E_BASE_URL: 'http://localhost:4173'

@@ -57,7 +57,6 @@ namespace Services
             return (items, total);
         }
 
-        /// <summary>Backward-compatible capped list (first page only).</summary>
         public async Task<IReadOnlyList<AuditEntry>> QueryAsync(
             string? entityType = null, string? entityId = null,
             DateOnly? from = null, DateOnly? to = null, int limit = 100)

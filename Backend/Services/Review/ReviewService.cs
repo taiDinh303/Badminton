@@ -69,9 +69,6 @@ namespace Services
             var list = await Repo.GetByConditionAsync(r => r.CourtId == courtId);
             if (list.Count == 0) return Array.Empty<ReviewView>();
 
-            // ANTI-N+1: the court is known from courtId (1 query) and every
-            // reviewer's user row is bulk-loaded in ONE query — the old code
-            // issued 2 queries per review row inside the loop.
             var court = await Repository<Court>().GetByIdAsync(courtId);
             var userIds = list.Select(r => r.UserId).Distinct().ToList();
             var users = (await Repository<User>().GetByConditionAsync(u => userIds.Contains(u.Id)))
@@ -88,8 +85,6 @@ namespace Services
 
         private async Task<ReviewView> ToView(Review r)
         {
-            // Single-record variant (used right after CreateAsync when the
-            // review row is already staged — no bulk map needed).
             var court = await Repository<Court>().GetByIdAsync(r.CourtId);
             var user = await Repository<User>().GetByIdAsync(r.UserId);
             return ToView(r, court?.Name ?? "?", user?.FullName ?? "?");

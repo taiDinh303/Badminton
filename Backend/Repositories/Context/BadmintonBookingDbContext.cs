@@ -24,6 +24,8 @@ namespace Repositories.Context
         public DbSet<PointLedger> PointLedger => Set<PointLedger>();
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
         public DbSet<Review> Reviews => Set<Review>();
+        public DbSet<Notification> Notifications => Set<Notification>();
+        public DbSet<WaitlistEntry> WaitlistEntries => Set<WaitlistEntry>();
 
         protected override void OnModelCreating(ModelBuilder mb)
         {
@@ -45,8 +47,10 @@ namespace Repositories.Context
                 e.Property(x => x.Status)
                     .HasConversion(s => s.ToString(), s => Enum.Parse<UserStatus>(s))
                     .HasMaxLength(20).HasDefaultValue(UserStatus.Active);
-                // No-show tracking (int / bool / date-only columns; EF8 maps
-                // DateOnly to SQL Server `date` automatically).
+                // Membership V2 (enum string + nullable date).
+                e.Property(x => x.Tier)
+                    .HasConversion(s => s.ToString(), s => Enum.Parse<MembershipTier>(s))
+                    .HasMaxLength(20).HasDefaultValue(MembershipTier.None);
                 e.HasIndex(x => x.PhoneNumber).IsUnique();
                 e.HasIndex(x => new { x.Role, x.Status });
 
@@ -129,6 +133,10 @@ namespace Repositories.Context
                     .HasConversion(s => s.ToString(), s => Enum.Parse<BookingStatus>(s))
                     .HasMaxLength(20).HasDefaultValue(BookingStatus.Pending);
                 e.HasIndex(x => x.IdempotencyKey).IsUnique().HasFilter("[IdempotencyKey] IS NOT NULL");
+
+                // QR check-in token: unique among non-null values.
+                e.Property(x => x.QrToken).HasMaxLength(64);
+                e.HasIndex(x => x.QrToken).IsUnique().HasFilter("[QrToken] IS NOT NULL");
 
                 // one slot may hold at most ONE active (pending/confirmed) booking.
                 e.HasIndex(x => new { x.CourtId, x.Date, x.SlotId })
@@ -285,6 +293,55 @@ namespace Repositories.Context
                 e.HasOne(x => x.Court).WithMany().HasForeignKey(x => x.CourtId)
                     .OnDelete(DeleteBehavior.Restrict);
                 e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // ---- Notifications (outbox; LedgerKey dedups one row per event) ----
+            mb.Entity<Notification>(e =>
+            {
+                e.ToTable("Notifications");
+                e.HasKey(x => x.Id);
+                e.Property(x => x.Id).ValueGeneratedOnAdd();
+                e.Property(x => x.Channel).HasMaxLength(20).HasDefaultValue("email");
+                e.Property(x => x.ExternalRef).HasMaxLength(120);
+                e.Property(x => x.Body).HasMaxLength(500);
+                e.Property(x => x.LedgerKey).HasMaxLength(80).IsRequired();
+                e.Property(x => x.Event)
+                    .HasConversion(s => s.ToString(), s => Enum.Parse<NotifyEvent>(s))
+                    .HasMaxLength(20);
+                e.Property(x => x.Status)
+                    .HasConversion(s => s.ToString(), s => Enum.Parse<NotifyStatus>(s))
+                    .HasMaxLength(20).HasDefaultValue(NotifyStatus.Pending);
+                e.HasIndex(x => x.LedgerKey).IsUnique();
+                e.HasIndex(x => new { x.UserId, x.CreatedAt });
+                e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(x => x.Booking).WithMany().HasForeignKey(x => x.BookingId)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            // ---- WaitlistEntries (waiting FIFO per slot) ----
+            mb.Entity<WaitlistEntry>(e =>
+            {
+                e.ToTable("WaitlistEntries");
+                e.HasKey(x => x.Id);
+                e.Property(x => x.Id).ValueGeneratedOnAdd();
+                e.Property(x => x.Note).HasMaxLength(200);
+                e.Property(x => x.DeclineReason).HasMaxLength(200);
+                e.Property(x => x.Status)
+                    .HasConversion(s => s.ToString(), s => Enum.Parse<WaitlistStatus>(s))
+                    .HasMaxLength(20).HasDefaultValue(WaitlistStatus.Waiting);
+                e.HasIndex(x => x.UserId);
+                e.HasIndex(x => new { x.CourtId, x.Date, x.SlotId, x.CreatedAt });
+                // Only one waiting entry per (user, court, slot, date) — no double queue.
+                e.HasIndex(x => new { x.UserId, x.CourtId, x.Date, x.SlotId })
+                    .IsUnique()
+                    .HasFilter("[Status] = N'Waiting'");
+                e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(x => x.Court).WithMany().HasForeignKey(x => x.CourtId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                e.HasOne(x => x.Slot).WithMany().HasForeignKey(x => x.SlotId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
         }

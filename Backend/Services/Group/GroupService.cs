@@ -18,8 +18,6 @@ namespace Services
             var groups = await Repo.GetByConditionAsync(g => g.OwnerId == ownerId && g.DeletedAt == null);
             if (groups.Count == 0) return Array.Empty<GroupView>();
 
-            // ANTI-N+1: load every member row for this owner's groups in ONE
-            // query, then count in memory (the old code issued 1 query per group).
             var groupIds = groups.Select(g => g.Id).ToList();
             var members = await Repository<GroupMember>().GetByConditionAsync(m => groupIds.Contains(m.GroupId));
             var counts = members
@@ -42,9 +40,6 @@ namespace Services
             _ = Repo.AddAsync(group);
             await SaveAsync();
 
-            // Persist the owner membership only AFTER the group has a primary key:
-            // GroupId is part of the composite key AND a FK to PlayGroups, so an
-            // explicit 0 would violate the FK on the first insert.
             _ = Repository<GroupMember>().AddAsync(new GroupMember
             {
                 GroupId = group.Id,

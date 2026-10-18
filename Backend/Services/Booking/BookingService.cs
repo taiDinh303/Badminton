@@ -3,6 +3,8 @@ using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using Contract.Services.Booking;
 using Contract.Services.Group;
+using Contract.Services.Notify;
+using Contract.Services.Payment;
 using Contract.Services.Points;
 using Contract.Services.Pricing;
 using Contract.Services.Voucher;
@@ -22,10 +24,13 @@ namespace Services
         private readonly IGroupService _groups;
         private readonly IAuditService _audit;
         private readonly IPointService _points;
+        private readonly IPaymentService _payments;
+        private readonly INotifyService _notify;
 
         public BookingService(IUnitOfWork uow, IHttpContextAccessor http,
             IPricingService pricing, IVoucherService vouchers, IGroupService groups,
-            IAuditService audit, IPointService points)
+            IAuditService audit, IPointService points, IPaymentService payments,
+            INotifyService notify)
             : base(uow, http)
         {
             _pricing = pricing;
@@ -33,6 +38,8 @@ namespace Services
             _groups = groups;
             _audit = audit;
             _points = points;
+            _payments = payments;
+            _notify = notify;
         }
 
         private IGenericRepository<Booking> Repo => Repository<Booking>();
@@ -82,21 +89,18 @@ namespace Services
                 if (!await _groups.CanBookForGroupAsync(groupId, userId))
                     throw new ConflictException("Chi nguoi tao nhom duoc dat cho nhom.");
                 if (await CountActiveBookings(userId, groupId, date) >= 8)
-                    throw new ConflictException("Nhom da dat giới han 8 slot/ngay.");
+                    throw new ConflictException("Nhom da dat gi?i han 8 slot/ngay.");
             }
             else
             {
                 if (await CountActiveBookings(userId, null, date) >= 4)
-                    throw new ConflictException("Ban da dat giới han 4 slot/ngay.");
+                    throw new ConflictException("Ban da dat gi?i han 4 slot/ngay.");
             }
 
             var total = (int)_pricing.WithWeekend(
                 court.PriceLowPeak, court.PricePeak, slot.IsPeak,
                 court.WeekendSurcharge, IsWeekend(date));
 
-            // The whole booking (order + player + voucher + points) is
-            // all-or-nothing: a voucher that fails its total-qty guard or a
-            // points redemption that exceeds balance rolls the order back.
             Booking? booking = null;
             await Uow.RunInTransactionAsync(async () =>
             {
@@ -179,8 +183,6 @@ namespace Services
                     b.VoucherRedemptionId = voucherRedemption.Id;
                 }
 
-                // Write the points-redeem ledger row now that the booking has
-                // a PK, so the unique LedgerKey binds to the real bookingId.
                 if (b.PointsRedeemed > 0)
                     await _points.RedeemAsync(userId, b.Id, b.PointsRedeemed, b.BookingCode);
 
@@ -206,8 +208,6 @@ namespace Services
 
         public async Task<IReadOnlyList<BookingView>> GetByUserAsync(int userId, string? status = null)
         {
-            // Backward-compatible: load the (possibly status-filtered) list for
-            // this user, newest first. Paged callers use GetByUserPagedAsync.
             var bookings = await Repo.GetByConditionAsync(b => b.UserId == userId && b.DeletedAt == null);
             if (!string.IsNullOrWhiteSpace(status))
             {
@@ -228,9 +228,7 @@ namespace Services
             GetByUserPagedAsync(int userId, string? status, Page page)
         {
             var u = userId;
-            // Push the status filter into SQL. Pre-parse to the enum so EF
-            // emits `Status = N'Confirmed'` instead of the (non-translatable)
-            // `b.Status.ToString().Equals(st)` that would throw at query time.
+
             bool hasStatus = !string.IsNullOrWhiteSpace(status);
             BookingStatus? stEnum = hasStatus
                 && Enum.TryParse<BookingStatus>(status, ignoreCase: true, out var p)
@@ -275,8 +273,6 @@ namespace Services
         {
             if (bookings.Count == 0) return Array.Empty<BookingView>();
 
-            // Bulk-fetch the reference data so we can map sequentially on the
-            // scoped DbContext (no parallel ToView calls hitting the same context).
             var courtIds = bookings.Select(b => b.CourtId).Distinct().ToList();
             var slotIds = bookings.Select(b => b.SlotId).Distinct().ToList();
             var userIds = bookings.Select(b => b.UserId).Distinct().ToList();
@@ -319,7 +315,7 @@ namespace Services
             return views;
         }
 
-        // - cancel (slot release; tier applied by PaymentService) ----------
+        // - cancel (P0-1: paid orders go through a tiered refund) ----------
 
         public async Task<BookingView> CancelAsync(int bookingId, int actorId)
         {
@@ -331,9 +327,27 @@ namespace Services
             if (b.Status is BookingStatus.Cancelled or BookingStatus.NoShow or BookingStatus.Refunded)
                 throw new ConflictException($"Dat cho da o trang thai {b.Status}.");
 
-            // Release a reserved voucher (pre-payment cancel) so its "luot"
-            // goes back to the pool. Runs inside the same transaction as the
-            // slot release so the two are all-or-nothing.
+            if (b.Status is BookingStatus.Confirmed or BookingStatus.Completed)
+            {
+                if (b.VoucherRedemptionId is { } paidRid)
+                    await _vouchers.ReleaseVoucherAsync(paidRid);
+
+                var refund = await _payments.CancelRefundAsync(bookingId, actorId,
+                    "Khach/manager huy don da thanh toan.");
+                b.Status = BookingStatus.Cancelled;
+                b.CancelledAt = DateTime.UtcNow;
+                b.CancelReason = "Huy don da thanh toan (hoan tien theo quy dinh)";
+                b.UpdatedAt = DateTime.UtcNow;
+                Repo.Update(b);
+                await SaveAsync();
+                await _audit.LogAsync(actorId, "booking.cancel-paid", "Booking", b.Id.ToString(),
+                    new { b.Status },
+                    new { Status = b.Status, RefundGatewayRef = refund.GatewayRef, RefundAmount = refund.RefundAmount },
+                    b.CancelReason);
+                return await ToView(b);
+            }
+
+            // Unpaid (Pending) path: just release the slot + voucher + points.
             var redemption = b.VoucherRedemptionId is { } rid
                 ? await Repository<VoucherRedemption>().GetByIdAsync(rid)
                 : null;
@@ -348,9 +362,6 @@ namespace Services
             if (redemption is not null)
                 await _vouchers.ReleaseVoucherAsync(b.VoucherRedemptionId!.Value);
 
-            // Restore any points the customer redeemed toward this (pending)
-            // booking so they aren't silently lost on a pre-payment cancel
-            // (mirrors RefundAsync, which also calls RestoreAsync).
             if (b.PointsRedeemed > 0)
                 await _points.RestoreAsync(b.UserId, b.Id, b.PointsRedeemed, b.BookingCode);
 
@@ -367,13 +378,30 @@ namespace Services
         {
             var b = await MustGetActive(bookingId);
             if (b.Status is not BookingStatus.Confirmed)
-                throw new ConflictException($"Chỉ được đánh dấu hoàn thành đơn ở trạng thái Confirmed (hiện tại: {b.Status}).");
+                throw new ConflictException($"Chi duoc danh dau hoan thanh don o trang thai Confirmed (hien tai: {b.Status}).");
 
+            int claimed = await Uow.ExecuteSqlRawAsync(
+                "UPDATE Bookings SET Status = 'Completed', PointsEarned = @p0, " +
+                "  UpdatedAt = @p1 " +
+                "WHERE Id = @p2 AND Status = 'Confirmed'",
+                b.PayableAmount, DateTime.UtcNow, bookingId);
+            if (claimed == 0)
+            {
+                var nowStatus = await Repo.GetByIdAsync(bookingId);
+                throw new ConflictException(
+                    $"Don {b.BookingCode} da o trang thai {nowStatus?.Status}, khong con the hoan thanh.");
+            }
             b.Status = BookingStatus.Completed;
+            b.PointsEarned = b.PayableAmount; // DEC-01: points bank at Completed
             b.UpdatedAt = DateTime.UtcNow;
             if (!string.IsNullOrWhiteSpace(note)) b.CancelReason = note; // reuse free-text field
             Repo.Update(b);
             await SaveAsync();
+
+            if (b.PayableAmount > 0)
+                await _points.AwardAsync(b.UserId, b.Id, b.PayableAmount,
+                    $"completed booking {b.BookingCode}");
+
             await _audit.LogAsync(actorId, "booking.complete", "Booking", b.Id.ToString(),
                 new { b.Status }, new { b.Status }, note);
             return await ToView(b);
@@ -383,13 +411,42 @@ namespace Services
         {
             var b = await MustGetActive(bookingId);
             if (b.Status is not BookingStatus.Confirmed)
-                throw new ConflictException($"Chỉ được gắn cờ no-show đơn ở trạng thái Confirmed (hiện tại: {b.Status}).");
+                throw new ConflictException($"Chi duoc gan co no-show don o trang thai Confirmed (hien tai: {b.Status}).");
 
+            var slot = await Repository<TimeSlot>().GetByIdAsync(b.SlotId);
+            if (slot is not null)
+            {
+                var slotStart = HanoiTime.SlotStart(b.Date, slot.StartTime);
+                var hanoiNow = HanoiTime.HanoiNow();
+                if (hanoiNow < slotStart)
+                    throw new ConflictException(
+                        $"Khung gio chua bat dau (bat dau {slot.StartTime:hh\\:mm}), khong the gan co no-show.");
+            }
+
+            int claimed = await Uow.ExecuteSqlRawAsync(
+                "UPDATE Bookings SET Status = 'NoShow', CancelReason = @p0, " +
+                "  CancelledAt = @p1, UpdatedAt = @p2 " +
+                "WHERE Id = @p3 AND Status = 'Confirmed'",
+                "No-show: khach khong den san" + (string.IsNullOrWhiteSpace(note) ? "" : " - " + note),
+                DateTime.UtcNow, DateTime.UtcNow, bookingId);
+            if (claimed == 0)
+            {
+                var nowStatus = await Repo.GetByIdAsync(bookingId);
+                throw new ConflictException(
+                    $"Don {b.BookingCode} da o trang thai {nowStatus?.Status}, khong con the gan co no-show.");
+            }
             b.Status = BookingStatus.NoShow;
             b.CancelledAt = DateTime.UtcNow;
-            b.CancelReason = "No-show: khách không đến sân" + (string.IsNullOrWhiteSpace(note) ? "" : " — " + note);
+            b.CancelReason = "No-show: khach khong den san" + (string.IsNullOrWhiteSpace(note) ? "" : " - " + note);
             b.UpdatedAt = DateTime.UtcNow;
             Repo.Update(b);
+
+            if (b.PointsEarned > 0 && await _points.HasEarnedRowAsync(b.Id))
+                await _points.ClawbackAsync(b.UserId, b.Id, b.PointsEarned,
+                    "no-show: " + b.BookingCode);
+
+            // FEAT 1: notify the customer they were recorded as a no-show.
+            await _notify.NotifyNoShowAsync(b.Id);
 
             // Increment the user's no-show counter (calendar month keyed).
             var user = await Repository<User>().GetByIdAsync(b.UserId);
@@ -428,9 +485,6 @@ namespace Services
                 s => s.IsActive && s.DeletedAt == null);
             var hanoiNowAvail = HanoiTime.HanoiNow();
 
-            // ANTI-N+1: fetch every court-date-status entry and every active
-            // booking for this date in two batched queries, then map in-memory
-            // (the old code issued 1 query per court for each of the two).
             var courtIds = courts.Select(c => c.Id).ToList();
             var dateStatusRows = await Repository<CourtDateStatusEntry>().GetByConditionAsync(
                 r => r.Date == date && courtIds.Contains(r.CourtId));
@@ -460,7 +514,7 @@ namespace Services
                     var lockReason = isLocked
                         ? (dayStatus != CourtDateStatus.Open ? "San bao tri/dong"
                           : bookedSlots.Contains(sl.Id) ? "Da duoc dat"
-                          : "Trong qua khuch")
+                          : "Trong qua khuc")
                         : "";
                     return new SlotView(sl.Id, sl.Label,
                         sl.StartTime.ToString("hh\\:mm"), sl.EndTime.ToString("hh\\:mm"),
@@ -496,15 +550,25 @@ namespace Services
         {
             if (b.UserId == requestingUserId) return;
             if (b.GroupId is { } gid && await _groups.CanBookForGroupAsync(gid, requestingUserId)) return;
-            // manager/admin scope enforced at the controller via [Authorize(Roles)]
+            // manager/admin read is scoped by [Authorize(Roles)] at the controller.
             throw new ConflictException("Khong co quyen xem dat cho nay.");
         }
 
         private async Task AuthorizeCancel(Booking b, int actorId)
         {
-            if (b.GroupId is { } gid && await _groups.CanBookForGroupAsync(gid, actorId)) return;
             if (b.UserId == actorId) return;
-            // manager/admin override handled by [Authorize(Roles)] at the controller.
+            if (b.GroupId is { } gid && await _groups.CanBookForGroupAsync(gid, actorId)) return;
+
+            var ctx = _http.HttpContext;
+            if (ctx?.User.IsInRole("Admin") == true) return; // global
+            if (ctx?.User.IsInRole("Manager") == true)
+            {
+                var actor = await Repository<User>().GetByIdAsync(actorId);
+                if (actor is { Role: Role.Manager }
+                    && actor.BranchId is { } ab && ab == b.BranchId)
+                    return;
+            }
+            throw new ConflictException("Khong co quyen huy dat cho nay.");
         }
 
         private async Task<BookingView> ToView(Booking b)

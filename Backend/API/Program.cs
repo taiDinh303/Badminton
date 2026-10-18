@@ -1,12 +1,16 @@
+using Badminton.Core.Domain;
 using Badminton.Core.Store;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Prometheus;
 using Repositories.Context;
+using Serilog;
 using Services.DI;
 using Badminton.API.Jobs;
+using Badminton.API.Middleware;
 using System.Text;
 
 namespace Badminton.API
@@ -16,6 +20,23 @@ namespace Badminton.API
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            var logFileDir =
+                builder.Configuration["Logging:FileDirectory"]
+                ?? Path.Combine(AppContext.BaseDirectory, "logs");
+            builder.Host.UseSerilog((ctx, cfg) =>
+                cfg.ReadFrom.Configuration(ctx.Configuration)
+                   .Enrich.FromLogContext()
+                   .WriteTo.Console(outputTemplate:
+                       "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+                   .WriteTo.File(
+                       Path.Combine(logFileDir, "badminton-.json"),
+                       rollingInterval: RollingInterval.Day,
+                       retainedFileCountLimit: 14,
+                       outputTemplate:
+                       "{Timestamp:yyyy-MM-dd HH:mm:ss.fff z} [{Level:u3}] {RequestId} {SourceContext} | {Message:lj} | {Exception}"));
+
+            builder.Services.AddSingleton<IMetricsReporter, PrometheusMetricsReporter>();
 
             builder.Services.AddDbContext<BadmintonBookingDbContext>(options =>
                 options.UseSqlServer(
@@ -53,9 +74,6 @@ namespace Badminton.API
             builder.Services.AddAuthorization();
 
             // ── CORS: allow the React SPA (Vercel) to call the API. ─────
-            // In production set Cors:AllowedOrigins (comma-separated) to lock
-            // the origin list down; otherwise fall back to any-origin so the
-            // dev baseline keeps working out of the box.
             var corsOrigins = builder.Configuration["Cors:AllowedOrigins"]
                 ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 ?? Array.Empty<string>();
@@ -71,19 +89,15 @@ namespace Badminton.API
                 });
             });
 
-            // ── Rate-limiter: global + strict auth bucket ─────────────
             builder.Services.AddRateLimiter(o =>
             {
                 o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-                // Global: 100 req/10s per connection.
-                o.AddFixedWindowLimiter("global", w =>
+                o.AddFixedWindowLimiter("public", w =>
                 {
                     w.PermitLimit = 100;
                     w.Window = TimeSpan.FromSeconds(10);
                     w.QueueLimit = 0;
                 });
-                // Auth: 5 attempts/60s (brute-force guard) — applied per-endpoint
-                // via [EnableRateLimiting("auth")] on AuthController.
                 o.AddFixedWindowLimiter("auth", w =>
                 {
                     w.PermitLimit = 5;
@@ -92,14 +106,18 @@ namespace Badminton.API
                 });
             });
 
-            builder.Services.AddBookingServices();
+            builder.Services.AddBookingServices(builder.Configuration);
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddMemoryCache();
 
+            builder.Services.AddSingleton<JobLock>();
+            builder.Services.AddSingleton<JobHeartbeatRegistry>();
             builder.Services.AddHostedService<PendingBookingExpiryJob>();
             builder.Services.AddHostedService<AutoCompleteJob>();
             builder.Services.AddHostedService<VoucherExpiryJob>();
             builder.Services.AddHostedService<NoShowResetJob>();
+            // FEAT 2 — waitlist promotion (locked + heartbeat, every 2 min).
+            builder.Services.AddHostedService<WaitlistPromotionJob>();
 
             builder.Services.AddControllers();
             builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(opt =>
@@ -145,14 +163,26 @@ namespace Badminton.API
             {
                 var db = scope.ServiceProvider.GetRequiredService<BadmintonBookingDbContext>();
                 db.Database.Migrate();
-                // Seed demo data ONLY in Development. A fresh production DB
-                // must NOT be populated with the default admin (Admin@123) and
-                // 500 demo customers.
+
+                bool allowSeedInProd =
+                    builder.Configuration.GetValue("Seed:AllowInProduction", false);
                 if (app.Environment.IsDevelopment())
+                {
                     SeedData.Seed(db);
+                }
+                else if (allowSeedInProd)
+                {
+                    Log.Warning(
+                        "Seed:AllowInProduction=true — seeding demo data in " +
+                        "a NON-Development environment. This should only ever " +
+                        "be done in an isolated CI sandbox, never on prod.");
+                    SeedData.Seed(db);
+                }
             }
 
-            app.UseMiddleware<Badminton.API.Middleware.ExceptionMiddleware>();
+            app.UseMiddleware<RequestIdMiddleware>();
+            app.UseHttpMetrics();
+            app.UseMiddleware<ExceptionMiddleware>();
             app.UseCors();
             app.UseRateLimiter();
 
@@ -166,7 +196,58 @@ namespace Badminton.API
             app.UseAuthorization();
             app.MapControllers();
 
+            app.MapMetrics("/metrics");
+
+            app.MapGet("/health", () => Results.Ok(new
+            {
+                status = "ok",
+                ts = DateTime.UtcNow.ToString("o")
+            }));
+
+            app.MapGet("/ready", async (BadmintonBookingDbContext db,
+                JobHeartbeatRegistry heartbeat) =>
+            {
+                bool dbOk;
+                try { dbOk = await db.Database.CanConnectAsync(); }
+                catch { dbOk = false; }
+
+                var now = DateTime.UtcNow;
+                var jobs = new Dictionary<string, object>
+                {
+                    ["PendingBookingExpiryJob"] = JobHealth(now,
+                        heartbeat.Last("PendingBookingExpiryJob"), TimeSpan.FromMinutes(2)),
+                    ["AutoCompleteJob"] = JobHealth(now,
+                        heartbeat.Last("AutoCompleteJob"), TimeSpan.FromMinutes(2)),
+                    ["VoucherExpiryJob"] = JobHealth(now,
+                        heartbeat.Last("VoucherExpiryJob"), TimeSpan.FromHours(1)),
+                    ["NoShowResetJob"] = JobHealth(now,
+                        heartbeat.Last("NoShowResetJob"), TimeSpan.FromHours(1))
+                };
+                bool jobsOk = jobs.Values.All(v => v is true);
+
+                var payload = new
+                {
+                    status = dbOk && jobsOk ? "ready" : "not_ready",
+                    db = dbOk ? "ok" : "unreachable",
+                    jobs
+                };
+                Microsoft.AspNetCore.Http.IResult result = dbOk && jobsOk
+                    ? Results.Ok(payload)
+                    : Results.Json(payload, statusCode: StatusCodes.Status503ServiceUnavailable);
+                return result;
+            });
+
             app.Run();
+        }
+
+        private static object JobHealth(DateTime nowUtc, DateTime? lastUtc, TimeSpan maxAge)
+        {
+            if (lastUtc is null)
+                return "pending";
+            var age = nowUtc - lastUtc.Value;
+            return age <= maxAge
+                ? true
+                : $"stale ({(int)age.TotalSeconds}s old, max {maxAge.TotalSeconds}s)";
         }
     }
 }

@@ -13,31 +13,56 @@ import {
   ScrollText,
   LogOut,
   Feather,
+  Crown,
+  Hourglass,
+  Star,
+  ScanLine,
 } from "lucide-react";
-import { useAuth, isStaff } from "../store/auth";
+import { useAuth, isStaff, isAdmin } from "../store/auth";
 
 /**
  * Responsive shell (docs 07 §3):
- *  - mobile: bottom navigation (customer 4 items), safe-area aware.
- *  - desktop: left sidebar. Customers see the 4 customer items;
- *    Manager/Admin additionally get the admin section items.
+ *  - mobile: bottom navigation (core customer items), safe-area aware.
+ *  - desktop: left sidebar. Customers see customer items (incl. Nhóm/Đánh giá);
+ *    Manager/Admin additionally get the admin section items (incl. Check-in).
  */
 const customerItems = [
   { to: "/", label: "Trang chủ", icon: Home, end: true },
   { to: "/book", label: "Đặt sân", icon: CalendarDays },
   { to: "/bookings", label: "Đơn của tôi", icon: ListChecks },
+  { to: "/waitlist", label: "Chờ", icon: Hourglass },
+  { to: "/groups", label: "Nhóm", icon: Users },
+  { to: "/reviews", label: "Đánh giá", icon: Star },
   { to: "/account", label: "Tài khoản", icon: User },
 ];
 
-const adminItems = [
+// Mobile bottom nav keeps only the essentials so 5 items fit (docs 07 §3).
+const mobileItems = [
+  { to: "/", label: "Trang chủ", icon: Home, end: true },
+  { to: "/book", label: "Đặt sân", icon: CalendarDays },
+  { to: "/bookings", label: "Đơn của tôi", icon: ListChecks },
+  { to: "/waitlist", label: "Chờ", icon: Hourglass },
+  { to: "/account", label: "Tài khoản", icon: User },
+];
+
+type NavItem = { to: string; label: string; icon: typeof Home; end?: boolean; adminOnly?: boolean };
+
+// Docs 03 role matrix: a Manager handles day-to-day ops (check-in, bookings,
+// maintenance on own branch, slots, vouchers, dashboard-summary). Admin adds
+// the back-office: staff, audit log, membership, court CRUD.
+const adminItems: NavItem[] = [
   { to: "/admin", label: "Tổng quan", icon: LayoutDashboard, end: true },
   { to: "/admin/bookings", label: "Đặt chỗ", icon: ListChecks },
   { to: "/admin/courts", label: "Sân & giá", icon: Dumbbell },
   { to: "/admin/vouchers", label: "Voucher", icon: Ticket },
   { to: "/admin/slots", label: "Khung giờ", icon: Clock },
-  { to: "/admin/staff", label: "Nhân viên", icon: Users },
-  { to: "/admin/audit", label: "Nhật ký", icon: ScrollText },
+  { to: "/checkin", label: "Check-in", icon: ScanLine },
+  { to: "/admin/staff", label: "Nhân viên", icon: Users, adminOnly: true },
+  { to: "/admin/audit", label: "Nhật ký", icon: ScrollText, adminOnly: true },
+  { to: "/admin/membership", label: "Membership", icon: Crown, adminOnly: true },
 ];
+
+
 
 function navClass({ isActive }: { isActive: boolean }) {
   return clsx(
@@ -60,8 +85,8 @@ export default function Layout() {
   const logout = useAuth((s) => s.logout);
   const nav = useNavigate();
   const staff = isStaff(user);
-
-  const mobileItems = customerItems; // bottom nav stays 4 customer items
+  const admin = isAdmin(user);
+  const items = adminItems.filter((it) => !it.adminOnly || admin);
 
   function doLogout() {
     logout();
@@ -85,11 +110,19 @@ export default function Layout() {
         <div className="px-5">
           {staff && (
             <>
-              <p className="mb-2 mt-2 px-1 text-[11px] font-semibold tracking-wider text-muted uppercase">
-                Quản trị
+              <p className="mb-2 mt-2 flex items-center justify-between px-1 text-[11px] font-semibold tracking-wider text-muted uppercase">
+                <span>Quản trị</span>
+                <span
+                  className={clsx(
+                    "rounded-full px-2 py-0.5 text-[10px] font-bold normal-case tracking-normal",
+                    admin ? "bg-state-error/10 text-state-error" : "bg-primary/10 text-primary",
+                  )}
+                >
+                  {user?.role}
+                </span>
               </p>
               <nav className="flex flex-col gap-1" aria-label="Điều hướng quản trị">
-                {adminItems.map((it) => (
+                {items.map((it) => (
                   <NavLink key={it.to} to={it.to} end={it.end} className={navClass}>
                     <it.icon className="h-4 w-4 shrink-0" />
                     <span className="truncate">{it.label}</span>

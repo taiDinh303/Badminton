@@ -24,8 +24,7 @@ namespace Services
                 throw new BadRequestException("Số điện thoại là bắt buộc.");
             if (request.Password.Length < 8)
                 throw new BadRequestException("Mật khẩu tối thiểu 8 ký tự.");
-            // Invariant (docs 01 §2): system có DÚNG 1 nick Admin. Admin chỉ
-            // được tạo/phân quyền Manager (hoặc Customer), KHÔNG tạo Admin mới.
+
             if (request.Role is not Role.Manager)
                 throw new BadRequestException(
                     "Chỉ tạo được Manager. Hệ thống giữ đúng 1 nick Admin — " +
@@ -91,8 +90,7 @@ namespace Services
         public async Task SetRoleAsync(int userId, Role role, int actorId)
         {
             var u = await MustGetStaff(userId);
-            // Invariant (docs 01 §2): Admin không cấp được role Admin cho ai.
-            // Không có path nào từ Manager → Admin; duy trì đúng 1 nick Admin.
+
             if (role == Role.Admin)
                 throw new BadRequestException(
                     "Không thể cấp role Admin — hệ thống giữ đúng 1 nick Admin.");

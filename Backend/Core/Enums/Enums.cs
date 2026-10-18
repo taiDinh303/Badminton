@@ -41,4 +41,37 @@ namespace Badminton.Core.Enums
 
     // ── User status (active/locked) ──
     public enum UserStatus { Active, Locked }
+
+    // ── Membership tier (V2: points multiplier + benefits) ──
+
+    // None = default customer (1x points). Silver = 1.5x. Gold = 2x.
+    public enum MembershipTier { None, Silver, Gold }
+
+    // ── Notification business events (outbox rows) ──
+    public enum NotifyEvent
+    {
+        BookingConfirmed,
+        BookingExpired,
+        NoShowRecorded,
+        WaitlistPromoted
+    }
+
+    // ── Notification delivery status (per outbox row, per channel) ──
+    public enum NotifyStatus
+    {
+        Pending,
+        Delivered,
+        Failed,
+        Skipped
+    }
+
+    // ── Waitlist entry status ──
+    public enum WaitlistStatus
+    {
+        Waiting,
+        Promoted,
+        Declined,
+        Cancelled,
+        Expired
+    }
 }

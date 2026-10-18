@@ -327,6 +327,17 @@ export function StatusBadge({ status, size = "md" }: { status: string; size?: "m
       icon: <XCircle className="h-3 w-3" />,
       label: "No-show",
     },
+    // Payment statuses (docs 03 §3).
+    Success: {
+      cls: "bg-slot-free-bg text-slot-free-fg",
+      icon: <CheckCircle2 className="h-3 w-3" />,
+      label: "Đã trả",
+    },
+    Failed: {
+      cls: "bg-slot-booked-bg text-slot-booked-fg",
+      icon: <XCircle className="h-3 w-3" />,
+      label: "Lỗi",
+    },
     Active: {
       cls: "bg-slot-free-bg text-slot-free-fg",
       icon: <Check className="h-3 w-3" />,

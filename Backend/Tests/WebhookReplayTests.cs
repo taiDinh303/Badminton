@@ -16,6 +16,9 @@ namespace Badminton.Tests
         public Task InitializeAsync() => Task.CompletedTask;
         public async Task DisposeAsync() => await _h.DisposeAsync();
 
+        private static string SuccessBody => """{"status":"success"}""";
+        private static string FailureBody => """{"status":"failure"}""";
+
         private async Task<(int BookingId, string GatewayRef)> MakePendingBookingWithGatewayRefAsync()
         {
             var view = await _h.RunScopeAsync(sp =>
@@ -32,12 +35,12 @@ namespace Badminton.Tests
             return (view!.Id, init.GatewayRef!);
         }
 
-        [Fact(DisplayName = "Replaying the same webhook success twice: points are credited once")]
+        [Fact(DisplayName = "Replaying the same webhook success twice: the confirm transition runs once (DEC-01: no points at confirm)")]
         public async Task ReplayedWebhook_IsIdempotent()
         {
             var (bookingId, refCode) = await MakePendingBookingWithGatewayRefAsync();
 
-            var payload = new PaymentWebhookRequest(refCode, "success", null, null);
+            var payload = new PaymentWebhookRequest(refCode, "success", SuccessBody, null);
 
             var first = await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<IPaymentService>().HandleWebhookAsync("VnPay", payload));
@@ -49,9 +52,8 @@ namespace Badminton.Tests
             Assert.True(second!.Accepted);
             Assert.True(second.IdempotentDuplicate);
 
-            // Exactly ONE earn row for this booking in the point ledger.
             var earnRows = await _h.CountPointRowsAsync(bookingId);
-            Assert.Equal(1, earnRows);
+            Assert.Equal(0, earnRows);
 
             // The booking is Confirmed.
             var booking = await _h.RunScopeAsync(sp =>
@@ -62,27 +64,30 @@ namespace Badminton.Tests
             Assert.Equal(BookingStatus.Confirmed, booking.Status);
         }
 
-        [Fact(DisplayName = "Concurrent replays of the same webhook never double-credit points")]
+        [Fact(DisplayName = "Concurrent replays of the same webhook confirm the booking exactly once")]
         public async Task ConcurrentWebhookReplays_NeverDoubleCredit()
         {
             var (bookingId, refCode) = await MakePendingBookingWithGatewayRefAsync();
 
-            // Fire the same webhook concurrently N times. Only one writer can
-            // claim the Pending→Success + Pending→Confirmed transition.
             int n = 6;
             var results = await Task.WhenAll(Enumerable.Range(0, n).Select(_ =>
                 _h.RunScopeAsync(sp =>
                     sp.GetRequiredService<IPaymentService>()
                      .HandleWebhookAsync("VnPay",
-                         new PaymentWebhookRequest(refCode, "success", null, null)))));
+                         new PaymentWebhookRequest(refCode, "success", SuccessBody, null)))));
 
             var accepted = results.Count(r => r!.Accepted);
             var applied = results.Count(r => r!.Accepted && !r.IdempotentDuplicate);
-            var earnRows = await _h.CountPointRowsAsync(bookingId);
 
             Assert.True(accepted >= 1, "at least one webhook must be accepted");
             Assert.True(applied == 1, "exactly one webhook can flip the booking");
-            Assert.True(earnRows == 1, "exactly one earn row in the point ledger");
+            Assert.Equal(0, await _h.CountPointRowsAsync(bookingId));
+            var booking = await _h.RunScopeAsync(sp =>
+            {
+                var db = sp.GetRequiredService<Repositories.Context.BadmintonBookingDbContext>();
+                return db.Bookings.FirstAsync(b => b.Id == bookingId);
+            })!;
+            Assert.Equal(BookingStatus.Confirmed, booking.Status);
         }
 
         [Fact(DisplayName = "A gateway failure webhook never confirms the booking nor credits points")]
@@ -92,7 +97,7 @@ namespace Badminton.Tests
 
             var res = await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<IPaymentService>().HandleWebhookAsync(
-                    "VnPay", new PaymentWebhookRequest(refCode, "failure", null, null)));
+                    "VnPay", new PaymentWebhookRequest(refCode, "failure", FailureBody, null)));
             Assert.False(res!.Accepted);
 
             var booking = await _h.RunScopeAsync(sp =>
@@ -109,8 +114,27 @@ namespace Badminton.Tests
         {
             var res = await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<IPaymentService>().HandleWebhookAsync(
-                    "VnPay", new PaymentWebhookRequest("NOPE-NOT-EXISTENT", "success", null, null)));
+                    "VnPay", new PaymentWebhookRequest("NOPE-NOT-EXISTENT", "success", SuccessBody, null)));
             Assert.False(res!.Accepted);
+        }
+
+        [Fact(DisplayName = "P0-3: a webhook with no raw provider body is rejected (no free confirm)")]
+        public async Task BlankRawBody_IsRejected()
+        {
+            var (bookingId, refCode) = await MakePendingBookingWithGatewayRefAsync();
+
+            var res = await _h.RunScopeAsync(sp =>
+                sp.GetRequiredService<IPaymentService>().HandleWebhookAsync(
+                    "VnPay", new PaymentWebhookRequest(refCode, "success", null, null)));
+            Assert.False(res!.Accepted);
+
+            var booking = await _h.RunScopeAsync(sp =>
+            {
+                var db = sp.GetRequiredService<Repositories.Context.BadmintonBookingDbContext>();
+                return db.Bookings.FirstAsync(b => b.Id == bookingId);
+            })!;
+            Assert.Equal(BookingStatus.Pending, booking.Status);
+            Assert.Equal(0, await _h.CountPointRowsAsync(bookingId));
         }
     }
 }

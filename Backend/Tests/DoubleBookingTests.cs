@@ -14,7 +14,6 @@ namespace Badminton.Tests
         public Task InitializeAsync() => Task.CompletedTask;
         public async Task DisposeAsync() => await _h.DisposeAsync();
 
-        /// <summary>Attempt a booking in a fresh DI scope; never throws.</summary>
         private async Task<(BookingView? View, Exception? Err)> TryBook(
             int user, int court, int slot, DateOnly date, string? voucherCode = null)
         {
@@ -88,8 +87,7 @@ namespace Badminton.Tests
         public async Task DailySlotLimit_Enforced()
         {
             int booked = 0;
-            // 5 distinct court+slot combos, all on the same date for one user.
-            // The 4/day limit fires on the 5th attempt.
+
             var combos = new[]
             {
                 (_h.Court1, _h.SlotMorning), (_h.Court1, _h.SlotNoon),

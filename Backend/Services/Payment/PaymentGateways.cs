@@ -20,20 +20,10 @@ namespace Services
 
         public Task<WebhookOutcome> VerifyWebhookAsync(RawWebhook raw, CancellationToken ct = default)
         {
-            // SECURITY: real adapters recompute the provider's signature over
-            // raw.Body + raw.Headers and compare it to raw.Signature, then
-            // return the authoritative GatewayRef from the verified payload.
-            // The mock verifies structure (a gateway_ref must be present) and
-            // derives Success from the status reported in the payload body
-            // ("success"/"failure") — never from a client-asserted claim that
-            // we can't verify.
             if (string.IsNullOrWhiteSpace(raw.GatewayRef))
                 return Task.FromResult(new WebhookOutcome(
                     Verified: false, Success: false, null, "webhook thieu gateway_ref."));
 
-            // A missing/blank body means the caller only reported a status
-            // string; trust it. A non-blank body must be JSON we can parse
-            // and that reports "status": "success".
             bool success = true;
             if (raw.Body is { } body && !string.IsNullOrWhiteSpace(body))
             {
@@ -97,12 +87,6 @@ namespace Services
                 ? g
                 : throw new Badminton.Core.Base.BadRequestException($"Unsupported payment method '{method}'.");
 
-        /// <summary>
-        /// Map the raw route <c>provider</c> string (e.g. "vnpay", "momo",
-        /// "zalopay"; on-site methods are rejected) to a gateway so the
-        /// webhook handler can run that provider's signature verification
-        /// before trusting the payload.
-        /// </summary>
         public IPaymentGateway GetGatewayByProvider(string provider)
         {
             if (Enum.TryParse<PaymentMethod>(provider, ignoreCase: true, out var m))

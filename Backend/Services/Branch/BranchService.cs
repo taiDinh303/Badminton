@@ -20,8 +20,6 @@ namespace Services
         {
             var branches = await Repo.GetByConditionAsync(b => b.DeletedAt == null);
 
-            // Anti-N+1: load every active court ONCE and count in memory instead
-            // of issuing one query per branch inside the loop.
             var activeCourts = await Repository<Court>()
                 .GetByConditionAsync(c => c.IsActive && c.DeletedAt == null);
             var counts = activeCourts

@@ -42,8 +42,6 @@ namespace Badminton.Tests
         [Fact(DisplayName = "Refund tiers: ≥2h → 100%, 1–2h → 50%, <1h → 0% (deterministic)")]
         public void RefundPolicy_Tiers()
         {
-            // Pure policy check with fixed datetimes — no reliance on the
-            // (static, per-host-pinned) HanoiTime clock, so it is deterministic.
             var now = new DateTime(2026, 10, 19, 9, 0, 0);
 
             var (r9h, _)   = Contract.Services.Payment.RefundPolicy.Tier(now, now.AddHours(9));
@@ -68,8 +66,6 @@ namespace Badminton.Tests
         [Fact(DisplayName = "The guard compares against Hanoi wall clock, not UTC (integration)")]
         public async Task Guard_UsesHanoiWallClock()
         {
-            // HanoiTime is pinned by TestHost to FutureDate 09:00 Hanoi.
-            // A slot 09:40 (40 min out) is bookable; 09:20 (20 min) is not.
             var hanoiNow = HanoiTime.HanoiNow();
             var ok40 = HanoiTime.SlotStart(_h.FutureDate, new TimeOnly(9, 40));
             var bad20 = HanoiTime.SlotStart(_h.FutureDate, new TimeOnly(9, 20));

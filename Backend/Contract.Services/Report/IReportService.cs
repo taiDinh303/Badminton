@@ -22,7 +22,10 @@ namespace Contract.Services.Report
         decimal PeakFillRatePct,
         int UsersToday,
         int ActiveCourts,
-        int ActiveBranches);
+        int ActiveBranches,
+        // FEAT KPIs (default 0 so older call sites keep compiling).
+        int ActiveMembers = 0,
+        int WaitingListCount = 0);
 
     public record RevenueByDay(DateOnly Date, int Bookings, int Revenue, int Refunds);
 

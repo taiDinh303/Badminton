@@ -5,10 +5,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Badminton.API.Controllers.Admin
 {
-    /// <summary>
-    /// Staff lifecycle — "manager &amp; admin do admin tạo" (docs 01 §2).
-    /// Admin-only. Every mutation is audit-logged.
-    /// </summary>
     [ApiController]
     [Route("api/v1/admin/staff")]
     [Authorize(Roles = "Admin")]

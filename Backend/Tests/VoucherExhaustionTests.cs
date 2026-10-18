@@ -84,8 +84,6 @@ namespace Badminton.Tests
         [Fact(DisplayName = "A second booking with a used-up voucher is rejected")]
         public async Task UsedUpVoucher_SecondBookingRejected()
         {
-            // TotalQty=1: the first booking consumes it; a second (by a
-            // different user) must be rejected.
             await _h.AddVoucherAsync("ONCE", totalQty: 1, maxPerUser: 100, value: 5_000);
 
             var (first, e1) = await TryVoucherBook(_h.Alice, _h.Court1, _h.SlotMorning, "ONCE");
