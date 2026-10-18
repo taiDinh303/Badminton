@@ -53,3 +53,4 @@ export const useAuth = create<AuthState>((set) => ({
 
 export const isStaff = (u: AuthUser | null) => u?.role === "Manager" || u?.role === "Admin";
 export const isAdmin = (u: AuthUser | null) => u?.role === "Admin";
+export const isManager = (u: AuthUser | null) => u?.role === "Manager";

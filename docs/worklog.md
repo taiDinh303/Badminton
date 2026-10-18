@@ -1,42 +1,139 @@
 # WORKLOG — Hệ thống đặt sân cầu lông
 
-> File này là điểm bắt đầu cho bất kỳ AI/người làm việc tiếp trên dự án. Cập nhật sau mỗi lượt làm việc có thay đổi thực tế. Ghi sự thật đã kiểm tra; không đánh dấu "xong" khi chưa kiểm chứng. Quy tắc nghiệp vụ chuẩn nằm trong `01-business-analysis.md`; `01`–`07` và worklog ưu tiên khi khác nhau.
+> **Chủ tài liệu: Đinh Văn Tài** (github.com/taiDinh303) · **Đồng đội: Phùng Vĩnh Luân** (github.com/thankiemsama).
+> File này là **điểm bắt đầu cho bất kỳ AI/dev** làm tiếp. Cập nhật sau mỗi lượt có thay đổi thật.
+> Ghi sự thật đã kiểm chứng; **không đánh dấu "xong" khi chưa kiểm tra**. Quy tắc đọc/ghi: xem `00-README.md` §Rules.
 
-## Trạng thái hiện tại
+## 1. Trạng thái hiện tại — rà source 16/10/2026, UTC+7
 
-- Ngày 14/10/2026, `Asia/Ho_Chi_Minh`. Backend .NET đã build xanh + 23/23 test integration pass (SQL Server Express). Các điểm "chưa có" ở lượt 13/10 đã được lấp: bug múi giờ, state-machine Completed/NoShow, branch-scope, quản lý nhân viên, redeem điểm, bảo mật API (CORS/rate-limit/lockout), load-test k6 script.
-- Quyết định kiến trúc hiện hành: **React + Vite SPA (không Next.js)** triển khai trên Vercel; **.NET 8 ASP.NET Core** (Clean Architecture 4 lớp + CQRS-lite) chạy container Linux trên Azure App Service; **Supabase** (Auth OTP, Postgres + RLS, Storage) lưu dữ liệu khi sang production. Dev/test hiện chạy SQL Server (LocalDB/Express) vì `UseSqlServer` + filtered index — Supabase (Postgres) là migration phase riêng (worklog cũ §5).
-- Chống overbooking dùng **unique partial index** `(court_id, date, slot_id) WHERE status IN (Pending, Confirmed)` + transaction CAS; webhook gateway là nguồn xác nhận, không phụ thuộc client.
-- **Đã thực thi (14/10):** múi giờ nghiệp vụ chuẩn hoá qua `HanoiTime` (UTC+7 fixed, testable); state-machine `Confirmed→Completed/NoShow` (job tự auto-complete + endpoint manager); cờ no-show 3 lần/tháng chặn đặt; branch-scope 1 manager = 1 cơ sở; admin CRUD nhân viên (tạo/lock/role/gán cơ sở); redeem điểm 1000đ=20.000đ; CORS + rate-limiter + login lockout; audit ngày Hanoi→UTC; k6 script 50 request song song.
+- CURRENT: .NET 8/EF SQL Server/JWT BCrypt/BackgroundService/mock payment + React 19/Vite/Tailwind 4. Backend nằm trong Backend/, frontend trong Frontend/.
+- Chuẩn hóa API/Tests ngày 16/10: 23/23 test service/DB pass trên SQL Server local mặc định (BADMINTON_TEST_SQLSERVER=.). Backend build và EF model check đạt; chi tiết sự kiện mới bên dưới. Chưa nghiệm thu HTTP/browser/live.
+- Suite dùng DI/service và SQL Server thật, không phải suite HTTP middleware/controller. TestHost EnsureCreated không kiểm migration nâng cấp.
+- Production/PostgreSQL/OTP/Storage/gateway thật/scheduler phân tán chưa tích hợp; chưa xác nhận hosting Badminton live.
+- Rà source phát hiện P0 quyền hủy, scope manager, hủy–hoàn tiền, báo cáo; QR chỉ tile minh họa. Chi tiết và backlog chuẩn ở [08-plan.md](08-plan.md).
+- Người dùng đã yêu cầu chuẩn hóa tên và push toàn bộ ngày 16/10: đưa relocation Backend lên Git, đổi API/project/Core namespace/Tests/DbContext, cập nhật build/CI/docs. Giữ logic nghiệp vụ và schema.
 
-## Việc vừa hoàn thành (lượt 14/10/2026)
+| Quyết định lịch sử | Hiện trạng rà source | Giới hạn |
+| --- | --- | --- |
+| HanoiTime UTC+7 | Có helper và guard/refund/auto-complete | ReportService còn DateTime.Now; không tuyên bố mọi thời gian đã chuẩn hóa |
+| Completed/NoShow | Có endpoint/job | Chưa scope/thời điểm đầy đủ; DEC-03 |
+| Manager một cơ sở | Có scope một số thao tác payment/maintenance | Chưa toàn API; SEC-02 |
+| Redeem điểm | Có key idempotent, 1.000 điểm=20.000 VND | Earn/restore khác spec; DEC-01/02 |
+| CQRS/MediatR | Chưa có | Service/repository là baseline |
 
-- **Múi giờ (critical fix):** mọi deadline nghiệp vụ (guard +30p, refund 2h/1h/0%, pending-expiry, availability) chuyển từ `DateTime.UtcNow` sang `HanoiTime` (UTC+7) tại `Core/Utils/HanoiTime.cs`. Trước đó khách có thể đặt slot đã qua và tỷ lệ hoàn tiền lệch ±7h.
-- **State machine (Q1=B):** thêm `BookingService.MarkCompletedAsync/MarkNoShowAsync` + `AutoCompleteJob` (sau giờ kết thúc slot, đơn Confirmed tự chuyển Completed để khách được đánh giá) + endpoint `POST /bookings/{id}/complete` & `/no-show` (Admin/Manager).
-- **No-show gate (Q2=A):** `User.NoShowCount/NoShowPeriod/NoShowLimited/NoShowLimitedPeriod`; đủ 3 no-show trong tháng → chặn đặt tháng sau; `NoShowResetJob` tự mở lại khi qua tháng. Kiểm tra trong `BookingService.CreateAsync`.
-- **Branch-scope (Q3=A):** `PaymentService.AuthorizeStaffScope` + `MaintenanceService` chặn Manager thao tác cơ sở khác (1 manager = 1 `BranchId`).
-- **Redeem điểm (Q4=A):** `PointService.RedeemAsync/RestoreAsync` (LedgerKey idempotent), `Booking.PointsRedeemed`, tạo booking nhận `PointsToRedeem`, hoàn tiền full → restore điểm.
-- **Quản lý nhân viên:** `StaffService` + `POST /api/v1/admin/staff/*` (tạo/lock/unlock/đổi role/gán cơ sở), guard "đúng 1 admin active" (index `ux_active_admin`).
-- **Bảo mật API:** CORS (env `Cors:AllowedOrigins`), `AddRateLimiter` (global + bucket "auth" 5/60s) + `[EnableRateLimiting("auth")]` trên AuthController, lockout login 5 sai/10p→15p (in-memory, dev), `[Authorize]` cho `GET /vouchers/{code}`.
-- **Sửa kỹ thuật:** `GetByUserPagedAsync` (push enum vào SQL, không `ToString()`), `IsSlotConflict` (SqlException.Number 2601, không parse message), dọn `RefundLocks` (TryRemove hết leak), audit filter ngày Hanoi→UTC boundary.
-- **Database:** migration `20261014063758_AddNoShowTrackingAndPointsRedeemed` (4 cột User + 1 cột Booking); `BadmintonBooking.sql` dev cập nhật DDL + seed + migrations history.
-- **Test:** thêm `TimezoneGuardTests` (3) + `LifecycleAndRedeemTests` (5); `TestHost` seed 2 branch + manager 2 cơ sở + slot 09:40, pin `HanoiTime.NowUtc`. **Kết quả: 23/23 pass** (SQL Server Express `.\\SQLEXPRESS`).
-- **Load test:** `loadtest/concurrency_booking.js` (k6, 50 VU cùng slot, assert 1 winner + 49 SLOT_CONFLICT).
+## 2. Lịch sử ghi nhận 14/10/2026 — chưa xác minh lại runtime
 
-## Lệnh và kết quả kiểm chứng
+> Giữ nội dung lịch sử bên dưới để truy vết. Các khẳng định coverage, clock, scope, restore và k6 ở bản ghi cũ đã được giới hạn/đính chính bởi §1, §8 và tài liệu chuyên trách; không dùng làm bằng chứng kiểm tra hiện tại.
 
-- `dotnet build Badminton.slnx` → **Build succeeded, 0 warning 0 error**.
-- `dotnet ef migrations add AddNoShowTrackingAndPointsRedeemed --project Repositories --startup-project Badminton` → migration tạo OK.
-- `dotnet test Badminton.slnx` → **Passed! Failed: 0, Passed: 23, Total: 23**.
-- DB test chạy trên `.\SQLEXPRESS` (LocalDB không có trên máy này; đã đổi connection string TestHost + sqlcmd xác nhận `SELECT 1` OK với `-C`).
-- k6 script đã viết **chưa chạy** (cần API chạy thật + token; k6 chưa cài). Ghi rõ chưa có bằng chứng p95 thực tế.
+- **Múi giờ (critical fix):** mọi deadline (guard +30p, refund 2h/1h/0%, pending-expiry, availability) chuyển `DateTime.UtcNow` → `HanoiTime` tại `Core/Utils/HanoiTime.cs`. Trước đó khách đặt được slot đã qua + tỷ lệ hoàn lệch ±7h.
+- **State machine:** `BookingService.MarkCompletedAsync/MarkNoShowAsync` + `AutoCompleteJob` (Confirmed qua slot end → Completed) + endpoint `POST /bookings/{id}/complete` & `/no-show`.
+- **No-show gate:** `User.NoShowCount/NoShowPeriod/NoShowLimited/NoShowLimitedPeriod`; 3 lần/tháng → chặn đặt tháng kế; `NoShowResetJob` tự mở; kiểm tra trong `BookingService.CreateAsync`.
+- **Branch-scope:** `PaymentService.AuthorizeStaffScope` + `MaintenanceService` chặn manager thao tác cơ sở khác.
+- **Redeem điểm:** `PointService.RedeemAsync/RestoreAsync` (LedgerKey idempotent), `Booking.PointsRedeemed`, hoàn full → restore điểm.
+- **Quản lý nhân viên:** `StaffService` + `POST /api/v1/admin/staff/*` (tạo/lock/unlock/đổi role/gán cơ sở), guard "đúng 1 admin active" (`ux_active_admin`).
+- **Bảo mật API:** CORS (`Cors:AllowedOrigins`), `AddRateLimiter` (global + bucket `auth` 5/60s), lockout login 5 sai/10p (in-memory), `[Authorize]` cho `GET /vouchers/{code}`.
+- **Sửa kỹ thuật:** `GetByUserPagedAsync` (push enum vào SQL), `IsSlotConflict` (SqlException.Number 2601, không parse message), dọn `RefundLocks` (chống leak), audit filter Hanoi→UTC boundary.
+- **Database:** migration `20261014063758_AddNoShowTrackingAndPointsRedeemed` (4 cột User + 1 cột Booking). `BadmintonBooking.sql` dev cập nhật.
+- **Test:** thêm `TimezoneGuardTests` (3) + `LifecycleAndRedeemTests` (5); `TestHost` seed 2 branch + manager 2 cơ sở + slot 09:40, pin `HanoiTime.NowUtc`. → **23/23 pass**.
+- **Load test:** `loadtest/concurrency_booking.js` (k6, 50 VU cùng slot, assert 1 winner + 49 SLOT_CONFLICT; + login storm 1000 VU + dashboard fan-out).
 
-## Việc tiếp theo
+## 3. Ma trận chức năng (đã có / chưa có)
 
-1. Chạy k6 `concurrency_booking.js` khi API chạy được → đo p95 (mục tiêu <500ms theo docs 05).
-2. Chuyển Dev lockout login in-memory sang **Redis** (docs 04) khi infra Supabase/Redis sẵn sàng.
-3. Áp migration lên Supabase Postgres (production), chuyển `UseSqlServer` → `UseNpgsql`, bật RLS, seed 1 admin thật (docs 06).
-4. Nối gateway sandbox thật (VNPay/MoMo/Zalopay) thay `MockOnlineGateway`; verify chữ ký webhook thật.
-5. Frontend React Vite: bổ sung UI cho `complete/no-show`, redeem điểm, dashboard no-show.
+> ✅ có code, không đồng nghĩa runtime pass · 🟡 một phần/sai khác · ❌ chưa có. Source path tính từ Backend trừ Frontend. P0 ở 08-plan là nguồn ưu tiên hiện hành.
 
-Quy tắc nghiệp vụ chi tiết xem [01-business-analysis.md](01-business-analysis.md); dữ liệu xem [02-database-design.md](02-database-design.md); luồng xem [03-workflow.md](03-workflow.md); kiến trúc và OOP xem [04-system-architecture.md](04-system-architecture.md); kiểm thử xem [05-testing-strategy.md](05-testing-strategy.md); triển khai xem [06-deployment-vercel-supabase.md](06-deployment-vercel-supabase.md); giao diện xem [07-ui-design-system.md](07-ui-design-system.md).
+| Module / chức năng | Trạng thái | Code chính | Ghi chú |
+| --- | --- | --- | --- |
+| Auth (đăng nhập/đăng ký sđt) | ✅ (dev BCrypt) | `Services/Auth/*`, `POST /auth/*` | Prod = Supabase OTP |
+| Đặt chỗ (idempotent, anti-overbooking) | 🟡 | `BookingService`, index `ux_court_slot_active` | |
+| Thanh toán (init, on-site, webhook, refund) | 🟡 (mock gateway) | `PaymentService`, `PaymentGateways.cs` | Real adapter = việc #4 |
+| Voucher (percent cap/fixed, min_spend, 1 lần) | ✅ | `VoucherService`, `VoucherExpiryJob` | |
+| Điểm (1 VND=1 điểm, redeem/restore, ledger) | 🟡 | `PointService`, `PointLedger` | |
+| Nhóm chơi (owner-only, max 10) | ✅ | `GroupService`, `BookingPlayer` | |
+| Đánh giá (completed-only, rolling avg) | ✅ | `ReviewService`, `Reviews.BookingId` unique | |
+| Bảo trì sân (lock slot, không tự hủy) | ✅ | `MaintenanceService`, `CourtDateStatus` | |
+| No-show gate (3 lần/tháng) | ✅ | `NoShowResetJob`, `User.NoShow*` | |
+| Nhân viên (CRUD, lock, role, gán cơ sở) | ✅ | `StaffService`, `/admin/staff/*` | |
+| Báo cáo (summary/revenue/occupancy) | 🟡 | `ReportService`, `/admin/report/*` | |
+| Audit (append-only, before/after) | 🟡 | `AuditService`, `AuditLogs` | |
+| **Dashboard UI no-show + complete/no-show + redeem** | 🟡 | `Frontend/pages/admin/*` | API có, UI bổ sung = việc #5 |
+| **Gateway thật (VnPay/MoMo/Zalopay signed)** | ❌ | mock dev | Việc #4 |
+| **Cutover Postgres + RLS + Supabase Auth** | ❌ | `UseSqlServer` dev | Việc #3 (P0) |
+| **Hangfire (thay IHostedService)** | ❌ | IHostedService dev | Việc P1 |
+| **Redis rate-limit/lockout** | ❌ | in-memory dev | P1 |
+| **Offline queue (LocalStorage/IndexedDB)** | ❌ | chưa build | P2 |
+| **Load test chạy thật (p95)** | 🟡 | k6 script có, chưa chạy | Việc #1 |
+
+## 4. Bằng chứng kiểm tra
+
+### Lần chuẩn hóa docs 16/10/2026
+
+- Đọc cấu trúc/mẫu docs Marixa và source/config Badminton; đối chiếu controller/service/mapping/test/CSS/route, không dùng hạ tầng Marixa làm snapshot Badminton.
+- Xác nhận tĩnh: 15 bảng mapping, 23 Fact; SDK máy rà soát 9.0.317, Node 24.21.0.
+- Chưa chạy dotnet build/test, npm build/lint, k6, API, browser hoặc cloud. Nhiệm vụ chỉ Markdown; không báo kết quả ứng dụng mới.
+- Kiểm tra 15 file Markdown: một H1/file, code fence cân bằng, UTF-8/không ký tự lỗi, đường dẫn link nội bộ tồn tại; git diff --check -- docs không báo lỗi. Kiểm tra cuối: 105 liên kết nội bộ (kèm anchor), 45 bảng, 15 file đều đạt; 0 lỗi cấu trúc/liên kết; git diff --check -- docs sạch.
+
+### Kết quả lịch sử trong bản ghi cũ
+
+Ngày 14/10 ghi build 0 warning/error, 23 test pass với SQL Express; chưa có log runtime mới. Lệnh cũ dùng thư mục Badminton/ hiện không còn phù hợp. Lệnh hiện hành ở [10-setup-local.md](10-setup-local.md). Lượt chuẩn hóa tên tiếp theo đã sửa script/CI và xác minh local; xem sự kiện mới nhất.
+
+## 5. Việc tiếp theo
+
+Nguồn duy nhất quản lý backlog/ưu tiên/tiêu chí đóng: [08-plan.md §3](08-plan.md#3-backlog-và-phụ-thuộc). P0 đầu tiên là quyền hủy và manager scope, hủy–hoàn, giá lịch sử/báo cáo, kiểm thử HTTP/browser thực; path CI đã sửa trong lượt chuẩn hóa tên. Không bắt đầu load lớn trên ứng dụng chưa đóng lỗi quyền/tiền.
+
+## 6. Log sự kiện (mới trên cùng)
+
+### 16/10/2026 — Chuẩn hóa tên backend và push toàn bộ theo yêu cầu
+
+- Chuyển cấu trúc Backend đang có vào Git; API/Badminton.API.csproj, namespace Badminton.API; Tests/Badminton.Tests.csproj; Core namespace Badminton.Core; Context/BadmintonBookingDbContext.cs. Solution groups và RootNamespace đồng bộ.
+- Giữ tên các tầng và database/migration/API contract; không sửa các lỗi nghiệp vụ SEC/PAY/REP trong nhiệm vụ đổi tên.
+- Sửa build.ps1 dùng path theo script, chỉ dừng API khi -StopApi; cập nhật CI SDK 9 + runtime 8, EF tool manifest 8.0.28, thêm lint/build frontend. global.json chọn SDK 9.0.300/latestFeature (máy dùng 9.0.317).
+- Cập nhật docs và helper loadtest theo đường dẫn mới; design-time factory hỗ trợ env chuẩn cùng alias legacy. Không chạy helper reset DB/load test.
+- dotnet build Backend/Badminton.slnx -c Debug: đạt, 0 error, 1 warning CS1998 có sẵn trong TimezoneGuardTests.
+- BADMINTON_TEST_SQLSERVER=. dotnet test Backend/Tests/Badminton.Tests.csproj -c Debug --no-build --no-restore: 23 passed, 0 failed/skipped.
+- dotnet tool restore: đạt; EF has-pending-model-changes: No changes have been made to the model since the last migration.
+- npm ci, npm run lint, npm run build: đạt. Vite cảnh báo chunk chính >500 KB minified (gzip 170.23 KB), chưa tối ưu bundle trong nhiệm vụ này. build.ps1 đạt (incremental 0 warning/error); full build trước đó có warning CS1998 như ghi trên.
+- Kiểm 110 link nội bộ, table/fence/H1, solution/ProjectReference và JSON config: 0 lỗi; PowerShell parser cho build.ps1/start_api.ps1 đạt. Git diff --check kiểm trước commit.
+- File cấu hình Visual Studio *.user không được đưa lại vào Git ở cấu trúc mới; giữ local theo .gitignore. Node_modules/dist/bin/obj không được commit.
+- Chưa chạy smoke API/browser/cloud hoặc load k6; CI remote chưa xác minh. Các P0 nghiệp vụ vẫn mở.
+
+
+### 16/10/2026 — Chuẩn hóa bổ sung theo bộ docs Marixa, dành riêng Badminton
+
+- Người dùng cấp phạm vi hoàn thiện toàn bộ Markdown. Thay quy tắc đặc tả đóng băng bằng bảo trì docs trong phạm vi được giao.
+- Bổ sung 08-plan, 09-deploy-detail, 10-setup-local, 11-setup-cloud, 12-figma-sync; hoàn thiện các file hiện hữu và glossary, giữ đường dẫn/tên cũ còn dùng.
+- Phân biệt CURRENT/TARGET/PENDING/NOT VERIFIED; sửa path Backend, đơn vị điểm, quan hệ voucher, giới hạn unique admin, QR minh họa, rate-limit/correlation, k6 request count/assertion và migration/test coverage.
+- Ghi sai khác ứng dụng bằng mã SEC/PAY/DATA/REP/DEV; không sửa code hoặc đổi chính sách chưa chốt để hợp thức lỗi.
+- Giữ lịch sử/bản ghi trước và mọi thay đổi local ngoài docs; chưa commit/push. Kiểm tra cấu trúc/liên kết/diff docs; không chạy suite ứng dụng.
+
+
+### 16/10/2026 — Viết lại & hoàn thiện bộ tài liệu docs/
+- **Viết mới `00-README.md`** (entry point, quick facts dev-baseline vs production-target, rules) theo mẫu Marixa.
+- **Hoàn thiện `01`–`07` + `glossary.md`** cho khớp **code đang chạy thật** (SQL Server, int PK, JWT/BCrypt, IHostedService, mock gateway, React 19 + Tailwind v4), tách rõ **dev baseline vs production target** ở mọi file. Không còn mơ hồ Supabase/uuid/Hangfire như bản cũ.
+- **Đổi tên `06-deployment-vercel-supabase.md` → `06-deployment.md`** (Part A dev local + Part B production). Xóa file `06-deployment-vercel-supabase.md` cũ.
+- **Cập nhật `worklog.md`** (file này) làm điểm bắt đầu chính xác cho AI/dev.
+- Chỉ chỉnh Markdown trong `docs/`; không sửa code.
+
+### 14/10/2026 — (bản trước, giữ nguyên) Múi giờ HanoiTime, state machine, no-show gate, branch-scope, redeem điểm, quản lý nhân viên, bảo mật API, k6 script; 23/23 test pass.
+
+## 7. Quy tắc cập nhật worklog
+
+- Mỗi lượt: ghi ngày + thay đổi thật + bằng chứng; chuyển việc xong khỏi §5.
+- Bug: triệu chứng + cách tái hiện + mức ảnh hưởng + trạng thái; khi hết ghi cách sửa + ngày đóng.
+- Bảo trì docs cùng nhiệm vụ được giao theo [00](00-README.md). Chính sách chưa chốt ghi đề xuất/tác động ở [08](08-plan.md), không tự coi là quyết định.
+
+## 8. Vấn đề/rủi ro đang mở — bằng chứng source
+
+| ID | Bằng chứng | Ảnh hưởng / trạng thái |
+| --- | --- | --- |
+| SEC-01 | BookingService.AuthorizeCancel không throw sau guard owner/group | Actor khác có thể đi tiếp; chưa sửa code |
+| SEC-02 | GetAllPagedAsync/ReportService dùng branchId caller; lifecycle thiếu scope; payment read chỉ IsStaff | Không chứng minh manager bị giới hạn cơ sở; chưa sửa |
+| SEC-03 | TimeSlotController POST/PATCH cho Admin,Manager | Khác đặc tả chỉ Admin cấu hình slot; chưa sửa |
+| PAY-01 | CancelAsync đổi Cancelled nhưng không gọi RefundAsync; refund chỉ nhận Confirmed/Completed | Hủy đã trả mất đường refund hiện tại; chưa sửa |
+| DATA-01 | Lookup IdempotencyKey không bind actor/payload; ToView tính giá tham chiếu sân hiện tại | Retry có thể nhận kết quả sai; breakdown lịch sử lệch; chưa sửa |
+| REP-01 | Summary/Revenue dùng Bookings, refunds=0, peak tử số chưa IsPeak, DateTime.Now | KPI sai nghĩa/giờ; chưa sửa |
+| DEV-01 | Đã chuẩn hóa API/Tests, build.ps1, CI, SDK/tools | Đã sửa và kiểm local; CI remote chưa xác minh |
+| UI-01 | Detail QrTile display-only, method mock, init success chưa điều hướng/refresh | Chưa nghiệm thu payment/QR thực; chưa sửa |
+| OPS-01 | global limiter chưa áp, CORS rỗng any-origin, request_id chưa tạo | Không coi cấu hình là bảo vệ/quan sát đã đầy đủ |
+| DEC-01/02/03 | Điểm/no-show khác đặc tả hoặc thiếu mốc | Cần owner chốt trước sửa chính sách |
+
+Đọc trực tiếp source hiện tại khi triển khai; bảng này là rà soát tĩnh, chưa là kết quả khai thác/test HTTP. Các chi tiết và tiêu chí nằm tại [08](08-plan.md).

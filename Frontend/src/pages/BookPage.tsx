@@ -1,12 +1,31 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight, MapPin, X, Wallet, Users } from "lucide-react";
-import { api, ApiError, formatDay, formatVnd, type CourtAvailability, type Slot } from "../lib/api";
+import {
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+  X,
+  Users,
+  Hourglass,
+  CalendarDays,
+  BadgePercent,
+  Coins,
+  Zap,
+} from "lucide-react";
+import {
+  api,
+  ApiError,
+  formatDay,
+  formatVnd,
+  type CourtAvailability,
+  type Slot,
+  type GroupView,
+} from "../lib/api";
 import { Card, Callout, Busy, Button, SlotCell } from "../components/ui";
+import { useAuth } from "../store/auth";
 
 function localDate(d: Date): string {
-  // Naive "yyyy-MM-dd" in the user's local calendar (backend DateOnly).
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -20,14 +39,16 @@ function addDays(date: string, n: number): string {
   return localDate(dt);
 }
 
+const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+
 type Sel = { court: CourtAvailability; slot: Slot };
 
 /**
- * Grid đặt sân (docs 07 §3/§4):
- *  - trên: chọn cơ sở + dải ngày (mũi tên chuyển).
- *  - giữa: grid hàng = sân, cột = giờ (cuộn ngang, snap).
- *  - chạm slot trống → drawer xác nhận (sân/giá/số người/voucher/CTA).
- *  - chú giải trạng thái; 1 CTA chính; drawer không bị che bởi bottom nav.
+ * Grid đặt sân (docs 07 §3/§4) — redesign:
+ *  - header card: cơ sở + dải ngày (mũi tên) + nhanh "Hôm nay".
+ *  - grid: hàng = sân, cột = giờ; cell cho biết giá theo peak/low.
+ *  - drawer xác nhận: sân/giá/người/voucher/điểm/nhóm + 1 CTA chính.
+ *  - chú giải trạng thái (text + màu + icon); drawer không bị che bottom nav.
  */
 export default function BookPage() {
   const today = localDate(new Date());
@@ -37,14 +58,22 @@ export default function BookPage() {
   const [players, setPlayers] = useState(2);
   const [voucher, setVoucher] = useState("");
   const [done, setDone] = useState<string | null>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
+  const [groupId, setGroupId] = useState<number | "">("");
+  const [pointsToRedeem, setPointsToRedeem] = useState("");
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
     queryFn: api.branches.list,
   });
 
-  // Auto-pick first branch once loaded.
+  const user = useAuth((s) => s.user);
+  const { data: myGroups = [] } = useQuery({
+    queryKey: ["groups", "mine"],
+    queryFn: api.groups.mine,
+    select: (gs: GroupView[]) =>
+      gs.filter((g) => g.ownerId === user?.id),
+  });
+
   useEffect(() => {
     if (branchId == null && branches.length > 0) setBranchId(branches[0].id);
   }, [branches, branchId]);
@@ -53,7 +82,6 @@ export default function BookPage() {
     queryKey: ["availability", branchId, date],
     queryFn: () => api.booking.availability(branchId!, date),
     enabled: branchId != null,
-    // Poll so "slot vừa bị khách khác chiếm" tự cập nhật (docs 07 §4).
     refetchInterval: 15_000,
   });
 
@@ -65,180 +93,221 @@ export default function BookPage() {
         slotId: sel!.slot.slotId,
         playerCount: players,
         voucherCode: voucher.trim() || null,
+        groupId: groupId === "" ? null : groupId,
+        pointsToRedeem: pointsToRedeem.trim() ? Number(pointsToRedeem) : null,
       }),
     onSuccess: (b) => {
       setDone(b.bookingCode);
       setSel(null);
+      setVoucher("");
+      setPointsToRedeem("");
+      setGroupId("");
       refetch();
     },
   });
 
   const [voucherErr, setVoucherErr] = useState<string | null>(null);
+  const [waitlistDone, setWaitlistDone] = useState(false);
   const previewVoucher = useMutation({
     mutationFn: (baseAmount: number) => api.vouchers.preview(voucher.trim(), baseAmount),
-    onError: () => setVoucherErr("Voucher không áp dụng cho đơn này (không đạt điều kiện tối thiểu)."),
+    onError: () => setVoucherErr("Voucher không áp dụng cho đơn này (chưa đạt điều kiện)."),
   });
+
+  const joinWaitlist = useMutation({
+    mutationFn: () =>
+      api.waitlist.join({
+        courtId: sel!.court.courtId,
+        slotId: sel!.slot.slotId,
+        date,
+        playerCount: players,
+      }),
+    onSuccess: () => setWaitlistDone(true),
+  });
+
+  const createFailed = create.isError;
 
   const price = useMemo(() => {
     if (!sel) return null;
     const unit = sel.slot.isPeak ? sel.court.pricePeak : sel.court.priceLowPeak;
-    return {
-      base: unit,
-      total: unit * players,
-      peak: sel.slot.isPeak,
-    };
+    return { base: unit, total: unit * players, peak: sel.slot.isPeak };
   }, [sel, players]);
 
-  const openCourts = courts?.filter((c) => c.slots.some((s) => !s.isLocked)) ?? [];
-  // Column union of slots for a single time axis.
-  const columns = useMemo(() => {
-    const map = new Map<number, Slot>();
-    courts?.forEach((c) => c.slots.forEach((s) => map.set(s.slotId, s)));
-    return [...map.values()];
-  }, [courts]);
+  const openCourts =
+    courts?.filter((c) => c.slots.some((s) => !s.isLocked)) ?? [];
 
   function selectSlot(court: CourtAvailability, slot: Slot) {
     if (slot.isLocked) return;
     setSel({ court, slot });
+    setWaitlistDone(false);
   }
 
-  // Keyboard nav on the grid (docs 07 §6: arrows move, Enter selects).
+  // Keyboard nav moves within the currently selected court's slots (docs 07 §6).
   function onKeyDown(e: React.KeyboardEvent) {
     if (!sel) return;
-    const ci = columns.findIndex((c) => c.slotId === sel.slot.slotId);
-    if (e.key === "ArrowRight" && ci < columns.length - 1) {
-      const next = columns[ci + 1];
+    const ordered = [...sel.court.slots].sort(
+      (a, b) => a.startTime.localeCompare(b.startTime),
+    );
+    const ci = ordered.findIndex((s) => s.slotId === sel.slot.slotId);
+    if (e.key === "ArrowRight" && ci < ordered.length - 1) {
+      const next = ordered[ci + 1];
       if (!next.isLocked) selectSlot(sel.court, next);
       e.preventDefault();
     }
     if (e.key === "ArrowLeft" && ci > 0) {
-      const prev = columns[ci - 1];
+      const prev = ordered[ci - 1];
       if (!prev.isLocked) selectSlot(sel.court, prev);
       e.preventDefault();
     }
     if (e.key === "Escape") setSel(null);
   }
 
+  const weekday = WEEKDAYS[new Date(`${date}T00:00:00`).getDay()];
+
   return (
     <div className="mx-auto max-w-5xl p-4 md:p-6" onKeyDown={onKeyDown}>
-      <h1 className="text-2xl font-bold">Đặt sân</h1>
+      <div>
+        <h1 className="text-2xl font-bold">Đặt sân</h1>
+        <p className="mt-1 text-sm text-muted">
+          Chọn cơ sở, ngày & khung giờ trống để đặt. Khách check-in bằng mã/QR tại sân.
+        </p>
+      </div>
 
-      {/* Branch + date controls */}
-      <div className="mt-4 flex flex-col gap-3">
-        <label className="flex items-center gap-2 text-sm text-muted">
-          <MapPin className="h-4 w-4 text-primary" />
-          Cơ sở
-          <select
-            value={branchId ?? ""}
-            onChange={(e) => setBranchId(Number(e.target.value))}
-            className="rounded-lg border border-border bg-card px-3 py-2 text-base text-fg outline-none focus:border-primary"
-          >
-            {branches.map((b) => (
-              <option key={b.id} value={b.id} disabled={!b.isActive}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      {/* Controls card */}
+      <Card className="mt-4 p-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="flex items-center gap-2.5 text-sm">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <MapPin className="h-4 w-4" />
+            </span>
+            <span className="flex-1">
+              <span className="block text-[11px] font-medium text-muted">Cơ sở</span>
+              <select
+                value={branchId ?? ""}
+                onChange={(e) => setBranchId(Number(e.target.value))}
+                aria-label="Chọn cơ sở"
+                className="w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm font-semibold text-fg outline-none focus:border-primary"
+              >
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id} disabled={!b.isActive}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </span>
+          </label>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            aria-label="Ngày trước"
-            onClick={() => setDate((d) => addDays(d, -1))}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <span className="min-w-32 text-center text-sm font-semibold tnum">{formatDay(date)}</span>
-          <button
-            type="button"
-            aria-label="Ngày sau"
-            onClick={() => setDate((d) => addDays(d, 1))}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-          <input
-            type="date"
-            value={date}
-            min={today}
-            onChange={(e) => e.target.value && setDate(e.target.value)}
-            className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm text-fg outline-none focus:border-primary"
-          />
+          <div className="sm:justify-self-end">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Ngày trước"
+                onClick={() => setDate((d) => addDays(d, -1))}
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted transition-colors hover:text-fg"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <div className="min-w-[120px] text-center">
+                <p className="text-[11px] font-medium text-muted">{weekday} · {formatDay(date)}</p>
+                <input
+                  type="date"
+                  value={date}
+                  min={today}
+                  onChange={(e) => e.target.value && setDate(e.target.value)}
+                  aria-label="Chọn ngày"
+                  className="mt-0.5 w-full text-center text-sm font-semibold tnum text-fg outline-none"
+                />
+              </div>
+              <button
+                type="button"
+                aria-label="Ngày sau"
+                onClick={() => setDate((d) => addDays(d, 1))}
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted transition-colors hover:text-fg"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Legend (docs 07 §2: text + color + icon, never color-only) */}
-      <div className="mt-4 flex flex-wrap gap-3 text-xs text-muted">
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block h-3 w-3 rounded bg-slot-free-bg" /> Trống
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block h-3 w-3 rounded bg-slot-booked-bg" /> Đã đặt
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-block h-3 w-3 rounded bg-slot-maint-bg" /> Bảo trì
-        </span>
-        <span className="inline-flex items-center gap-1 text-accent">
-          <span className="inline-block h-3 w-3 rounded border border-accent" /> Giờ cao điểm
-        </span>
-      </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setDate(today)}
+            className={
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors " +
+              (date === today
+                ? "bg-primary text-white"
+                : "border border-border bg-card text-muted hover:text-fg")
+            }
+          >
+            <CalendarDays className="h-3.5 w-3.5" /> Hôm nay
+          </button>
+          {/* Legend (docs 07 §2: text + color + icon) */}
+          <div className="ml-auto flex flex-wrap gap-2.5 text-[11px] text-muted">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-3 w-3 rounded bg-slot-free-bg" /> Trống
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-3 w-3 rounded bg-slot-booked-bg" /> Đã đặt
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-3 w-3 rounded bg-slot-maint-bg" /> Bảo trì
+            </span>
+            <span className="inline-flex items-center gap-1 text-accent">
+              <Zap className="h-3 w-3" /> Cao điểm
+            </span>
+          </div>
+        </div>
+      </Card>
 
-      {isFetching && <Busy label="Đang tải khung giờ…" />}
+      {isFetching && <div className="mt-4"><Busy label="Đang tải khung giờ…" /></div>}
 
       {!isFetching && openCourts.length === 0 && (
         <Callout tone="info" className="mt-4">
-          Chưa có dữ liệu sân vào ngày này.
+          Chưa có sân trống vào ngày này.
         </Callout>
       )}
 
-      {/* Grid: rows = courts, columns = slots (horizontal scroll + snap) */}
-      <div ref={gridRef} className="mt-4 -mx-4 overflow-x-auto px-4 md:mx-0 md:overflow-x-visible md:px-0">
-        <div className="min-w-max md:min-w-0">
-          {/* Header: court label column + slot times */}
-          <div className="mb-2 flex gap-2">
-            <div className="w-24 shrink-0" />
-            {columns.map((s) => (
-              <div key={s.slotId} className="w-16 shrink-0 text-center text-xs font-medium text-muted tnum">
-                {s.startTime.slice(0, 5)}
-                {s.isPeak && <span className="block text-accent">cao điểm</span>}
+      {/* Grid — compact per-court cards, slots wrap within viewport (no h-scroll) */}
+      <div className="mt-4 space-y-3">
+        {openCourts.map((c) => (
+          <Card key={c.courtId} className="p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate font-semibold">{c.courtName}</p>
+                <p className="text-[11px] text-muted tnum">
+                  {formatVnd(c.priceLowPeak)} – {formatVnd(c.pricePeak)}
+                </p>
               </div>
-            ))}
-          </div>
-
-          <div className="space-y-2">
-            {openCourts.map((c) => (
-              <div key={c.courtId} className="flex items-center gap-2">
-                <div className="w-24 shrink-0">
-                  <p className="truncate text-sm font-semibold">{c.courtName}</p>
-                  <p className="text-[11px] text-muted tnum">
-                    {formatVnd(c.priceLowPeak)}–{formatVnd(c.pricePeak)}
-                  </p>
-                </div>
-                {columns.map((s) => {
-                  const state = s.isLocked ? "maint" : "free";
-                  const isSel = sel?.court.courtId === c.courtId && sel?.slot.slotId === s.slotId;
-                  return (
-                    <div key={s.slotId} className="w-16 shrink-0">
-                      <SlotCell
-                        state={state}
-                        label={s.label}
-                        peak={s.isPeak}
-                        selected={isSel}
-                        onClick={() => selectSlot(c, s)}
-                        disabled={s.isLocked}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
+              <span className="shrink-0 rounded-full bg-bg px-2.5 py-1 text-[11px] font-medium text-muted tnum">
+                {c.slots.filter((s) => !s.isLocked).length}/{c.slots.length} trống
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
+              {c.slots.map((s) => {
+                const state = s.isLocked ? "maint" : "free";
+                const isSel =
+                  sel?.court.courtId === c.courtId && sel?.slot.slotId === s.slotId;
+                const cellPrice = s.isPeak ? c.pricePeak : c.priceLowPeak;
+                return (
+                  <SlotCell
+                    key={s.slotId}
+                    state={state}
+                    label={s.startTime.slice(0, 5)}
+                    sub={s.isLocked ? "Bảo trì" : formatVnd(cellPrice)}
+                    peak={s.isPeak}
+                    selected={isSel}
+                    onClick={() => selectSlot(c, s)}
+                    disabled={s.isLocked}
+                  />
+                );
+              })}
+            </div>
+          </Card>
+        ))}
       </div>
 
-      {/* Confirmation drawer (docs 07 §3/§4) */}
+      {/* Confirmation drawer */}
       <AnimatePresence>
         {sel && price && (
           <motion.div
@@ -254,34 +323,65 @@ export default function BookPage() {
               role="dialog"
               aria-label="Xác nhận đặt sân"
             >
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-semibold">{sel.court.courtName}</p>
-                  <p className="text-sm text-muted">
-                    {formatDay(date)} • {sel.slot.label}
-                    {sel.slot.isPeak ? " (giờ cao điểm)" : ""}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-bold">{sel.court.courtName}</p>
+                  <p className="mt-0.5 text-sm text-muted tnum">
+                    {weekday} {formatDay(date)} · {sel.slot.label}
+                    {sel.slot.isPeak ? " (cao điểm)" : ""}
                   </p>
                 </div>
-                <button aria-label="Đóng" onClick={() => setSel(null)} className="text-muted hover:text-fg">
+                <button
+                  aria-label="Đóng"
+                  onClick={() => setSel(null)}
+                  className="shrink-0 rounded-lg p-1 text-muted transition-colors hover:bg-bg hover:text-fg"
+                >
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <div className="mt-3 flex items-center gap-3">
-                <div className="flex items-center gap-2 text-sm text-muted">
-                  <Users className="h-4 w-4" />
-                  <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={players}
-                    onChange={(e) => setPlayers(Math.max(1, Math.min(10, Number(e.target.value))))}
-                    className="w-14 rounded-lg border border-border bg-card px-2 py-1 text-fg outline-none focus:border-primary"
-                    aria-label="Số người"
-                  />
-                </div>
-                <div className="flex flex-1 items-center gap-2 text-sm text-muted">
-                  <Wallet className="h-4 w-4" />
+              {/* People + voucher */}
+              <div className="mt-4 grid grid-cols-2 gap-2.5">
+                <label className="block">
+                  <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted">
+                    <Users className="h-3.5 w-3.5" /> Số người
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      aria-label="Giảm"
+                      onClick={() => setPlayers((p) => Math.max(1, p - 1))}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-lg font-bold text-muted"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={players}
+                      onChange={(e) =>
+                        setPlayers(
+                          Math.max(1, Math.min(10, Number(e.target.value) || 1)),
+                        )
+                      }
+                      aria-label="Số người"
+                      className="h-9 w-full rounded-lg border border-border bg-card px-2 text-center text-sm font-semibold tnum text-fg outline-none focus:border-primary"
+                    />
+                    <button
+                      type="button"
+                      aria-label="Tăng"
+                      onClick={() => setPlayers((p) => Math.min(10, p + 1))}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-lg font-bold text-muted"
+                    >
+                      +
+                    </button>
+                  </div>
+                </label>
+                <label className="block">
+                  <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted">
+                    <BadgePercent className="h-3.5 w-3.5" /> Voucher
+                  </span>
                   <input
                     value={voucher}
                     onChange={(e) => setVoucher(e.target.value)}
@@ -289,23 +389,70 @@ export default function BookPage() {
                       setVoucherErr(null);
                       if (voucher.trim() && price) previewVoucher.mutate(price.total);
                     }}
-                    placeholder="Mã voucher (tuỳ chọn)"
-                    className="flex-1 rounded-lg border border-border bg-card px-2 py-1 text-fg outline-none focus:border-primary"
-                    aria-label="Voucher"
+                    placeholder="Mã (tuỳ chọn)"
+                    aria-label="Mã voucher"
+                    className="h-9 w-full rounded-lg border border-border bg-card px-2.5 text-sm text-fg outline-none focus:border-primary"
                   />
-                </div>
+                </label>
               </div>
 
-              <div className="mt-3 flex items-center justify-between">
-                <div className="text-sm text-muted">
-                  {price.peak ? "Giá cao điểm" : "Giá giờ thường"}:{" "}
-                  <span className="font-semibold text-fg tnum">{formatVnd(price.base)}</span> ×{" "}
-                  {players}
+              {/* Group (owner-only) */}
+              {myGroups.length > 0 && (
+                <label className="mt-2.5 block">
+                  <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted">
+                    <Users className="h-3.5 w-3.5" /> Đặt cho nhóm
+                  </span>
+                  <select
+                    value={groupId}
+                    onChange={(e) =>
+                      setGroupId(e.target.value === "" ? "" : Number(e.target.value))
+                    }
+                    aria-label="Chọn nhóm"
+                    className="h-9 w-full rounded-lg border border-border bg-card px-2.5 text-sm text-fg outline-none focus:border-primary"
+                  >
+                    <option value="">Cá nhân (mặc định)</option>
+                    {myGroups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name} ({g.memberCount}/{g.maxMembers})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {/* Points */}
+              <label className="mt-2.5 block">
+                <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted">
+                  <Coins className="h-3.5 w-3.5" /> Dùng điểm đổi
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1000}
+                  value={pointsToRedeem}
+                  onChange={(e) => setPointsToRedeem(e.target.value)}
+                  placeholder="VD 2000"
+                  aria-label="Số điểm đổi"
+                  className="h-9 w-full rounded-lg border border-border bg-card px-2.5 text-sm text-fg outline-none focus:border-primary"
+                />
+                <span className="mt-1 block text-[11px] text-muted">
+                  1.000 điểm = 20.000đ · đổi tối đa theo dư điểm
+                </span>
+              </label>
+
+              {/* Price summary */}
+              <div className="mt-4 flex items-end justify-between rounded-lg bg-bg p-3">
+                <div className="text-xs text-muted tnum">
+                  {price.peak ? "Cao điểm" : "Giờ thường"} · {formatVnd(price.base)} × {players}
                 </div>
-                <p className="text-lg font-bold tnum">{formatVnd(price.total)}</p>
+                <p className="text-xl font-bold tnum text-fg">{formatVnd(price.total)}</p>
               </div>
 
-              {voucherErr && <Callout tone="error" className="mt-2">{voucherErr}</Callout>}
+              {voucherErr && (
+                <Callout tone="error" className="mt-2">
+                  {voucherErr}
+                </Callout>
+              )}
               {create.isError && (
                 <Callout tone="error" className="mt-2">
                   {create.error instanceof ApiError
@@ -322,16 +469,35 @@ export default function BookPage() {
               >
                 {create.isPending ? "Đang đặt…" : "Xác nhận đặt sân"}
               </Button>
+
+              {createFailed && !waitlistDone && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2 w-full"
+                  disabled={joinWaitlist.isPending}
+                  onClick={() => joinWaitlist.mutate()}
+                >
+                  <Hourglass className="h-4 w-4" />
+                  {joinWaitlist.isPending ? "Đang xếp hàng…" : "Tham gia danh sách chờ"}
+                </Button>
+              )}
+              {waitlistDone && (
+                <Callout tone="success" className="mt-2">
+                  Đã xếp bạn vào danh sách chờ (FIFO).
+                </Callout>
+              )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Success (docs 07 §5) */}
+      {/* Success */}
       {done && (
-        <Card className="mt-4 border-slot-free-bg">
+        <Card className="mt-4 border-slot-free-bg p-4">
           <Callout tone="success">
-            Đặt chỗ đã xác nhận. Mã: <strong>{done}</strong>. Xem QR trong "Đơn của tôi" để vào sân.
+            Đặt chỗ thành công. Mã: <strong>{done}</strong>. Xem QR trong "Đơn của
+            tôi" để vào sân.
           </Callout>
           <div className="mt-3">
             <Button variant="ghost" onClick={() => setDone(null)}>

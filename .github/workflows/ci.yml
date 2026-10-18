@@ -5,11 +5,17 @@ on:
     branches: [ main, master ]
   pull_request:
 
-# Build + migration-sync validation run on every OS in the matrix (they do not
-# need a database). The test job runs on windows-latest because the integration
-# tests target SQL Server LocalDB ((localdb)\\MSSQLLocalDB, see
-# Badminton.Tests/TestHost.cs), which only exists on Windows.
+# Fast static guard first — fails immediately if a secret leaked into the
+# tree or the seed gate regressed. Cheap; runs in parallel with the rest.
 jobs:
+  ci-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run static guard (seed + secrets + migration presence)
+        shell: pwsh
+        run: ./scripts/CiGuard.ps1
+
   build-and-verify:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -17,44 +23,79 @@ jobs:
       matrix:
         os: [ ubuntu-latest, windows-latest ]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up .NET 8
+      - uses: actions/checkout@v4
+      - name: Set up SDK and target runtime
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0'
-
-      - name: Install EF tools
-        run: dotnet tool install --global dotnet-ef --version 8.*
-
+          dotnet-version: |
+            9.0.x
+            8.0.x
+      - name: Restore local tools
+        run: dotnet tool restore
       - name: Restore
-        run: dotnet restore Badminton/Badminton.slnx
-
-      - name: Build (no tests)
-        run: dotnet build Badminton/Badminton.slnx -c Release --no-restore
-
-      - name: Verify EF migrations are in sync with the model
-        # Fails if the DbContext drifts from the generated migrations, so a
-        # forgotten migration (like PointLedger.LedgerKey) cannot ship.
-        # This builds the model only — no database connection required.
-        working-directory: Badminton
-        run: dotnet ef migrations has-pending-model-changes --project Repositories --startup-project Badminton
+        run: dotnet restore Backend/Badminton.slnx
+      - name: Build
+        run: dotnet build Backend/Badminton.slnx -c Release --no-restore
+      - name: Verify EF migration model
+        working-directory: Backend
+        run: dotnet ef migrations has-pending-model-changes --project Repositories --startup-project API
 
   test:
     needs: build-and-verify
-    runs-on: windows-latest   # LocalDB available here only
+    runs-on: windows-latest
+    env:
+      BADMINTON_TEST_SQLSERVER: '(localdb)\MSSQLLocalDB'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up .NET 8
+      - uses: actions/checkout@v4
+      - name: Set up SDK and target runtime
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0'
-
+          dotnet-version: |
+            9.0.x
+            8.0.x
       - name: Restore
-        run: dotnet restore Badminton/Badminton.slnx
+        run: dotnet restore Backend/Badminton.slnx
+      - name: Run service/database tests
+        run: dotnet test Backend/Tests/Badminton.Tests.csproj -c Debug --no-restore
 
-      - name: Run tests
-        run: dotnet test Badminton/Badminton.Tests -c Debug --no-restore
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  # docs 04 §7 — E2E smoke via Playwright. The app is NOT running; all
+  # API calls are intercepted by page.route() with mock BaseResponse
+  # envelopes so the test suite is fully offline (no DB, no .NET runtime
+  # required in the CI runner).
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+      - run: npm ci
+      # `webServer` serves the built SPA via `vite preview`, which requires a
+      # prior build (dist/). Without this the preview server has nothing to
+      # serve and Playwright's config.webServer times out after 120s.
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+        env:
+          E2E_BASE_URL: 'http://localhost:4173'

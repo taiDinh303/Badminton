@@ -85,20 +85,26 @@ export interface Branch {
 
 export interface Court {
   id: number;
+  branchId: number;
   code: string;
   name: string;
   surface: string;
   priceLowPeak: number;
   pricePeak: number;
+  weekendSurcharge: number;
+  capacity: number;
   isActive: boolean;
+  ratingAvg: number | null;
+  ratingCount: number;
 }
 
 export interface TimeSlot {
-  slotId: number;
+  id: number;
   label: string;
   startTime: string;
   endTime: string;
   isPeak: boolean;
+  isActive: boolean;
 }
 
 export interface Slot {
@@ -149,6 +155,10 @@ export interface Booking {
   userName: string | null;
   price: PriceBreakdown;
   cancelReason: string | null;
+  /** FEAT check-in: server-generated 64-hex token shown as the QR (docs 03 §3). */
+  qrToken?: string | null;
+  checkedInAt?: string | null;
+  cancelledAt?: string | null;
 }
 
 export interface Paged<T> {
@@ -195,6 +205,131 @@ export interface PaymentView {
   refundedAt: string | null;
 }
 
+export interface Staff {
+  id: number;
+  fullName: string;
+  phoneNumber: string;
+  role: string;
+  status: string;
+  branchId: number | null;
+  isVerified: boolean;
+  createdAt: string;
+}
+
+export interface AuditEntry {
+  id: number;
+  actorId: number | null;
+  actorName: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  beforeJson: string | null;
+  afterJson: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface ReportSummary {
+  todayBookings: number;
+  pendingCount: number;
+  noShowCount30d: number;
+  revenueToday: number;
+  peakFillRatePct: number;
+  usersToday: number;
+  activeCourts: number;
+  activeBranches: number;
+  /** FEAT 4 — paid members currently active (Silver + Gold, not lapsed). */
+  activeMembers?: number;
+  /** FEAT 2 — count of customers currently waiting on a full slot. */
+  waitingListCount?: number;
+}
+
+// ── FEAT 4: Membership V2 ─────────────────────────────────────────────
+export type MembershipTier = "None" | "Silver" | "Gold";
+
+export interface MembershipView {
+  id: number;
+  fullName: string;
+  phoneNumber: string;
+  tier: MembershipTier;
+  expiresAt: string | null;
+  lapsed: boolean;
+  multiplier: number;
+}
+
+// ── FEAT 2: Waitlist ───────────────────────────────────────────────────
+export interface WaitlistEntryView {
+  id: number;
+  courtId: number;
+  courtName: string;
+  slotLabel: string;
+  date: string;
+  playerCount: number;
+  status: "Waiting" | "Promoted" | "Declined" | "Cancelled" | "Expired";
+  createdAt: string;
+  promotedBookingId: number | null;
+}
+
+// ── FEAT 7: Groups (docs 03 §7) ───────────────────────────────────────
+export interface GroupView {
+  id: number;
+  name: string;
+  ownerId: number;
+  ownerName: string;
+  maxMembers: number;
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface GroupMemberView {
+  userId: number;
+  fullName: string;
+  phoneNumber: string;
+  isCreator: boolean;
+  joinedAt: string;
+}
+
+// ── FEAT 8: Reviews (docs 03 §7) ──────────────────────────────────────
+export interface ReviewView {
+  id: number;
+  bookingId: number;
+  courtId: number;
+  courtName: string;
+  userName: string;
+  rating: number;
+  comment: string | null;
+  images: string[] | null;
+  createdAt: string;
+  flaggedRefunded: boolean;
+}
+
+// ── FEAT 9: Staff check-in (docs 03 §3) ───────────────────────────────
+export interface SlotCheckinView {
+  id: number;
+  bookingCode: string;
+  status: string;
+  checkedInAt: string | null;
+}
+
+export interface RevenueByDay {
+  date: string;
+  bookings: number;
+  revenue: number;
+  refunds: number;
+}
+
+export interface OccupancyByDay {
+  date: string;
+  branchId: number | null;
+  branchName: string | null;
+  bookedSlots: number;
+  totalSlots: number;
+  fillRatePct: number;
+  peakBooked: number;
+  peakTotal: number;
+  peakFillRatePct: number;
+}
+
 // ── Endpoints ───────────────────────────────────────────────────────
 
 export const api = {
@@ -212,13 +347,66 @@ export const api = {
   branches: {
     list: () => request<Branch[]>("GET", "/branches"),
     get: (id: number) => request<Branch>("GET", `/branches/${id}`),
+    create: (b: {
+      name: string;
+      address: string;
+      geoLat?: number;
+      geoLng?: number;
+      openTime?: string;
+      closeTime?: string;
+    }) => request<number>("POST", "/branches", b),
+    update: (
+      id: number,
+      b: {
+        name?: string;
+        address?: string;
+        isActive?: boolean;
+        openTime?: string;
+        closeTime?: string;
+      },
+    ) => request<unknown>("PATCH", `/branches/${id}`, b),
+    delete: (id: number) => request<unknown>("DELETE", `/branches/${id}`),
   },
   courts: {
     list: (branchId?: number) =>
       request<Court[]>("GET", "/courts", undefined, { branchId }),
+    create: (b: {
+      branchId: number;
+      code: string;
+      name: string;
+      priceLowPeak: number;
+      pricePeak: number;
+      weekendSurcharge?: number;
+      capacity?: number;
+      surface?: string;
+      amenities?: string | null;
+    }) => request<number>("POST", "/courts", b),
+    update: (
+      id: number,
+      b: {
+        name?: string;
+        priceLowPeak?: number;
+        pricePeak?: number;
+        weekendSurcharge?: number;
+        capacity?: number;
+        surface?: string;
+        amenities?: string | null;
+        isActive?: boolean;
+      },
+    ) => request<unknown>("PATCH", `/courts/${id}`, b),
+    delete: (id: number) => request<unknown>("DELETE", `/courts/${id}`),
   },
   timeSlots: {
     list: () => request<TimeSlot[]>("GET", "/time-slots"),
+    create: (b: {
+      label: string;
+      startTime: string;
+      endTime: string;
+      isPeak: boolean;
+    }) => request<number>("POST", "/time-slots", b),
+    update: (id: number, b: { isActive?: boolean; label?: string }) =>
+      request<unknown>("PATCH", `/time-slots/${id}`, b),
+    delete: (id: number) => request<unknown>("DELETE", `/time-slots/${id}`),
   },
   booking: {
     availability: (branchId: number, date: string) =>
@@ -245,6 +433,19 @@ export const api = {
       }),
     getById: (id: number) => request<Booking>("GET", `/bookings/${id}`),
     cancel: (id: number) => request<Booking>("POST", `/bookings/${id}/cancel`),
+    // Admin: list all bookings (filterable), paged.
+    all: (
+      status?: string,
+      branchId?: number,
+      page = 1,
+      pageSize = 100,
+    ) =>
+      request<Paged<Booking>>("GET", "/bookings/all", undefined, {
+        status,
+        branchId,
+        page,
+        pageSize,
+      }),
     // Staff (Manager/Admin) lifecycle:
     complete: (id: number, note?: string) =>
       request<Booking>("POST", `/bookings/${id}/complete`, undefined, { note }),
@@ -281,6 +482,162 @@ export const api = {
     get: (code: string) => request<Voucher>("GET", `/vouchers/${encodeURIComponent(code)}`),
     list: (activeOnly = true) =>
       request<Voucher[]>("GET", "/vouchers", undefined, { activeOnly }),
+    create: (b: {
+      code: string;
+      type: "Percent" | "Fixed";
+      value: number;
+      maxValue?: number | null;
+      minSpend?: number;
+      maxPerUser?: number;
+      totalQty?: number;
+      validFrom?: string;
+      validUntil?: string;
+    }) => request<unknown>("POST", "/vouchers", b),
+    deactivate: (id: number) =>
+      request<unknown>("POST", `/vouchers/${id}/deactivate`),
+  },
+  // ── Staff / admin (Manager + Admin, docs 07 §3) ──────────────
+  admin: {
+    staff: {
+      list: () => request<Staff[]>("GET", "/admin/staff"),
+      create: (b: {
+        fullName: string;
+        phoneNumber: string;
+        password: string;
+        email?: string;
+        role?: "Manager" | "Admin";
+        branchId?: number;
+      }) => request<number>("POST", "/admin/staff", b),
+      lock: (id: number) => request<unknown>("POST", `/admin/staff/${id}/lock`),
+      unlock: (id: number) =>
+        request<unknown>("POST", `/admin/staff/${id}/unlock`),
+      changeRole: (id: number, role: string) =>
+        request<unknown>("PATCH", `/admin/staff/${id}/role`, undefined, { role }),
+      assignBranch: (id: number, branchId: number) =>
+        request<unknown>(
+          "PATCH",
+          `/admin/staff/${id}/branch`,
+          undefined,
+          { branchId },
+        ),
+    },
+    audit: {
+      query: (q: {
+        entityType?: string;
+        entityId?: string;
+        from?: string;
+        to?: string;
+        page?: number;
+        pageSize?: number;
+      }) =>
+        request<Paged<AuditEntry>>("GET", "/admin/audit", undefined, {
+          entityType: q.entityType,
+          entityId: q.entityId,
+          from: q.from,
+          to: q.to,
+          page: q.page,
+          pageSize: q.pageSize,
+        }),
+    },
+    maintenance: {
+      set: (
+        courtId: number,
+        date: string,
+        status: "Open" | "Maintenance" | "Closed",
+        note?: string,
+      ) =>
+        request<unknown>(
+          "POST",
+          `/admin/courts/${courtId}/maintenance`,
+          undefined,
+          { date, status, note },
+        ),
+      get: (courtId: number, date: string) =>
+        request<unknown>(
+          "GET",
+          `/admin/courts/${courtId}/maintenance/${date}`,
+        ),
+    },
+    report: {
+      summary: (branchId?: number) =>
+        request<ReportSummary>(
+          "GET",
+          "/admin/report/summary",
+          undefined,
+          { branchId },
+        ),
+      revenue: (from: string, to: string, branchId?: number) =>
+        request<RevenueByDay[]>(
+          "GET",
+          "/admin/report/revenue",
+          undefined,
+          { from, to, branchId },
+        ),
+      occupancy: (from: string, to: string, branchId?: number) =>
+        request<OccupancyByDay[]>(
+          "GET",
+          "/admin/report/occupancy",
+          undefined,
+          { from, to, branchId },
+        ),
+    },
+    // ── FEAT 4: Membership V2 (admin assigns paid tiers) ───────────
+    membership: {
+      assign: (userId: number, tier: MembershipTier) =>
+        request<unknown>("POST", "/admin/membership/assign", { userId, tier }),
+      members: () =>
+        request<MembershipView[]>("GET", "/admin/membership/members"),
+    },
+  },
+
+  // ── FEAT 2: Waitlist (customer joins a full slot's queue) ─────────
+  waitlist: {
+    join: (b: {
+      courtId: number;
+      slotId: number;
+      date: string;
+      playerCount?: number;
+      note?: string | null;
+    }) => request<unknown>("POST", "/waitlist/join", b),
+    leave: (id: number) => request<unknown>("POST", `/waitlist/${id}/leave`),
+    mine: () => request<WaitlistEntryView[]>("GET", "/waitlist/mine"),
+  },
+
+  // ── FEAT 7: Groups (docs 03 §7) ───────────────────────────────────
+  groups: {
+    mine: () => request<GroupView[]>("GET", "/groups/mine"),
+    create: (name: string, maxMembers = 10) =>
+      request<GroupView>("POST", "/groups", { name, maxMembers }),
+    join: (id: number) => request<unknown>("POST", `/groups/${id}/join`),
+    members: (id: number) =>
+      request<GroupMemberView[]>("GET", `/groups/${id}/members`),
+  },
+
+  // ── FEAT 8: Reviews (docs 03 §7) ──────────────────────────────────
+  reviews: {
+    forCourt: (courtId: number) =>
+      request<ReviewView[]>("GET", "/reviews", undefined, { courtId }),
+    create: (b: { bookingId: number; rating: number; comment?: string | null }) =>
+      request<ReviewView>("POST", "/reviews", b),
+  },
+
+  // ── FEAT 9: Staff check-in (docs 03 §3) ───────────────────────────
+  checkin: {
+    byCode: (code: string) =>
+      request<{ BookingId: number; Message: string }>(
+        "POST",
+        `/checkin/code/${encodeURIComponent(code)}`,
+      ),
+    byQr: (token: string) =>
+      request<{ BookingId: number; Message: string }>(
+        "POST",
+        `/checkin/qr/${encodeURIComponent(token)}`,
+      ),
+    slot: (courtId: number, date: string, slotLabel: string) =>
+      request<SlotCheckinView[]>(
+        "GET",
+        `/checkin/slot/${courtId}/${date}/${encodeURIComponent(slotLabel)}`,
+      ),
   },
 };
 
@@ -291,7 +648,29 @@ export function formatVnd(n: number): string {
 }
 
 export function formatDay(date: string): string {
-  // Backend sends DateOnly as "yyyy-MM-dd".
-  const [y, m, d] = date.split("-");
-  return `${d}/${m}/${y}`;
+  // Backend is mixed: BookingView.Date & membership are "dd/MM/yyyy" (Vietnamian
+  // day-first), report dates are "yyyy-MM-dd", some are ISO datetimes.
+  // Handle all three and always return dd/MM/yyyy.
+  if (!date) return "—";
+  const s = String(date).trim();
+  // Already day-first (dd/MM/yyyy or d/M/yyyy) → pass through.
+  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) return s;
+  // yyyy-MM-dd or ISO datetime → split on '-'.
+  if (s.includes("-")) {
+    const [y, m, d] = s.split("-");
+    if (y && m && d) return `${d}/${m}/${y}`;
+  }
+  // ISO datetime fallback.
+  const dt = new Date(s);
+  if (!Number.isNaN(dt.getTime())) {
+    return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
+  }
+  return s;
+}
+
+/** Backend slotLabel = "14:00 (02:00-03:00)" — the parenthetical is a
+ *  12-hour time that confuses users. Keep just the label portion ("14:00"). */
+export function slotLabelClean(label: string | null | undefined): string {
+  if (!label) return "—";
+  return label.includes("(") ? label.split("(")[0].trim() : label;
 }
