@@ -91,6 +91,10 @@ jobs:
           cache: npm
           cache-dependency-path: Frontend/package-lock.json
       - run: npm ci
+      # `webServer` serves the built SPA via `vite preview`, which requires a
+      # prior build (dist/). Without this the preview server has nothing to
+      # serve and Playwright's config.webServer times out after 120s.
+      - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
         env:

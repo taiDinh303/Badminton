@@ -115,8 +115,11 @@ test.describe("booking", () => {
     await page.goto("/");
     await page.getByLabel(/Số điện thoại/i).fill("0900000007");
     await page.getByLabel(/Mật khẩu/i).fill("Pass@123");
-    await page.getByRole("button", { name: /Đăng nhập/i }).click();
-    await expect(page.getByText("Xin chào, Alice Nguyễn")).toBeVisible();
+    // Disambiguate the form submit button from the "Đăng nhập" tab toggle.
+    await page.locator("form").getByRole("button", { name: /Đăng nhập/i }).click();
+    // "Xin chào," and the name are separate nodes; the name also shows in the
+    // desktop sidebar, so target the hero heading specifically.
+    await expect(page.getByRole("heading", { name: "Alice Nguyễn" })).toBeVisible();
 
     // In-app navigation to the booking grid.
     await page
@@ -125,9 +128,13 @@ test.describe("booking", () => {
       .first()
       .click();
 
-    // The free 10:00 slot is clickable; the drawer opens.
+    // The free 10:00 slot is clickable; the drawer opens. The court name
+    // appears in both the grid card and the open drawer, so scope to the
+    // confirmation drawer (the intent of this assertion).
     await page.getByRole("button", { name: /10:00/ }).click();
-    await expect(page.getByText("Sân 1 (Thường)")).toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: "Xác nhận đặt sân" }).getByText("Sân 1 (Thường)"),
+    ).toBeVisible();
 
     // Confirm the booking → the success card echoes the code.
     await page.getByRole("button", { name: /Xác nhận đặt sân/ }).click();

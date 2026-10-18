@@ -60,8 +60,15 @@ export async function mockApi(
       const body = safeBody(req);
       const out = h.respond(route, url, body);
       if (out === undefined) continue; // let another handler / the default pass
+      // Honor the BaseResponse envelope's statusCode as the real HTTP status so
+      // ok/err mocks surface exactly as the SPA's api.ts expects (a non-OK
+      // status makes request() throw ApiError with the envelope's message).
+      let status = 200;
+      if (out !== null && typeof out === "object" && typeof (out as { statusCode?: unknown }).statusCode === "number") {
+        status = (out as { statusCode: number }).statusCode;
+      }
       await route.fulfill({
-        status: 200,
+        status,
         contentType: "application/json",
         body: typeof out === "string" ? out : JSON.stringify(out),
       });

@@ -117,8 +117,11 @@ test.describe("waitlist", () => {
     await page.goto("/");
     await page.getByLabel(/Số điện thoại/i).fill("0900000008");
     await page.getByLabel(/Mật khẩu/i).fill("Pass@123");
-    await page.getByRole("button", { name: /Đăng nhập/i }).click();
-    await expect(page.getByText("Xin chào, Bob Trần")).toBeVisible();
+    // Disambiguate the form submit button from the "Đăng nhập" tab toggle.
+    await page.locator("form").getByRole("button", { name: /Đăng nhập/i }).click();
+    // "Xin chào," and the name are separate nodes; the name also shows in the
+    // desktop sidebar, so target the hero heading specifically.
+    await expect(page.getByRole("heading", { name: "Bob Trần" })).toBeVisible();
 
     // Open the booking grid (desktop sidebar; mobile twin is hidden at 1280px).
     await page

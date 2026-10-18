@@ -12,7 +12,9 @@ test.describe("auth", () => {
     // redirect happens client-side without touching the network.
     await page.goto("/");
     await expect(page).toHaveURL(/\/auth/);
-    await expect(page.getByText("Cầu Lông Booking")).toBeVisible();
+    // Default login-mode heading (visible at desktop 1280px, unlike the
+    // mobile-only "Cầu Long Booking" brand heading which is md:hidden).
+    await expect(page.getByText("Chào mừng trở lại")).toBeVisible();
   });
 
   test("logging in persists the token and loads the home page", async ({ page }) => {
@@ -60,11 +62,14 @@ test.describe("auth", () => {
     await page.goto("/auth");
     await page.getByLabel(/Số điện thoại/i).fill("0900000007");
     await page.getByLabel(/Mật khẩu/i).fill("Pass@123");
-    await page.getByRole("button", { name: /Đăng nhập/i }).click();
+    // Disambiguate the form submit button from the "Đăng nhập" tab toggle.
+    await page.locator("form").getByRole("button", { name: /Đăng nhập/i }).click();
 
     // After a successful login the store navigates to the home page.
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByText("Xin chào, Alice Nguyễn")).toBeVisible();
+    // HomePage renders "Xin chào," and the name in separate nodes; the name
+    // also appears in the desktop sidebar, so target the hero <h1> specifically.
+    await expect(page.getByRole("heading", { name: "Alice Nguyễn" })).toBeVisible();
     await expect(page.getByText("Sân Minh Long (Hà Đông)")).toBeVisible();
 
     // The JWT was persisted under the app's token key.
@@ -93,7 +98,8 @@ test.describe("auth", () => {
     await page.goto("/auth");
     await page.getByLabel(/Số điện thoại/i).fill("0900000007");
     await page.getByLabel(/Mật khẩu/i).fill("wrong");
-    await page.getByRole("button", { name: /Đăng nhập/i }).click();
+    // Disambiguate the form submit button from the "Đăng nhập" tab toggle.
+    await page.locator("form").getByRole("button", { name: /Đăng nhập/i }).click();
 
     await expect(
       page.getByText("Sai số điện thoại hoặc mật khẩu."),
