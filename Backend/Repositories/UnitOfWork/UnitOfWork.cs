@@ -1,4 +1,6 @@
 using Contract.Repositories.UnitOfWork;
+using Badminton.Core.Base;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Repositories.Context;
 
@@ -28,8 +30,18 @@ namespace Repositories.UnitOfWork
             }
         }
 
-        public Task<int> SaveChangesAsync(CancellationToken ct = default) =>
-            _context.SaveChangesAsync(ct);
+        public async Task<int> SaveChangesAsync(CancellationToken ct = default)
+        {
+            try { return await _context.SaveChangesAsync(ct); }
+            catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 } sql)
+            {
+                // Only an allowlisted index identifier crosses the persistence boundary.
+                string? constraint = sql.Message.Contains("ux_court_slot_active", StringComparison.Ordinal)
+                    || sql.Message.Contains("IX_Bookings_CourtId_Date_SlotId", StringComparison.Ordinal)
+                    ? "ux_court_slot_active" : null;
+                throw new UniqueConstraintException(constraint, ex);
+            }
+        }
 
         public async Task RunInTransactionAsync(Func<Task> action,
             CancellationToken ct = default)

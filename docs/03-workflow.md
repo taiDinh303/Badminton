@@ -1,92 +1,82 @@
 # 03 — Luồng nghiệp vụ và trạng thái đặt sân
 
-> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **16/10/2026**.
-> CURRENT đọc từ service/controller; TARGET theo [01](01-business-analysis.md). Chưa nghiệm thu runtime trong lần sửa docs.
+> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **20/10/2026**. CURRENT từ source; các chính sách mục tiêu ở [01](01-business-analysis.md).
 
-## 1. Quy ước chung
+## 1. Nguyên tắc
 
-Ngày sân là yyyy-MM-dd theo UTC+7; timestamp là UTC. Tiền là VND nguyên; frontend hiển thị breakdown server, không tự kết luận slot đã giữ hoặc tiền đã thu. HTTP retry mutation cần idempotency ổn định cho cùng ý định; đổi payload là ý định mới.
+Ngày sân theo UTC+7, timestamp UTC, tiền nguyên VND. Browser hiển thị kết quả server; availability là snapshot, không phải khóa sân. Retry cùng ý định giữ key; key không được dùng cho actor hoặc sân/ngày/slot/nhóm/số người khác.
 
-## 2. Xem lịch và tạo đặt chỗ
+## 2. Đặt chỗ
 
-| Bước | Actor / API | Dữ liệu và kết quả |
+| Bước | Actor/API | Kết quả |
 | --- | --- | --- |
-| 1 | Public API GET /bookings/availability/{branchId}/{date} | Sân active, slot/lock; route SPA vẫn cần login |
-| 2 | Khách chọn sân/slot | Date/slot trong cửa sổ, số người, nhóm/voucher/điểm |
-| 3 | POST /bookings | CourtId, date, slotId, playerCount, groupId?, voucherCode?, pointsToRedeem?, idempotencyKey?, note? |
-| 4 | BookingService | Kiểm tra user/cửa sổ/giới hạn/nhóm/bảo trì; tính giá; transaction và unique slot |
-| 5 | DB | Booking Pending, PendingExpiresAt UTC +10 phút; giữ voucher/trừ điểm nếu có |
-| 6 | Browser | Hiện Pending và giá; gọi init payment hoặc chờ staff xác nhận |
+| Xem lịch | GET /bookings/availability/{branchId}/{date} | Sân/slot trống hoặc khóa |
+| Chọn | Khách chọn sân/slot/ngày/số người, nhóm/voucher/điểm tùy chọn | UI tóm tắt trước xác nhận |
+| Tạo | POST /bookings | Check user active/verified, cửa sổ/hạn mức/nhóm/bảo trì, giá, transaction/unique |
+| Giữ | Booking Pending, expiry UTC +10 phút | Giữ voucher/trừ điểm nếu có; trả mã đơn |
+| Tiếp tục | Init online hoặc staff xác nhận tại quầy | Đọc lại trạng thái, không kết luận từ returnUrl |
 
-Xung đột trả 409 SLOT_CONFLICT; grid phải đọc lại. Availability chỉ là snapshot đọc, không phải khóa chỗ. Retry sau timeout phải đọc lại bằng idempotency, không tạo khóa mới tùy tiện. CURRENT key unique toàn hệ thống; binding actor/payload còn DATA-01.
+Key hiện chưa là hash toàn payload. Voucher/points/note thay đổi phải dùng ý định mới; phần này còn cần hardening. Double booking bị DB từ chối, repository map lỗi unique sang domain conflict; không đè đơn khác.
 
-## 3. Thanh toán
+## 3. Thanh toán và vòng đời
 
-| Luồng | CURRENT | TARGET / giới hạn |
-| --- | --- | --- |
-| Online | POST /payments/init, MockOnlineGateway | URL mock, chưa thu tiền/chữ ký thật |
-| Callback | POST /payments/webhook/{provider}, anonymous; tra gateway_ref, xử lý guard/transaction | Callback hợp lệ là nguồn xác nhận, không phải returnUrl; sandbox adapter thật còn thiếu |
-| On-site | POST /payments/{bookingId}/on-site?method=cash hoặc QR, staff | Role và scope service; manager BranchId null còn rủi ro |
-| Success | Pending → Confirmed; Payment Success; cộng điểm ngay | Spec yêu cầu cộng khi Completed còn DEC-01 |
-| Fail/replay | Fail không xác nhận; replay thành công không cộng trùng | Muộn sau terminal phải đối soát, không hồi sinh đơn |
-
-Client đóng tab không ngăn server xử lý callback. UI detail hiện gửi method mock, chưa dùng URL trả về để điều hướng và chưa refresh mutation đầy đủ; đây là UI-01. QR tile chỉ hình minh họa, chưa là mã check-in có xác thực.
-
-## 4. State machine CURRENT
+Online adapter có mock và real VnPay/MoMo/Zalopay. Mock không thu tiền thật. Adapter real có test signature/transport stub; chưa chứng minh sandbox/live. On-site Cash/QR do staff đúng cơ sở xác nhận.
 
 ```mermaid
 stateDiagram-v2
   [*] --> Pending: Tạo đơn
-  Pending --> Confirmed: Callback / on-site
-  Pending --> Cancelled: Hủy / hết TTL
-  Confirmed --> Completed: Staff / auto-complete
-  Confirmed --> NoShow: Staff
-  Confirmed --> Cancelled: Cancel hiện tại
-  Completed --> Cancelled: Cancel hiện tại còn cho phép
-  Confirmed --> Refunded: Refund
-  Completed --> Refunded: Refund hiện tại
+  Pending --> Confirmed: Callback hoặc on-site
+  Pending --> Cancelled: Hủy hoặc TTL
+  Confirmed --> Completed: Staff hoặc job
+  Confirmed --> NoShow: Staff sau giờ bắt đầu
+  Confirmed --> Cancelled: Hủy và xử lý refund
+  Confirmed --> Refunded: Staff refund
+  Completed --> Refunded: Refund hiện hữu
 ```
 
-Sơ đồ mô tả code, không xác nhận mọi cạnh là nghiệp vụ đúng. Pending/Confirmed chiếm slot theo index; terminal không nằm trong filter. TARGET: không làm mất dấu giao dịch, không hủy đã trả mà bỏ đối soát/refund.
+Callback success/replay không cộng điểm tại Confirmed; điểm bank ở Completed. No-show có guard trước giờ bắt đầu. Quyền branch được kiểm ở service trước lifecycle/check-in. Race Complete/NoShow sử dụng conditional update; mốc auto-complete và việc staff xử lý cần nghiệm thu vận hành riêng.
 
-## 5. Hủy và hoàn tiền
+## 4. Hủy và hoàn tiền
 
-**Đơn Pending:** xác thực owner/scope → Cancelled → giải phóng slot, voucher và điểm đã đổi → audit → đọc lại. CURRENT AuthorizeCancel không throw cho actor không có quyền; SEC-01 là lỗi P0.
+- Pending: Cancelled, trả lượt voucher và điểm đã redeem, mở slot.
+- Đã trả: owner/staff hợp lệ → CancelRefundAsync → tier theo giờ Việt Nam → payment refund riêng và ledger → Cancelled/audit. Không gọi cancel rồi mất đường refund như bản cũ.
+- Mốc tiền: ≥2 giờ 100%, từ 1 đến dưới 2 giờ 50%, dưới 1 giờ 0%. Hủy dưới 1 giờ không tự đồng nghĩa no-show.
+- Chỉ full refund trả điểm đã dùng; clawback chỉ khi đã tồn tại earn, theo tỷ lệ tiền hoàn. Payment gốc không bị xóa.
+- Timeout/crash giữa gateway và DB vẫn cần đối soát. Không coi semaphore in-process là bảo đảm end-to-end exactly-once.
 
-**Đơn đã trả — TARGET:** xác thực → tính refund theo [01 §4](01-business-analysis.md#4-đặt-chỗ-hủy-và-hoàn-tiền) → yêu cầu gateway → ghi payment điều chỉnh, ledger, trạng thái/audit → đọc lại. Không kết luận hoàn từ UI hoặc xóa payment gốc.
+## 5. Nhóm, voucher, review và membership
 
-**CURRENT:** CancelAsync chỉ đổi Cancelled/trả voucher/điểm, không gọi RefundAsync. RefundAsync chỉ staff và nhận Confirmed/Completed; hủy trước rồi refund có thể bị từ chối. Luồng này còn PAY-01, chưa nghiệm thu tự động hủy–hoàn.
+Nhóm owner đặt, tối đa 10 thành viên theo V1; join theo ID hiện có. Voucher preview không giữ lượt, create giữ trong transaction; unique voucher/user giới hạn một lượt. Review owner Completed một lần; Images hiện là metadata, chưa upload Storage.
 
-Refund tạo record riêng gateway_ref REFUND-{bookingId}; replay trả record cũ. Code có claim trạng thái trước gọi gateway; cần thử crash/timeout/rollback và nhiều instance, không coi semaphore in-process là khóa phân tán.
+Membership None/Silver/Gold đã có source/UI/admin assign, hệ số và số ngày trong MembershipSettings. Đây là mở rộng có code, không sao chép chính sách nhân sự Marixa hoặc tự suy ra đã có luồng bán subscription. Earn Completed dùng PointService/MembershipService; các test tier xác minh số điểm.
 
-## 6. Jobs và no-show
+## 6. Check-in và danh sách chờ
 
-| Job | CURRENT | Kiểm chứng cần có |
+QrToken được server phát hành/lưu cho booking; staff nhập code/token qua checkin API, có branch scope. CURRENT giao diện vẫn QrTile minh họa, chưa là QR chuẩn quét được; không hứa tính năng camera scan.
+
+Waitlist join khi slot đầy → Waiting → job promotion tạo Pending khi slot được giải phóng → lưu PromotedBookingId; leave kết thúc lượt. Năm worker dùng SQL application locks và heartbeat; đa instance/restart cần tải thử trước release.
+
+## 7. Jobs
+
+| Worker | Chu kỳ source | Bất biến cần giữ |
 | --- | --- | --- |
-| PendingBookingExpiry | Poll 1 phút; expiry UTC; Cancelled/trả voucher/điểm | Không đúng giây thứ 600; restart/race callback không hoàn trùng |
-| AutoComplete | Poll 1 phút; giờ kết thúc theo HanoiTime; Confirmed → Completed | Race staff no-show, nhiều instance và audit |
-| VoucherExpiry | Poll theo giờ, vô hiệu voucher hết hạn | Boundary ngày UTC+7, retry |
-| NoShowReset | Poll theo giờ, mở cờ hết kỳ | Qua tháng/năm; đủ ba lần và hết tháng giới hạn |
+| PendingBookingExpiry | 1 phút | Slot/voucher/điểm giải phóng một lần |
+| AutoComplete | 1 phút | Confirmed đủ điều kiện → Completed và earn idempotent |
+| VoucherExpiry | 1 giờ | Vô hiệu đúng ngày nghiệp vụ |
+| NoShowReset | 1 giờ | Mở cờ đúng kỳ |
+| WaitlistPromotion | 2 phút | Không tạo hai active booking cho cùng slot |
 
-Lifecycle staff hiện chỉ kiểm tra Confirmed, chưa guard thời điểm hoặc scope cơ sở. NoShow cộng bộ đếm tháng và đặt cờ tháng kế. Không có chức năng khách tự gắn no-show; mốc nghiệp vụ/job cần DEC-03.
+Không bảo đảm xử lý đúng giây TTL. BackgroundJobs:Enabled=false phục vụ test/local chỉ API, không dùng để quên chạy nghiệp vụ trong production. /ready phản ánh cấu hình này.
 
-## 7. Nhóm, voucher, điểm và review
+## 8. Ngoại lệ và UX
 
-- Nhóm: POST /groups; POST /groups/{id}/join; GET /groups/mine và /{id}/members. Owner đặt nhóm; join theo ID hiện có, chưa xác nhận invite code hoặc thành viên tự xem mọi booking nhóm.
-- Voucher: GET /vouchers/{code}/preview?baseAmount= cần login; danh sách chỉ staff, mutation admin. Preview chưa giữ lượt, create booking mới giữ theo transaction. Unique ép một lượt/khách.
-- Điểm: ledger earn/redeem/restore/clawback theo key. 1 VND trả thành công = 1 điểm; 1.000 điểm = 20.000 VND. CURRENT earn khi Confirmed, restore mọi tỷ lệ refund; không mô tả là đã khớp spec.
-- Review: GET /reviews?courtId= public; POST cần owner của Completed, một review/booking. Images là metadata string, chưa upload Storage. Đơn đã review bị điều chỉnh cần chính sách trước tự thêm cờ moderation.
+| Ngoại lệ | Phản hồi / phục hồi |
+| --- | --- |
+| Slot conflict | Làm mới grid, chọn slot khác |
+| Timeout tạo đơn | Xác minh kết quả bằng retry key trước tạo ý định mới |
+| Callback muộn/terminal | Đối soát, không hồi sinh đơn |
+| Token hết hạn | Xóa session/cache, về đăng nhập |
+| Manager sai branch | Server từ chối, không render dữ liệu của cơ sở khác |
+| Gateway/notify lỗi | Trạng thái chưa hoàn tất, log truy vết; không báo đã thu/đã gửi nếu chưa xác nhận |
 
-## 8. Ngoại lệ và phục hồi
-
-| Tình huống | Phản hồi cần có | Dữ liệu cần kiểm tra |
-| --- | --- | --- |
-| Slot bị chiếm | Chọn khung khác, làm mới grid | 0 booking active trùng |
-| Timeout create | Đang xác minh, không báo thành công giả | Tra idempotency/đơn trước retry |
-| Callback fail/muộn | Chờ xác nhận hoặc liên hệ đối soát | Payment vs booking terminal |
-| Pending hết TTL | Chọn lại slot | Voucher/ledger một lần |
-| Hủy <1h | Không đủ điều kiện hoàn tiền | Không tự suy ra no-show |
-| Bảo trì | Slot khóa, hiển thị lý do | Confirmed cũ không tự hủy |
-| Lỗi quyền | Không hiển thị dữ liệu, server từ chối | Owner/role/branch, không chỉ sidebar |
-
-Nghiệm thu ở [05](05-testing-strategy.md), API ở [04](04-system-architecture.md), lỗi mở ở [08](08-plan.md).
+Xem [04 API](04-system-architecture.md), [05 kiểm thử](05-testing-strategy.md), [08 backlog](08-plan.md).

@@ -5,7 +5,7 @@ using Contract.Services.Voucher;
 using Badminton.Core.Base;
 using Badminton.Core.Enums;
 using Badminton.Core.Utils;
-using Microsoft.AspNetCore.Http;
+using Badminton.Core.Security;
 using ModelViews.Voucher;
 
 namespace Services
@@ -13,8 +13,8 @@ namespace Services
     public sealed class VoucherService : BaseService, IVoucherService
     {
         private readonly IAuditService _audit;
-        public VoucherService(IUnitOfWork uow, IHttpContextAccessor http, IAuditService audit)
-            : base(uow, http) { _audit = audit; }
+        public VoucherService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit)
+            : base(uow, currentUser) { _audit = audit; }
 
         private IGenericRepository<Voucher> Repo => Repository<Voucher>();
 

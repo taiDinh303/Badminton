@@ -1,4 +1,3 @@
-using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using Contract.Services.Auth;
 using Contract.Services.Booking;
@@ -22,7 +21,6 @@ using Badminton.Core.Enums;
 using Badminton.Core.Store;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Repositories.UnitOfWork;
 using Services;
 
 namespace Services.DI
@@ -32,7 +30,6 @@ namespace Services.DI
         public static IServiceCollection AddBookingServices(
             this IServiceCollection services, IConfiguration? configuration = null)
         {
-            services.AddScoped<IUnitOfWork, UnitOfWork>();
 
             // On-site gateways never move real money — always registered.
             services.AddScoped<IPaymentGateway>(sp =>

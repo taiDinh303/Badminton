@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Badminton.Core.Security;
 using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
@@ -63,7 +64,7 @@ namespace Badminton.Tests
 
             // A mutable HttpContextAccessor the tests can pin a principal to.
             services.AddSingleton<TestHttpContextAccessor>();
-            services.AddScoped<IHttpContextAccessor>(sp => sp.GetRequiredService<TestHttpContextAccessor>());
+            services.AddScoped<ICurrentUser>(sp => sp.GetRequiredService<TestHttpContextAccessor>());
 
             services.AddScoped<IPaymentGateway>(sp => new MockOnlineGateway(PaymentMethod.VnPay));
             services.AddScoped<IPaymentGateway>(sp => new MockOnlineGateway(PaymentMethod.MoMo));
@@ -361,8 +362,9 @@ namespace Badminton.Tests
         }
     }
 
-    public sealed class TestHttpContextAccessor : IHttpContextAccessor
+    public sealed class TestHttpContextAccessor : IHttpContextAccessor, ICurrentUser
     {
         public HttpContext? HttpContext { get; set; }
+        public ClaimsPrincipal Principal => HttpContext?.User ?? new ClaimsPrincipal(new ClaimsIdentity());
     }
 }

@@ -5,16 +5,15 @@ using Contract.Services.Audit;
 using Contract.Services.Staff;
 using Badminton.Core.Base;
 using Badminton.Core.Enums;
-using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
+using Badminton.Core.Security;
 
 namespace Services
 {
     public sealed class StaffService : BaseService, IStaffService
     {
         private readonly IAuditService _audit;
-        public StaffService(IUnitOfWork uow, IHttpContextAccessor http, IAuditService audit)
-            : base(uow, http) { _audit = audit; }
+        public StaffService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit)
+            : base(uow, currentUser) { _audit = audit; }
 
         private IGenericRepository<User> Repo => Repository<User>();
 
@@ -61,12 +60,9 @@ namespace Services
             };
             _ = Repo.AddAsync(user);
             try { await SaveAsync(); }
-            catch (DbUpdateException ex)
+            catch (UniqueConstraintException)
             {
-                if (ex.InnerException is Microsoft.Data.SqlClient.SqlException sql
-                    && sql.Number is 2601 or 2627)
-                    throw new ConflictException("Vi phạm ràng buộc duy nhất (phone hoặc admin).");
-                throw;
+                throw new ConflictException("Vi phạm ràng buộc duy nhất (số điện thoại hoặc admin).");
             }
             await _audit.LogAsync(actorId, "staff.create", "User", user.Id.ToString(),
                 null, new { user.FullName, user.PhoneNumber, user.Role, user.BranchId },

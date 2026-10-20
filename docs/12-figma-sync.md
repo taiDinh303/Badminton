@@ -1,11 +1,11 @@
 # 12 — Đồng bộ thiết kế và mã nguồn Badminton
 
-> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **16/10/2026**.
+> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **20/10/2026**.
 > CURRENT: CSS/component/route. NOT VERIFIED: chưa có file key/node ID Figma Badminton được xác nhận; chưa đồng bộ live.
 
 ## 1. Nguồn chuẩn
 
-[CSS](../Frontend/src/index.css), [UI primitives](../Frontend/src/components/ui.tsx), [Layout](../Frontend/src/components/Layout.tsx), [routes](../Frontend/src/App.tsx) xác định code; [07](07-ui-design-system.md) quy định trải nghiệm cần đạt.
+[Theme](../Frontend/src/theme.css), [UI primitives](../Frontend/src/components/ui.tsx), [Layout](../Frontend/src/components/Layout.tsx), [routes](../Frontend/src/app/routes.tsx) xác định code; [07](07-ui-design-system.md) quy định trải nghiệm cần đạt.
 
 Không dùng file/key/quyết định thiết kế Marixa cho Badminton. Quy trình này là đề xuất; không xác nhận plugin/Code Connect/codegen đã tồn tại.
 
@@ -13,9 +13,9 @@ Không dùng file/key/quyết định thiết kế Marixa cho Badminton. Quy tr�
 
 | Variable đề xuất | CSS CURRENT | Giá trị |
 | --- | --- | --- |
-| brand/primary | --primary | #16A34A |
+| brand/primary | --primary | #15803D |
 | brand/accent | --accent | #FACC15 |
-| surface/page | --bg | #F8FAFC |
+| surface/page | --bg | #F5F6F8 |
 | surface/card | --card | #FFFFFF |
 | text/primary | --fg | #0F172A |
 | text/secondary | --muted | #475569 |
@@ -56,3 +56,5 @@ Chỉ đánh dấu đồng bộ khi đối chiếu cả code/design. Screenshot/
 ## 6. Bàn giao
 
 Ghi link file/node thật, commit, mapping token, frame/state, ảnh đối chiếu/lỗi mở/ngày UTC+7 vào [worklog](worklog.md). Trước đó Figma giữ NOT VERIFIED.
+
+Cấu hình hiện hành và giới hạn startup đọc [13-configuration.md](13-configuration.md); gate phát hành đọc [14-release-checklist.md](14-release-checklist.md).

@@ -14,11 +14,11 @@ namespace Services
         private readonly Badminton.Core.Domain.IMetricsReporter? _metrics;
 
         public NotifyService(IUnitOfWork uow,
-            Microsoft.AspNetCore.Http.IHttpContextAccessor http,
+            Badminton.Core.Security.ICurrentUser currentUser,
             IOptions<NotifySettings> settings,
             IEnumerable<INotifyChannel> channels,
             Badminton.Core.Domain.IMetricsReporter? metrics = null)
-            : base(uow, http)
+            : base(uow, currentUser)
         {
             _settings = settings;
             _channels = channels.ToList();

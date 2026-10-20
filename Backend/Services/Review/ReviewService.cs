@@ -3,7 +3,7 @@ using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using Contract.Services.Review;
 using Badminton.Core.Base;
-using Microsoft.AspNetCore.Http;
+using Badminton.Core.Security;
 using ModelViews.Review;
 using System.Text.Json;
 
@@ -12,8 +12,8 @@ namespace Services
     public sealed class ReviewService : BaseService, IReviewService
     {
         private readonly IAuditService _audit;
-        public ReviewService(IUnitOfWork uow, IHttpContextAccessor http, IAuditService audit)
-            : base(uow, http) { _audit = audit; }
+        public ReviewService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit)
+            : base(uow, currentUser) { _audit = audit; }
 
         private IGenericRepository<Review> Repo => Repository<Review>();
 

@@ -115,13 +115,14 @@ namespace Badminton.Tests
         {
             await _h.CountPointsIntoAsync(_h.Bob, 5_000, "seed");
 
-            // Peak court 1 = 150_000.  5,000 pts → 100,000 VND off → 50,000 payable.
+            // The test date moves with the calendar; peak includes 20% surcharge on weekends.
             var withPoints = await _h.BookAsync(_h.Bob, _h.Court1, _h.SlotPeak,
                 _h.FutureDate.ToString("yyyy-MM-dd"), pointsToRedeem: 5_000);
 
             Assert.Equal(5_000, withPoints!.PointsRedeemed);
             Assert.Equal(100_000, withPoints.Price.PointsDiscount);
-            Assert.Equal(150_000 - 100_000, withPoints.PayableAmount);
+            var peak = _h.FutureDate.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? 180_000 : 150_000;
+            Assert.Equal(peak - 100_000, withPoints.PayableAmount);
 
             var balance = await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<Contract.Services.Points.IPointService>()

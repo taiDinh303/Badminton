@@ -4,15 +4,15 @@ using Contract.Services.Audit;
 using Contract.Services.Maintenance;
 using Badminton.Core.Base;
 using Badminton.Core.Enums;
-using Microsoft.AspNetCore.Http;
+using Badminton.Core.Security;
 
 namespace Services
 {
     public sealed class MaintenanceService : BaseService, IMaintenanceService
     {
         private readonly IAuditService _audit;
-        public MaintenanceService(IUnitOfWork uow, IHttpContextAccessor http, IAuditService audit)
-            : base(uow, http) { _audit = audit; }
+        public MaintenanceService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit)
+            : base(uow, currentUser) { _audit = audit; }
 
         public async Task SetAsync(int courtId, DateOnly date, CourtDateStatus status,
             int actorId, string? note = null)
@@ -21,7 +21,7 @@ namespace Services
             if (court is null || !court.IsActive)
                 throw new NotFoundException("Court", courtId);
 
-            if (_http.HttpContext?.User.IsInRole("Manager") == true)
+            if (_currentUser.Principal.IsInRole("Manager") == true)
             {
                 var actor = await Repository<User>().GetByIdAsync(actorId);
 

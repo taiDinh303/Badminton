@@ -26,3 +26,8 @@ Thumbs.db
 # Frontend dependencies and generated bundles
 node_modules/
 dist/
+
+# Verification outputs and private deployment artifacts
+artifacts/
+playwright-report/
+test-results/

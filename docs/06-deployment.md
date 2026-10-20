@@ -1,6 +1,6 @@
 # 06 — Tổng quan triển khai, phát hành và khôi phục
 
-> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **16/10/2026**.
+> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **20/10/2026**.
 > CURRENT: cấu hình repo. TARGET: cloud dự kiến. Chưa kiểm tra live.
 
 ## 1. Mô hình và ranh giới
@@ -27,7 +27,7 @@ Hướng đích tài liệu cũ: frontend Vercel, API trên dịch vụ .NET lâ
 - [ ] JWT/CORS/API URL đúng; secret không trong frontend.
 - [ ] Provider/migration/raw SQL/schema/index đúng môi trường.
 - [ ] Payment sandbox, chữ ký, idempotency và đối soát đã nghiệm thu.
-- [ ] Jobs chạy đúng qua restart/concurrency; không hoàn voucher/điểm trùng.
+- [ ] Năm jobs có applock/heartbeat; cần bằng chứng restart/concurrency không ghi trùng.
 - [ ] Backup restore được; có cách đối soát giao dịch mới sau rollback.
 
 ## 4. Quy trình release TARGET
@@ -58,3 +58,5 @@ Không tự rollback DB bằng Down nếu có nguy cơ mất dữ liệu. RPO/RT
 ## 6. Bằng chứng
 
 Ghi commit, môi trường, ngày giờ UTC+7, migration, URL, lệnh, kết quả flow, lỗi mở, người bàn giao vào [worklog](worklog.md). Không ghi mật khẩu/token/raw webhook nhạy cảm.
+
+Cấu hình hiện hành và giới hạn startup đọc [13-configuration.md](13-configuration.md); gate phát hành đọc [14-release-checklist.md](14-release-checklist.md).

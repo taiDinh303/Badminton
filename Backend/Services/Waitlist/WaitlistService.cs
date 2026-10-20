@@ -14,10 +14,10 @@ namespace Services
         private readonly IBookingService _booking;
 
         public WaitlistService(IUnitOfWork uow,
-            Microsoft.AspNetCore.Http.IHttpContextAccessor http,
+            Badminton.Core.Security.ICurrentUser currentUser,
             INotifyService notify,
             IBookingService booking)
-            : base(uow, http)
+            : base(uow, currentUser)
         {
             _notify = notify;
             _booking = booking;

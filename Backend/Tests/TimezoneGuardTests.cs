@@ -64,7 +64,7 @@ namespace Badminton.Tests
         }
 
         [Fact(DisplayName = "The guard compares against Hanoi wall clock, not UTC (integration)")]
-        public async Task Guard_UsesHanoiWallClock()
+        public void Guard_UsesHanoiWallClock()
         {
             var hanoiNow = HanoiTime.HanoiNow();
             var ok40 = HanoiTime.SlotStart(_h.FutureDate, new TimeOnly(9, 40));

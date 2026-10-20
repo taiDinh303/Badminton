@@ -2,14 +2,14 @@ using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Group;
 using Badminton.Core.Base;
-using Microsoft.AspNetCore.Http;
+using Badminton.Core.Security;
 using ModelViews.Group;
 
 namespace Services
 {
     public sealed class GroupService : BaseService, IGroupService
     {
-        public GroupService(IUnitOfWork uow, IHttpContextAccessor http) : base(uow, http) { }
+        public GroupService(IUnitOfWork uow, ICurrentUser currentUser) : base(uow, currentUser) { }
 
         private IGenericRepository<PlayGroup> Repo => Repository<PlayGroup>();
 

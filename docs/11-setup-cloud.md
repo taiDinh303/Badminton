@@ -1,6 +1,6 @@
 # 11 — Chuẩn bị cloud và bàn giao vận hành
 
-> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **16/10/2026**.
+> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **20/10/2026**.
 > TARGET/PENDING; chưa tạo hoặc thay đổi dịch vụ cloud.
 
 ## 1. Thông tin cần xác nhận
@@ -27,10 +27,10 @@ Storage cần bucket/policy/mime/size/ownership/upload API/vòng đời file; Im
 ## 3. DB và API
 
 1. Chọn môi trường test theo quyết định owner; lưu secret đúng nơi.
-2. Migration đã kiểm tra tạo schema; xác minh 15 bảng/FK/unique slot/admin/idempotency/ledger và dataset test.
+2. Migration đã kiểm tra tạo schema; xác minh 17 bảng/FK/unique slot/admin/idempotency/ledger và dataset test.
 3. Chạy test provider/concurrency/quyền; lưu schema evidence đã lọc secret.
-4. Chuẩn bị artifact .NET 8/binding/TLS/worker theo host. Repo chưa Dockerfile, readiness hoặc blueprint API hoàn chỉnh.
-5. Đặt Production/key mạnh/connection đúng provider/CORS origin đầy đủ. Startup tự migrate, cần kiểm soát DDL/lần chạy.
+4. Chuẩn bị artifact .NET 8/binding/TLS/worker theo host. Repo có /health và /ready, chưa Dockerfile/blueprint API được nghiệm thu.
+5. Đặt Production/key mạnh/connection đúng provider/CORS origin đầy đủ. Production không startup migrate/seed; áp migration riêng có review/backup theo [13](13-configuration.md).
 6. Bootstrap admin thật có kiểm soát; seed demo Development không là bootstrap production.
 
 Chỉ bật nhiều instance sau kiểm tra jobs/lock/cache/rate-limit/migration. Tăng replica chưa chứng minh sẵn sàng cao.
@@ -69,3 +69,5 @@ Kết luận đạt/chưa đạt/chờ quyết định:
 ```
 
 Chỉ điền đã xác minh; lưu snapshot/bằng chứng không bí mật vào [worklog](worklog.md). Cấu hình ví dụ không là cloud hoàn tất.
+
+Cấu hình hiện hành và giới hạn startup đọc [13-configuration.md](13-configuration.md); gate phát hành đọc [14-release-checklist.md](14-release-checklist.md).

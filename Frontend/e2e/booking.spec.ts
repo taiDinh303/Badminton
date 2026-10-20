@@ -11,7 +11,6 @@ test.describe("booking", () => {
   test("a customer selects a free slot and confirms a booking", async ({ page }) => {
     // Unauthenticated start → the Protected guard redirects to /auth. To
     // reach /book we first complete a mocked login (mirrors a real session).
-    let branchCalls = 0;
 
     await mockApi(page, [
       {

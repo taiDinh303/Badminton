@@ -3,13 +3,13 @@ using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using Badminton.Core.Base;
 using Badminton.Core.Utils;
-using Microsoft.AspNetCore.Http;
+using Badminton.Core.Security;
 
 namespace Services
 {
     public sealed class AuditService : BaseService, IAuditService
     {
-        public AuditService(IUnitOfWork uow, IHttpContextAccessor http) : base(uow, http) { }
+        public AuditService(IUnitOfWork uow, ICurrentUser currentUser) : base(uow, currentUser) { }
 
         public async Task LogAsync(int actorId, string action, string entityType,
             string? entityId, object? before, object? after, string? reason = null)

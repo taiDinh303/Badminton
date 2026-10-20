@@ -11,8 +11,7 @@ using Contract.Services.Voucher;
 using Badminton.Core.Base;
 using Badminton.Core.Enums;
 using Badminton.Core.Utils;
-using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
+using Badminton.Core.Security;
 using ModelViews.Booking;
 
 namespace Services
@@ -27,11 +26,11 @@ namespace Services
         private readonly IPaymentService _payments;
         private readonly INotifyService _notify;
 
-        public BookingService(IUnitOfWork uow, IHttpContextAccessor http,
+        public BookingService(IUnitOfWork uow, ICurrentUser currentUser,
             IPricingService pricing, IVoucherService vouchers, IGroupService groups,
             IAuditService audit, IPointService points, IPaymentService payments,
             INotifyService notify)
-            : base(uow, http)
+            : base(uow, currentUser)
         {
             _pricing = pricing;
             _vouchers = vouchers;
@@ -50,7 +49,14 @@ namespace Services
             {
                 var existing = (await Repo.GetByConditionAsync(
                     b => b.IdempotencyKey == request.IdempotencyKey)).FirstOrDefault();
-                if (existing is not null) return await ToView(existing);
+                if (existing is not null)
+                {
+                    if (existing.UserId != userId || existing.CourtId != request.CourtId || existing.SlotId != request.SlotId
+                        || existing.Date != ParseDate(request.Date) || existing.GroupId != request.GroupId
+                        || existing.PlayerCount != request.PlayerCount)
+                        throw new ConflictException("IdempotencyKey đã được dùng cho một yêu cầu khác.");
+                    return await ToView(existing);
+                }
             }
 
             var court = await Repository<Court>().GetByIdAsync(request.CourtId);
@@ -77,6 +83,8 @@ namespace Services
                 throw new BadRequestException("Vui long chon ngay trong 30 ngay toi.");
 
             var requester = await Repository<User>().GetByIdAsync(userId);
+            if (requester is null || requester.DeletedAt.HasValue || requester.Status != UserStatus.Active || !requester.IsVerified)
+                throw new ConflictException("Tài khoản chưa được xác minh hoặc đã bị khóa.");
             if (requester is not null
                 && requester.NoShowLimited
                 && requester.NoShowLimitedPeriod is { } lp
@@ -119,7 +127,7 @@ namespace Services
                 if (request.PointsToRedeem is { } ptsReq && ptsReq > 0)
                 {
                     var afterVoucher = total - voucherDiscount;
-                    // maxPointsThatFit = points whose 20k-per-1000 discount ≤ afterVoucher.
+                    // maxPointsThatFit = points whose 20k-per-1000 discount â‰¤ afterVoucher.
                     var maxPointsThatFit = (long)afterVoucher * 1_000 / 20_000;
                     pointsRedeemedCount = Math.Min(ptsReq, (int)maxPointsThatFit);
                     if (pointsRedeemedCount < 1_000)
@@ -168,9 +176,9 @@ namespace Services
                 });
 
                 try { await SaveAsync(); }
-                catch (DbUpdateException ex)
+                catch (UniqueConstraintException ex)
                 {
-                    if (IsSlotConflict(ex))
+                    if (ex.ConstraintName == "ux_court_slot_active")
                         throw new ConflictException(
                             "SLOT_CONFLICT: san nay gio vay vua duoc dat, hay chon khung khac.");
                     throw;
@@ -250,7 +258,7 @@ namespace Services
         public async Task<(IReadOnlyList<BookingView> Items, int TotalCount)>
             GetAllPagedAsync(string? status, int? branchId, Page page)
         {
-            var bi = branchId;
+            var bi = await ResolveStaffBranchAsync(branchId);
             bool hasStatus = !string.IsNullOrWhiteSpace(status);
             BookingStatus? stEnum = hasStatus
                 && Enum.TryParse<BookingStatus>(status, ignoreCase: true, out var p)
@@ -291,12 +299,9 @@ namespace Services
                     || !slots.TryGetValue(b.SlotId, out var slot))
                     throw new NotFoundException("Booking data", b.Id);
 
-                var isWeekend = IsWeekend(b.Date);
-                var basePrice = (int)_pricing.WithWeekend(
-                    court.PriceLowPeak, court.PricePeak, slot.IsPeak,
-                    court.WeekendSurcharge, isWeekend);
-                var weekendOnly = isWeekend ? basePrice : 0;
-                var pointsVnd = b.PointsRedeemed * 20_000 / 1_000; // 1000 pts → 20k
+                var basePrice = b.TotalAmount;
+                const int weekendOnly = 0;
+                var pointsVnd = b.PointsRedeemed * 20_000 / 1_000; // 1000 pts â†’ 20k
                 var voucherVnd = b.DiscountAmount - pointsVnd;
                 var breakdown = new BookingPriceBreakdown(
                     basePrice, weekendOnly, voucherVnd, pointsVnd,
@@ -372,11 +377,12 @@ namespace Services
             return await ToView(b);
         }
 
-        // - lifecycle: Confirmed → Completed / NoShow -----------------------
+        // - lifecycle: Confirmed â†’ Completed / NoShow -----------------------
 
         public async Task<BookingView> MarkCompletedAsync(int bookingId, int actorId, string? note = null)
         {
             var b = await MustGetActive(bookingId);
+            await AuthorizeStaffBranchAsync(b.BranchId, actorId);
             if (b.Status is not BookingStatus.Confirmed)
                 throw new ConflictException($"Chi duoc danh dau hoan thanh don o trang thai Confirmed (hien tai: {b.Status}).");
 
@@ -410,6 +416,7 @@ namespace Services
         public async Task<BookingView> MarkNoShowAsync(int bookingId, int actorId, string? note = null)
         {
             var b = await MustGetActive(bookingId);
+            await AuthorizeStaffBranchAsync(b.BranchId, actorId);
             if (b.Status is not BookingStatus.Confirmed)
                 throw new ConflictException($"Chi duoc gan co no-show don o trang thai Confirmed (hien tai: {b.Status}).");
 
@@ -531,7 +538,7 @@ namespace Services
 
         private async Task<int> CountActiveBookings(int userId, int? groupId, DateOnly date)
         {
-            // Server-side COUNT — no materialising the bookings list.
+            // Server-side COUNT â€” no materialising the bookings list.
             var u = userId; var g = groupId;
             return await Repo.CountByConditionAsync(b =>
                 b.Date == date && b.UserId == u &&
@@ -550,7 +557,11 @@ namespace Services
         {
             if (b.UserId == requestingUserId) return;
             if (b.GroupId is { } gid && await _groups.CanBookForGroupAsync(gid, requestingUserId)) return;
-            // manager/admin read is scoped by [Authorize(Roles)] at the controller.
+            if (_currentUser.IsInRole("Admin") || _currentUser.IsInRole("Manager"))
+            {
+                await AuthorizeStaffBranchAsync(b.BranchId, requestingUserId);
+                return;
+            }
             throw new ConflictException("Khong co quyen xem dat cho nay.");
         }
 
@@ -559,9 +570,9 @@ namespace Services
             if (b.UserId == actorId) return;
             if (b.GroupId is { } gid && await _groups.CanBookForGroupAsync(gid, actorId)) return;
 
-            var ctx = _http.HttpContext;
-            if (ctx?.User.IsInRole("Admin") == true) return; // global
-            if (ctx?.User.IsInRole("Manager") == true)
+            var ctx = _currentUser.Principal;
+            if (ctx?.IsInRole("Admin") == true) return; // global
+            if (ctx?.IsInRole("Manager") == true)
             {
                 var actor = await Repository<User>().GetByIdAsync(actorId);
                 if (actor is { Role: Role.Manager }
@@ -579,11 +590,8 @@ namespace Services
             if (court is null || slot is null)
                 throw new NotFoundException("Booking data", b.Id);
 
-            var isWeekend = IsWeekend(b.Date);
-            var basePrice = (int)_pricing.WithWeekend(
-                court.PriceLowPeak, court.PricePeak, slot.IsPeak,
-                court.WeekendSurcharge, isWeekend);
-            var weekendOnly = isWeekend ? basePrice : 0;
+            var basePrice = b.TotalAmount; // Snapshot, inclusive of weekend surcharge.
+            const int weekendOnly = 0; // A separate historical split was not persisted.
             var pointsVnd = b.PointsRedeemed * 20_000 / 1_000;
             var voucherVnd = b.DiscountAmount - pointsVnd;
             var breakdown = new BookingPriceBreakdown(
@@ -598,17 +606,6 @@ namespace Services
                 b.PayableAmount, b.PointsEarned, b.PointsRedeemed,
                 b.GroupId, b.VoucherRedemptionId,
                 b.CreatedAt, user?.FullName, breakdown, b.CancelReason);
-        }
-
-        private static bool IsSlotConflict(DbUpdateException ex)
-        {
-            if (ex.InnerException is Microsoft.Data.SqlClient.SqlException sql
-                && sql.Number == 2601)
-            {
-                return sql.Message.Contains("ux_court_slot_active")
-                    || sql.Message.Contains("IX_Bookings_CourtId_Date_SlotId");
-            }
-            return ex.Message.Contains("ux_court_slot_active");
         }
 
         private static bool IsWeekend(DateOnly d) =>

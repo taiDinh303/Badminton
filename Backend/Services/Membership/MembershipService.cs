@@ -13,9 +13,9 @@ namespace Services
         private readonly IOptions<MembershipSettings> _s;
 
         public MembershipService(IUnitOfWork uow,
-            Microsoft.AspNetCore.Http.IHttpContextAccessor http,
+            Badminton.Core.Security.ICurrentUser currentUser,
             IOptions<MembershipSettings> settings)
-            : base(uow, http)
+            : base(uow, currentUser)
         {
             _s = settings;
         }

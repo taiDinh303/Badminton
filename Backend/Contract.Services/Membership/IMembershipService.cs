@@ -2,7 +2,6 @@ using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Badminton.Core.Enums;
 using Badminton.Core.Store;
-using Microsoft.Extensions.Options;
 
 namespace Contract.Services.Membership
 {

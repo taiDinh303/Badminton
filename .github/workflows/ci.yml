@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate documentation and project references
+        run: python scripts/Validate-Repository.py
       - name: Run static guard (seed + secrets + migration presence)
         shell: pwsh
         run: ./scripts/CiGuard.ps1
@@ -36,6 +38,9 @@ jobs:
         run: dotnet restore Backend/Badminton.slnx
       - name: Build
         run: dotnet build Backend/Badminton.slnx -c Release --no-restore
+      - name: Verify production configuration without external services
+        shell: pwsh
+        run: ./scripts/Test-ProductionConfiguration.ps1
       - name: Verify EF migration model
         working-directory: Backend
         run: dotnet ef migrations has-pending-model-changes --project Repositories --startup-project API
@@ -71,6 +76,7 @@ jobs:
           cache: npm
           cache-dependency-path: Frontend/package-lock.json
       - run: npm ci
+      - run: npm test
       - run: npm run lint
       - run: npm run build
 

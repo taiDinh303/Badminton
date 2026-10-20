@@ -12,12 +12,13 @@ namespace Services
         private readonly IMemoryCache _cache;
         private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
 
-        public ReportService(IUnitOfWork uow, Microsoft.AspNetCore.Http.IHttpContextAccessor http,
+        public ReportService(IUnitOfWork uow, Badminton.Core.Security.ICurrentUser currentUser,
             IMemoryCache cache)
-            : base(uow, http) { _cache = cache; }
+            : base(uow, currentUser) { _cache = cache; }
 
         public async Task<DashboardSummary> GetSummaryAsync(int? branchId = null)
         {
+            branchId = await ResolveStaffBranchAsync(branchId);
             var key = $"report:summary:{branchId?.ToString() ?? "all"}";
             if (_cache.TryGetValue(key, out DashboardSummary? hit)) return hit!;
             var result = await LoadSummaryAsync(branchId);
@@ -63,12 +64,12 @@ namespace Services
                 u.DeletedAt == null && u.Role == Role.Customer
                 && (u.Tier == MembershipTier.Silver || u.Tier == MembershipTier.Gold)
                 && u.MembershipExpiresAt != null
-                && u.MembershipExpiresAt > nowUtc);
+                && u.MembershipExpiresAt > nowUtc && (bi == null || u.BranchId == bi));
 
             // FEAT 2: customers currently waiting on a full slot.
             int waitingListCount = await Repository<WaitlistEntry>()
                 .CountByConditionAsync(w =>
-                    w.DeletedAt == null && w.Status == WaitlistStatus.Waiting);
+                    w.DeletedAt == null && w.Status == WaitlistStatus.Waiting && (bi == null || w.BranchId == bi));
 
             // Peak fill rate for today: booked PEAK slots / (active courts x peak slots).
             var peakSlots = await Repository<TimeSlot>().GetByConditionAsync(s => s.IsActive && s.IsPeak && s.DeletedAt == null);

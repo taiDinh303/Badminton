@@ -11,6 +11,7 @@
 
   <!-- The tests exercise the services + repositories, not the web host. -->
   <ItemGroup>
+    <ProjectReference Include="..\API\Badminton.API.csproj" />
     <ProjectReference Include="..\Services\Services.csproj" />
     <ProjectReference Include="..\Repositories\Repositories.csproj" />
     <ProjectReference Include="..\Contract.Services\Contract.Services.csproj" />

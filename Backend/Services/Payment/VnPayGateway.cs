@@ -108,9 +108,9 @@ namespace Services
                     "webhook VnPay thieu body, khong the xac minh."));
 
             // The VNPAY ipn payload arrives as a URL-encoded query string.
-            var q = Microsoft.AspNetCore.WebUtilities
-                .QueryHelpers.ParseQuery(raw.Body)
-                .ToDictionary(kv => kv.Key, kv => kv.Value.ToString(),
+            var parsed = System.Web.HttpUtility.ParseQueryString(raw.Body.TrimStart('?'));
+            var q = parsed.AllKeys.Where(key => key is not null)
+                .ToDictionary(key => key!, key => parsed[key!] ?? "",
                     System.StringComparer.OrdinalIgnoreCase);
 
             if (q.Count == 0)

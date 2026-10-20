@@ -8,7 +8,7 @@ using Badminton.Core.Base;
 using Badminton.Core.Domain;
 using Badminton.Core.Enums;
 using Badminton.Core.Utils;
-using Microsoft.AspNetCore.Http;
+using Badminton.Core.Security;
 using ModelViews.Payment;
 
 namespace Services
@@ -20,10 +20,10 @@ namespace Services
         private readonly IAuditService _audit;
         private readonly INotifyService _notify;
 
-        public PaymentService(IUnitOfWork uow, IHttpContextAccessor http,
+        public PaymentService(IUnitOfWork uow, ICurrentUser currentUser,
             IPaymentGatewayFactory gateways, IPointService points,
             IAuditService audit, INotifyService notify)
-            : base(uow, http)
+            : base(uow, currentUser)
         {
             _gateways = gateways;
             _points = points;
@@ -434,6 +434,8 @@ namespace Services
             if (booking.UserId != requestingUserId && !IsStaff())
                 throw new ConflictException("Khong co quyen xem giao dich thanh toan nay.");
 
+            if (booking.UserId != requestingUserId)
+                await AuthorizeStaffBranchAsync(booking.BranchId, requestingUserId);
             var list = await Repo.GetByConditionAsync(p => p.BookingId == bookingId);
             return list.Select(ToView).ToList();
         }
@@ -451,13 +453,13 @@ namespace Services
             string.IsNullOrEmpty(s) ? s : (s.Length > 2000 ? s[..2000] : s);
 
         private bool IsStaff() =>
-            _http.HttpContext?.User.IsInRole("Admin") == true
-            || _http.HttpContext?.User.IsInRole("Manager") == true;
+            _currentUser.Principal.IsInRole("Admin") == true
+            || _currentUser.Principal.IsInRole("Manager") == true;
 
         private async Task AuthorizeStaffScope(Booking booking, int actorId)
         {
-            var ctx = _http.HttpContext;
-            bool isAdmin = ctx?.User.IsInRole("Admin") == true;
+            var ctx = _currentUser.Principal;
+            bool isAdmin = ctx?.IsInRole("Admin") == true;
             if (isAdmin) return;
 
             var actor = await Repository<User>().GetByIdAsync(actorId);

@@ -67,21 +67,15 @@ foreach ($p in $secretPatterns) {
 }
 # .env.example IS allowed and expected to be committed.
 
-# ── Rule 2: SeedData.Seed must be gated behind a dev check ────────────
-$program = Get-Text "Backend/API/Program.cs"
-if ($null -eq $program) {
-    $failures.Add("Rule 2: Backend/API/Program.cs not found.")
-}
-else {
-    $hasSeedCall = $program -match "SeedData\.Seed"
-    if ($hasSeedCall) {
-        $gated = ($program -match "IsDevelopment\(\)") -and
-                 ($program -match "Seed:AllowInProduction")
-        if (-not $gated) {
-            $failures.Add("Rule 2: SeedData.Seed is called but not gated behind " +
-                "IsDevelopment() + the Seed:AllowInProduction escape hatch.")
-        }
-    }
+# Rule 2: initialization lives at an explicit, guarded side-effect boundary.
+$initializer = Get-Text "Backend/API/Bootstrap/DatabaseInitializer.cs"
+$startupValidation = Get-Text "Backend/API/Configuration/StartupConfiguration.cs"
+if ($null -eq $initializer -or $null -eq $startupValidation) {
+    $failures.Add("Rule 2: database initialization/configuration guard not found.")
+} elseif ($initializer -notmatch 'IsDevelopment\(\)' -or $initializer -notmatch 'IsEnvironment\("Testing"\)' -or
+          $startupValidation -notmatch 'DatabaseInitialization:MigrateOnStartup' -or
+          $startupValidation -notmatch 'DatabaseInitialization:SeedDemoData') {
+    $failures.Add("Rule 2: database initialization must be restricted to Development/Testing and validated before startup.")
 }
 
 # ── Rule 3: demo creds live ONLY in SeedData.cs ───────────────────────

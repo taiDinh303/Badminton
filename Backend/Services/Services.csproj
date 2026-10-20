@@ -11,11 +11,11 @@
     <ProjectReference Include="..\Contract.Services\Contract.Services.csproj" />
     <ProjectReference Include="..\Core\Core.csproj" />
     <ProjectReference Include="..\ModelViews\ModelViews.csproj" />
-    <ProjectReference Include="..\Repositories\Repositories.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Services use IHttpContextAccessor (CurrentUserName) -> need the ASP.NET shared framework. -->
+    <!-- Shared Extensions DI/options/cache/HTTP-client assemblies are supplied by the host runtime.
+         Business services consume Core ICurrentUser, never HttpContext or EF. -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 

@@ -3,7 +3,7 @@ using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using Contract.Services.Branch;
 using Badminton.Core.Base;
-using Microsoft.AspNetCore.Http;
+using Badminton.Core.Security;
 using ModelViews.Branch;
 
 namespace Services
@@ -11,8 +11,8 @@ namespace Services
     public sealed class BranchService : BaseService, IBranchService
     {
         private readonly IAuditService _audit;
-        public BranchService(IUnitOfWork uow, IHttpContextAccessor http, IAuditService audit)
-            : base(uow, http) { _audit = audit; }
+        public BranchService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit)
+            : base(uow, currentUser) { _audit = audit; }
 
         private IGenericRepository<Branch> Repo => Repository<Branch>();
 

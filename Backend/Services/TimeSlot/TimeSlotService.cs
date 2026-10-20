@@ -3,7 +3,7 @@ using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using Contract.Services.TimeSlot;
 using Badminton.Core.Base;
-using Microsoft.AspNetCore.Http;
+using Badminton.Core.Security;
 using ModelViews.TimeSlot;
 
 namespace Services
@@ -11,8 +11,8 @@ namespace Services
     public sealed class TimeSlotService : BaseService, ITimeSlotService
     {
         private readonly IAuditService _audit;
-        public TimeSlotService(IUnitOfWork uow, IHttpContextAccessor http, IAuditService audit)
-            : base(uow, http) { _audit = audit; }
+        public TimeSlotService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit)
+            : base(uow, currentUser) { _audit = audit; }
 
         private IGenericRepository<TimeSlot> Repo => Repository<TimeSlot>();
 
