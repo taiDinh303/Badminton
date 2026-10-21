@@ -29,7 +29,7 @@ namespace Services
             return branches
                 .Select(b => new BranchView(
                     b.Id, b.Name, b.Address, b.IsActive,
-                    b.OpenTime.ToString("hh\\:mm"), b.CloseTime.ToString("hh\\:mm"),
+                    b.OpenTime.ToString("HH\\:mm"), b.CloseTime.ToString("HH\\:mm"),
                     counts.TryGetValue(b.Id, out var n) ? n : 0))
                 .ToList();
         }
@@ -40,7 +40,7 @@ namespace Services
             var courtCount = await Repository<Court>()
                 .CountByConditionAsync(c => c.BranchId == id && c.IsActive && c.DeletedAt == null);
             return new BranchView(b.Id, b.Name, b.Address, b.IsActive,
-                b.OpenTime.ToString("hh\\:mm"), b.CloseTime.ToString("hh\\:mm"), courtCount);
+                b.OpenTime.ToString("HH\\:mm"), b.CloseTime.ToString("HH\\:mm"), courtCount);
         }
 
         public async Task<int> CreateAsync(CreateBranchRequest request, int actorId)

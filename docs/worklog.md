@@ -82,7 +82,7 @@ Ngày 14/10 ghi build 0 warning/error, 23 test pass với SQL Express; chưa có
 
 ## 6. Log sự kiện (mới trên cùng)
 
-### 21/10/2026 — Supabase cutover và sửa cấu hình cloud (đang hoàn tất API/frontend)
+### 21/10/2026 — Supabase cutover và sửa cấu hình cloud
 
 - Phạm vi trực tiếp từ người dùng: chuyển database source lên Supabase tổ chức tugxiczrpnesubccgbuq; sửa Vercel deployment 3jrvtCdQZCj8A3DLiQwJvBSEuYpB và Render Static srv-dbc8lv8ae00c738vmc80. Người dùng chọn chuyển toàn bộ dữ liệu local và Production thanh toán tại sân trước. Không mua dịch vụ.
 - CURRENT: thêm Npgsql EF8, PostgresBookingDbContext/migration snapshot riêng, giữ nguyên lịch sử SQL Server. SQL điều kiện dùng ANSI quoted identifiers/boolean parameter; repository ánh xạ unique violation và transaction advisory lock. Session job lock implementation nằm trong repository; API giữ metrics/orchestration. Sửa DateTime UTC boundary audit/report cho PostgreSQL.
@@ -96,8 +96,9 @@ Ngày 14/10 ghi build 0 warning/error, 23 test pass với SQL Express; chưa có
 - Frontend npm run build, npm test 11/11, npm run lint đạt; npm run test:e2e cuối 17/17 pass (API mock). Test onsite kiểm Cash/QR, online bị ẩn, khách xem hướng dẫn vẫn Pending. Lượt đầu assertion dùng nhãn chưa đúng và một test waitlist bị timing fail; sửa nhãn đúng Chờ thanh toán, chạy focused2/2 và full17/17 đạt. Không đổi test waitlist để che lỗi.
 - CURRENT cloud: commit 62c59a2 được đẩy nhánh codex/cloud-supabase lên taiDinh303/Badminton và fork thankiemsama/Badminton để dùng integration Vercel hiện có. Không ghi đè main. API Render srv-dbccc661egvs73a76ju0, deployment dep-dbccc6m1egvs73a76kug Live, Docker build thành công trên Render Free/Singapore. URL https://badminton-api-w86i.onrender.com.
 - HTTPS smoke chỉ đọc bằng Invoke-WebRequest: /health=200, /ready=200 db=ok và cả 5 worker heartbeat=ok, /api/v1/payments/methods=200 với Cash/QR. CORS trả đúng hai origin Vercel/Render đã cấu hình; origin untrusted.example không có Allow-Origin. Trước deploy, publish API chạy tạm port15131, jobs=false, không migrate/seed, đọc Supabase thành công (3 branches, 5 active courts), đã dừng process.
-- Frontend Render đã đổi nhánh codex/cloud-supabase và cấu hình VITE_API_URL public tới API trên; đang chờ build. Vercel đã lưu production branch codex/cloud-supabase và VITE_API_URL public; cần deployment mới để có hiệu lực.
-- NOT VERIFIED: frontend deployment cuối và browser live đang hoàn tất. Gateway thật, camera/USB và worker multi-instance/crash chưa nghiệm thu. Render Free có thể ngủ, worker không chạy khi instance ngủ; không cam kết vận hành liên tục.
+- Frontend Vercel deployment 9mDVRD92cevQFC2ArX9sPW5KoSYu (c842a2f) Ready/Production/Current tại https://badminton-ten-smoky.vercel.app. Render Static dep-dbccpogm7kps73a8fnb0 Live, clean build 20.8s tại https://badminton-bvqs.onrender.com; lần build cache trước kẹt npm ci 14m50s đã cancel, clear build cache và build lại đạt. Cả hai dùng VITE_API_URL tới API mới; kiểm bundle shared ui xác nhận endpoint đúng, deep link /auth trả200.
+- Browser live: đăng nhập bằng tài khoản Admin đã có trên cả Vercel và Render thành công, đọc home 3 cơ sở/5 sân active; Vercel dashboard/report, audit và availability ngày sau tải được; không lỗi console. Không tạo đơn/chuyển tiền/xác nhận thanh toán thử trên live. Đăng xuất sau kiểm tra. Khi kiểm tra phát hiện TimeOnly dùng hh (12 giờ), sửa HH (24 giờ) trong Branch/TimeSlot/Booking (cả label/error/availability). Regression mới xác minh 18:00–19:00 và close23:00 trên các service + booking. PG targeted7/7, SQLServer8/8 pass. Lượt PG đầu thiếu server local (8 fail kết nối), khởi động cluster cô lập; lượt tiếp 7 pass/1 fail do SQLServer-only upgrade, chạy filter đúng7/7 đạt. Không đổi historical test để che lỗi.
+- NOT VERIFIED: gateway thật, camera/USB và worker multi-instance/crash chưa nghiệm thu. Render Free có thể ngủ, worker không chạy khi instance ngủ; không cam kết vận hành liên tục. Luồng ghi live không chạy thử vì giữ dữ liệu đã chuyển.
 
 
 ### 21/10/2026 — Giải phóng cổng 5131 khi Visual Studio báo address already in use

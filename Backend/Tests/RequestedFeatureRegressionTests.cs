@@ -23,6 +23,26 @@ public sealed class RequestedFeatureRegressionTests : IAsyncLifetime
     public async Task DisposeAsync() => await _h.DisposeAsync();
 
     [Fact]
+    public async Task Afternoon_hours_stay_unambiguous_across_branch_slots_availability_and_booking()
+    {
+        await _h.RunScopeAsync(async sp =>
+        {
+            var branches = ActivatorUtilities.CreateInstance<Services.BranchService>(sp);
+            Assert.Equal("23:00", (await branches.GetByIdAsync(_h.BranchId)).CloseTime);
+            Assert.Equal("23:00", (await branches.GetAllAsync()).Single(b => b.Id == _h.BranchId).CloseTime);
+            var slots = await ActivatorUtilities.CreateInstance<Services.TimeSlotService>(sp).GetAllAsync();
+            Assert.Equal("18:00", slots.Single(s => s.Id == _h.SlotPeak).StartTime);
+            Assert.Equal("19:00", slots.Single(s => s.Id == _h.SlotPeak).EndTime);
+            var grid = await sp.GetRequiredService<IBookingService>().GetAvailabilityAsync(_h.BranchId, _h.FutureDate);
+            var peak = grid.Single(c => c.CourtId == _h.Court1).Slots.Single(s => s.SlotId == _h.SlotPeak);
+            Assert.Equal("18:00", peak.StartTime);
+            Assert.Equal("19:00", peak.EndTime);
+        });
+        var booking = await _h.BookAsync(_h.Alice, _h.Court1, _h.SlotPeak, _h.FutureDate.ToString("yyyy-MM-dd"));
+        Assert.Contains("18:00-19:00", booking.SlotLabel);
+    }
+
+    [Fact]
     public async Task Maintenance_refunds_full_inside_one_hour_and_blocks_only_overlapping_slots()
     {
         var booking = await _h.MakeConfirmedBookingAsync(_h.Alice, _h.Court1, _h.SlotSoon40);

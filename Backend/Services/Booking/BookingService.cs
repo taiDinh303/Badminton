@@ -322,7 +322,7 @@ namespace Services
                 views.Add(new BookingView(
                     b.Id, b.BookingCode, b.CourtId, court.Name,
                     b.Date.ToString("dd/MM/yyyy"),
-                    $"{slot.Label} ({slot.StartTime:hh\\:mm}-{slot.EndTime:hh\\:mm})",
+                    $"{slot.Label} ({slot.StartTime:HH\\:mm}-{slot.EndTime:HH\\:mm})",
                     b.PlayerCount, b.Status.ToString(), b.TotalAmount, b.DiscountAmount,
                     b.PayableAmount, b.PointsEarned, b.PointsRedeemed,
                     b.GroupId, b.VoucherRedemptionId,
@@ -462,7 +462,7 @@ namespace Services
                 var hanoiNow = HanoiTime.HanoiNow();
                 if (hanoiNow < slotStart)
                     throw new ConflictException(
-                        $"Khung gio chua bat dau (bat dau {slot.StartTime:hh\\:mm}), khong the gan co no-show.");
+                        $"Khung gio chua bat dau (bat dau {slot.StartTime:HH\\:mm}), khong the gan co no-show.");
             }
 
             int claimed = await Uow.ExecuteSqlRawAsync(
@@ -560,7 +560,7 @@ namespace Services
                           : "Đã qua giờ đặt")
                         : "";
                     return new SlotView(sl.Id, sl.Label,
-                        sl.StartTime.ToString("hh\\:mm"), sl.EndTime.ToString("hh\\:mm"),
+                        sl.StartTime.ToString("HH\\:mm"), sl.EndTime.ToString("HH\\:mm"),
                         sl.IsPeak, isLocked, lockReason);
                 }).ToList();
 
@@ -638,7 +638,7 @@ namespace Services
             return new BookingView(
                 b.Id, b.BookingCode, b.CourtId, court.Name,
                 b.Date.ToString("dd/MM/yyyy"),
-                $"{slot.Label} ({slot.StartTime:hh\\:mm}-{slot.EndTime:hh\\:mm})",
+                $"{slot.Label} ({slot.StartTime:HH\\:mm}-{slot.EndTime:HH\\:mm})",
                 b.PlayerCount, b.Status.ToString(), b.TotalAmount, b.DiscountAmount,
                 b.PayableAmount, b.PointsEarned, b.PointsRedeemed,
                 b.GroupId, b.VoucherRedemptionId,

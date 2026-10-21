@@ -82,7 +82,7 @@ namespace Services
             TimeOnly.TryParse(s, out var t) ? t : throw new BadRequestException("Giờ không hợp lệ.");
 
         private static TimeSlotView ToView(TimeSlot s) => new(
-            s.Id, s.Label, s.StartTime.ToString("hh\\:mm"), s.EndTime.ToString("hh\\:mm"),
+            s.Id, s.Label, s.StartTime.ToString("HH\\:mm"), s.EndTime.ToString("HH\\:mm"),
             s.IsPeak, s.IsActive);
     }
 }
