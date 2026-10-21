@@ -76,7 +76,7 @@ export default function AuditPage() {
   const [entity, setEntity] = useState("");
   const [page, setPage] = useState(1);
 
-  const { data, isFetching, isError } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["audit", entity, page],
     queryFn: () =>
       api.admin.audit.query({
@@ -161,7 +161,7 @@ export default function AuditPage() {
 
       <div className="mt-4">
         {isError && <Callout tone="error">Không tải được nhật ký.</Callout>}
-        {isFetching && !data ? (
+        {isLoading && !data ? (
           <Busy label="Đang tải nhật ký…" />
         ) : (
           <>

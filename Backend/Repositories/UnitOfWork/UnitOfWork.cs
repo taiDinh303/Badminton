@@ -84,6 +84,21 @@ namespace Repositories.UnitOfWork
                 "IF @result < 0 THROW 51000, 'Court schedule busy. Retry.', 1;", [$"court-date:{courtId}:{date:yyyy-MM-dd}"], ct);
         }
 
+        public async Task LockVoucherUserAsync(int userId, CancellationToken ct = default)
+        {
+            if (_context.Database.CurrentTransaction is null)
+                throw new InvalidOperationException("Voucher reservations require an active transaction.");
+            if (_context.Database.IsNpgsql())
+            {
+                await _context.Database.ExecuteSqlRawAsync("SET LOCAL lock_timeout = '15s'", ct);
+                // Separate namespace from the positive court ID / day-number lock pair.
+                await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", [-1, userId], ct);
+            }
+            else await _context.Database.ExecuteSqlRawAsync(
+                "DECLARE @result int; EXEC @result = sp_getapplock @Resource={0}, @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=15000; " +
+                "IF @result < 0 THROW 51000, 'Voucher reservation busy. Retry.', 1;", [$"voucher-user:{userId}"], ct);
+        }
+
         public void Dispose()
         {
             if (_disposed) return;

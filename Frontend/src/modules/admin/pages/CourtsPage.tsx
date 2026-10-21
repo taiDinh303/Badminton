@@ -62,7 +62,7 @@ export default function CourtsPage() {
     queryKey: ["branches"],
     queryFn: api.branches.list,
   });
-  const { data: courts = [], isFetching, refetch } = useQuery({
+  const { data: courts = [], isLoading, refetch } = useQuery({
     queryKey: ["courts"],
     queryFn: () => api.courts.list(),
   });
@@ -169,7 +169,7 @@ export default function CourtsPage() {
       )}
       {err && <Callout tone="error" className="mt-3">{err}</Callout>}
 
-      {isFetching && courts.length === 0 ? (
+      {isLoading && courts.length === 0 ? (
         <Busy label="Đang tải danh sách sân…" />
       ) : (
         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

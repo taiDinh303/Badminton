@@ -250,7 +250,7 @@ export default function CheckinPage() {
         </div>
 
         <div className="mt-4">
-          {slotRoster.isError ? <Callout tone="error">{slotRoster.error.message}</Callout> : slotRoster.isFetching ? (
+          {slotRoster.isError ? <Callout tone="error">{slotRoster.error.message}</Callout> : slotRoster.isLoading ? (
             <Busy label="Đang tải danh sách…" />
           ) : courtId !== "" && slotLabel ? (
             slots.length === 0 ? (

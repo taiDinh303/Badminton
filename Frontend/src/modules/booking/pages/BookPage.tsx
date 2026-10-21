@@ -72,10 +72,11 @@ export default function BookPage() {
     if (branchId == null && branches.length > 0) setBranchId(branches[0].id);
   }, [branches, branchId]);
 
-  const { data: courts, isFetching, refetch } = useQuery({
+  const { data: courts, isLoading, refetch } = useQuery({
     queryKey: ["availability", branchId, date],
     queryFn: () => api.booking.availability(branchId!, date),
     enabled: branchId != null,
+    staleTime: 10_000,
     refetchInterval: 15_000,
   });
 
@@ -96,18 +97,11 @@ export default function BookPage() {
       setVoucher("");
       setPointsToRedeem("");
       setGroupId("");
+      void qc.invalidateQueries({ queryKey: ["account"] });
+      void qc.invalidateQueries({ queryKey: ["my-bookings"] });
       refetch();
     },
   });
-
-  // "1 voucher/account" policy: once used, the voucher field is locked.
-  const { data: acctSummary } = useQuery({
-    queryKey: ["account", "voucher-state"],
-    queryFn: api.account.summary,
-    enabled: user != null,
-    staleTime: 60_000,
-  });
-  const voucherAlreadyUsed = acctSummary?.voucherUsed ?? false;
 
   const [voucherErr, setVoucherErr] = useState<string | null>(null);
   const [waitlistDone, setWaitlistDone] = useState(false);
@@ -212,7 +206,6 @@ export default function BookPage() {
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <div className="min-w-[120px] text-center">
-                <p className="text-[11px] font-medium text-muted">{weekday} · {formatDay(date)}</p>
                 <input
                   type="date"
                   value={date}
@@ -265,9 +258,9 @@ export default function BookPage() {
         </div>
       </Card>
 
-      {isFetching && <div className="mt-4"><Busy label="Đang tải khung giờ…" /></div>}
+      {isLoading && <div className="mt-4"><Busy label="Đang tải khung giờ…" /></div>}
 
-      {!isFetching && openCourts.length === 0 && (
+      {!isLoading && openCourts.length === 0 && (
         <Callout tone="info" className="mt-4">
           Chưa có sân trống vào ngày này.
         </Callout>
@@ -389,8 +382,7 @@ export default function BookPage() {
                   </span>
                   <input
                     value={voucher}
-                    disabled={voucherAlreadyUsed}
-                    onChange={(e) => setVoucher(e.target.value)}
+                    onChange={(e) => { setVoucher(e.target.value); setVoucherErr(null); previewVoucher.reset(); }}
                     onBlur={() => {
                       setVoucherErr(null);
                       if (voucher.trim() && price) previewVoucher.mutate(price.total);
@@ -402,11 +394,7 @@ export default function BookPage() {
                 </label>
               </div>
 
-              {voucherAlreadyUsed && (
-                <p className="mt-2 text-[11px] text-muted">
-                  Tài khoản đã dùng 1 voucher — không dùng được voucher khác.
-                </p>
-              )}
+              <p className="mt-2 text-[11px] text-muted">Mỗi mã voucher chỉ dùng một lần cho mỗi tài khoản. Bạn vẫn có thể dùng mã khác.</p>
 
               {/* Group (owner-only) */}
               {myGroups.length > 0 && (

@@ -28,7 +28,7 @@ const ROLE_LABEL: Record<string, string> = {
  * Tài khoản (docs 07 §4): hồ sơ + điểm/voucher + shortcut tới các trang con.
  * Redesign: a clear profile hero, a loyalty strip that shows the real
  * accumulated points balance, and a voucher card that reflects the
- * "mỗi tài khoản chỉ dùng 1 voucher" rule (used → disabled, else available).
+ * mỗi tài khoản dùng mỗi mã một lần; các mã khác vẫn khả dụng.
  */
 export default function AccountPage() {
   const user = useAuth((s) => s.user);
@@ -44,7 +44,7 @@ export default function AccountPage() {
     onSuccess: (p) => { useAuth.getState().updateProfile(p.fullName); qc.setQueryData(["account", "profile", user?.id], p); setEditing(false); setSaved(true); },
   });
 
-  const { data: summary, isFetching, isError, refetch } = useQuery({
+  const { data: summary, isLoading, isError, refetch } = useQuery({
     queryKey: ["account", "summary"],
     queryFn: api.account.summary,
     enabled: user != null,
@@ -54,7 +54,6 @@ export default function AccountPage() {
   const pointsVnd = summary?.pointsRedeemableVnd ?? 0;
   const vndPer1000 = summary?.vndPer1000Points ?? 20_000;
   const ptsUnit = summary?.pointsPerVndUnit ?? 1_000;
-  const voucherUsed = summary?.voucherUsed ?? false;
   const usedVoucher = summary?.usedVoucher ?? null;
   const nextVoucher = summary?.nextVoucher ?? null;
 
@@ -116,7 +115,7 @@ export default function AccountPage() {
             <Coins className="h-4 w-4 text-accent" />
             <p className="text-xs font-medium text-muted">Điểm tích lũy</p>
           </div>
-          {isFetching ? (
+          {isLoading ? (
             <div className="mt-3"><Busy label="Đang tải điểm…" /></div>
           ) : (
             <>
@@ -140,9 +139,15 @@ export default function AccountPage() {
             <ShieldCheck className="h-4 w-4 text-primary" />
             <p className="text-xs font-medium text-muted">Voucher</p>
           </div>
-          {isFetching ? (
+          {isLoading ? (
             <div className="mt-3"><Busy label="Đang tải voucher…" /></div>
-          ) : voucherUsed ? (
+          ) : nextVoucher ? (
+            <>
+              <p className="tnum mt-2 text-sm font-semibold text-fg"><Ticket className="mr-1 inline h-3.5 w-3.5 text-primary" />{nextVoucher.code} · {voucherValueLabel(nextVoucher)}</p>
+              <p className="mt-1 text-[11px] text-muted">Có {summary?.availableVouchers.length ?? 0} mã khả dụng · mỗi mã dùng một lần.</p>
+              <p className="text-[11px] text-muted">Đơn tối thiểu {formatVnd(nextVoucher.minSpend)}</p>
+            </>
+          ) : usedVoucher ? (
             <>
               <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-slot-maint-bg px-2 py-0.5 text-xs font-semibold text-muted">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Đã dùng
@@ -155,21 +160,8 @@ export default function AccountPage() {
                 <p className="tnum mt-1 text-sm font-semibold text-fg">Voucher</p>
               )}
               <p className="mt-0.5 text-[11px] text-muted">
-                Đã dùng 1 voucher · tài khoản không dùng thêm được voucher khác.
+                Mã này đã dùng. Bạn vẫn có thể dùng mã voucher khác.
               </p>
-            </>
-          ) : nextVoucher ? (
-            <>
-              <p className="tnum mt-2 text-sm font-semibold text-fg">
-                <Ticket className="mr-1 inline h-3.5 w-3.5 text-primary" />
-                {nextVoucher.code} · {voucherValueLabel(nextVoucher)}
-              </p>
-              <p className="tnum mt-0.5 text-[11px] text-muted">
-                Đơn tối thiểu {formatVnd(nextVoucher.minSpend)} · nhập mã khi đặt sân
-              </p>
-              {nextVoucher.validUntil && (
-                <p className="tnum text-[11px] text-muted">Hết hạn {formatDay(nextVoucher.validUntil)}</p>
-              )}
             </>
           ) : (
             <p className="mt-2 text-sm text-muted">Chưa có voucher khả dụng.</p>

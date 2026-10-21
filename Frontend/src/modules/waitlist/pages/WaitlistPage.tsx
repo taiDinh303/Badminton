@@ -19,7 +19,7 @@ export default function WaitlistPage() {
   const user = useAuth((s) => s.user);
   const qc = useQueryClient();
 
-  const { data: entries = [], isFetching, isError } = useQuery({
+  const { data: entries = [], isLoading, isError } = useQuery({
     queryKey: ["waitlist", "mine"],
     queryFn: api.waitlist.mine,
     enabled: user != null,
@@ -30,7 +30,7 @@ export default function WaitlistPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["waitlist", "mine"] }),
   });
 
-  if (isFetching && !entries.length)
+  if (isLoading && !entries.length)
     return <div className="p-4"><Busy label="Đang tải danh sách chờ…" /></div>;
 
   if (isError)

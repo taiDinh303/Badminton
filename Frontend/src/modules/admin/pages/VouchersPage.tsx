@@ -42,7 +42,7 @@ export default function VouchersPage() {
 
   // Show ALL vouchers (active + deactivated) so "Vô hiệu" flips the row to a
   // locked state instead of making it vanish (it was hidden by activeOnly).
-  const { data: vouchers = [], isFetching, refetch } = useQuery({
+  const { data: vouchers = [], isLoading, refetch } = useQuery({
     queryKey: ["vouchers"],
     queryFn: () => api.vouchers.list(false),
   });
@@ -174,7 +174,7 @@ export default function VouchersPage() {
       {err && <Callout tone="error" className="mt-3">{err}</Callout>}
 
       <div className="mt-4">
-        {isFetching && vouchers.length === 0 ? (
+        {isLoading && vouchers.length === 0 ? (
           <Busy label="Đang tải voucher…" />
         ) : (
           <VirtualizedTable

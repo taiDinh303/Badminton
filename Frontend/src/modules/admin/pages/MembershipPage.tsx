@@ -31,7 +31,7 @@ export default function MembershipPage() {
   const [targetUser, setTargetUser] = useState("");
   const [tier, setTier] = useState<MembershipTier>("Silver");
 
-  const { data: members = [], isFetching, refetch, error: loadError } = useQuery({
+  const { data: members = [], isLoading, refetch, error: loadError } = useQuery({
     queryKey: ["membership", "members"],
     queryFn: api.admin.membership.members,
   });
@@ -147,7 +147,7 @@ export default function MembershipPage() {
       )}
 
       <div className="mt-4">
-        {isFetching && !members.length ? (
+        {isLoading && !members.length ? (
           <Busy label="Đang tải thành viên…" />
         ) : (
           <VirtualizedTable

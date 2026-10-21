@@ -21,6 +21,8 @@ namespace Services
         {
             if (request.Rating is < 1 or > 5)
                 throw new BadRequestException("Điểm đánh giá phải từ 1 đến 5 sao.");
+            if (request.Comment?.Length > 2000)
+                throw new BadRequestException("Nhận xét tối đa 2000 ký tự.");
 
             var booking = await Repository<Booking>().GetByIdAsync(request.BookingId);
             if (booking is null) throw new NotFoundException("Booking", request.BookingId);
@@ -40,7 +42,7 @@ namespace Services
                 CourtId = court?.Id ?? 0,
                 UserId = userId,
                 Rating = request.Rating,
-                Comment = request.Comment,
+                Comment = request.Comment?.Trim(),
                 Images = request.Images is { Count: > 0 }
                     ? JsonSerializer.Serialize(request.Images)
                     : null

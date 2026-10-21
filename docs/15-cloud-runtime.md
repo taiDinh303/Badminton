@@ -29,4 +29,8 @@ Trước chuyển live, phải diễn tập trên PostgreSQL local riêng. Khôn
 
 ## Bằng chứng và giới hạn
 
+Tải trước frontend khi đăng nhập hoặc khôi phục phiên: nạp module và dữ liệu màn đầu của các tính năng đúng quyền, tối đa ba tác vụ song song; cache trong bộ nhớ, xóa và dừng hàng đợi khi đổi tài khoản/quyền hoặc logout. Không tải toàn bộ lịch sử phân trang. Static data stale 2 phút; availability stale 10 giây/poll 15 giây, chi tiết đơn refetch khi mở và Pending poll 5 giây. Tải nền giữ nội dung đã cache; lần đầu, ngày/bộ lọc mới hoặc lỗi mạng vẫn có trạng thái chờ/thử lại.
+
+Script [dữ liệu mẫu](../scripts/data/sample-reviews-membership-vouchers.sql) chỉ chạy thủ công theo yêu cầu 21/10/2026. Tạo sáu tài khoản tên `[MẪU]`, sáu đơn Completed 0 đồng ở quá khứ để liên kết sáu reviews nhãn `[DỮ LIỆU MẪU]`, sáu mã `DEMO*` và các tier Silver/Gold/hết hạn. Không tạo Payment/PointLedger hoặc đổi membership của khách đang có. Vô hiệu slot 02:00, giữ lịch sử. Script đã diễn tập chạy lặp trên PostgreSQL riêng trước khi áp cloud; không tích hợp startup hay migration schema.
+
 Xem [worklog](worklog.md) cho commit/deployment, lệnh thật, số test và trạng thái live mới nhất. Build xanh không tự xác nhận gateway, thiết bị QR/camera hoặc worker crash/multi-instance. Secret, file chuyển dữ liệu và ảnh xác minh nằm trong `artifacts/` (Git ignored).

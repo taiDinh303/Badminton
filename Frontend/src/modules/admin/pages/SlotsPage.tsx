@@ -38,7 +38,7 @@ export default function SlotsPage() {
   // Slot delete is [Admin] in the backend; create/update are Manager+.
   const canDelete = isAdmin(useAuth((s) => s.user));
 
-  const { data: rawSlots = [], isFetching, refetch } = useQuery({
+  const { data: rawSlots = [], isLoading, refetch } = useQuery({
     queryKey: ["time-slots"],
     queryFn: api.timeSlots.list,
   });
@@ -158,7 +158,7 @@ export default function SlotsPage() {
       {err && <Callout tone="error" className="mt-3">{err}</Callout>}
 
       <div className="mt-4">
-        {isFetching && slots.length === 0 ? (
+        {isLoading && slots.length === 0 ? (
           <Busy label="Đang tải khung giờ…" />
         ) : (
           <VirtualizedTable

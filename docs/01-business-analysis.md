@@ -77,7 +77,7 @@ TARGET không tính lại ở UI; refund đọc PayableAmount snapshot. CURRENT 
 
 **Voucher**
 - Loại `percent` (giảm %, có trần `max_value`) hoặc `fixed` (giảm tiền cố định, VND); kèm `min_spend`, `max_per_user`, tổng số `total_qty` và thời hạn `valid_from..valid_until`.
-- Một voucher **một lần mỗi khách** (unique `voucher_redemptions(voucher_id, user_id)`); phải thỏa `min_spend` tính trên giá gốc trước giảm. Không phát hành voucher âm; voucher + điểm không cộng dồn vượt giá trị đơn.
+- Một voucher **một lần mỗi khách** (unique `voucher_redemptions(voucher_id, user_id)`); dùng mã A không chặn dùng mã B (người dùng xác nhận ngày 21/10/2026). Preview và reserve cùng kiểm mã đã dùng; reservation khóa theo khách trong transaction để chống hai yêu cầu đồng thời. Pending bị hủy vẫn trả reservation theo luồng hiện có. Phải thỏa `min_spend` tính trên giá gốc trước giảm. Không phát hành voucher âm; voucher + điểm không cộng dồn vượt giá trị đơn.
 - `VoucherExpiryJob` (mỗi giờ) vô hiệu voucher qua hạn.
 
 **Điểm tích lũy**

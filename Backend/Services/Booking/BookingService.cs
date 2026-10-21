@@ -66,6 +66,9 @@ namespace Services
             var slot = await Repository<TimeSlot>().GetByIdAsync(request.SlotId);
             if (slot is null || !slot.IsActive)
                 throw new BadRequestException("Khung gio khong ton tai.");
+            var branch = await Repository<Branch>().GetByIdAsync(court.BranchId);
+            if (branch is null || slot.StartTime < branch.OpenTime || slot.EndTime > branch.CloseTime)
+                throw new BadRequestException("Khung giờ nằm ngoài giờ mở cửa của cơ sở.");
 
             var date = ParseDate(request.Date);
 
@@ -326,7 +329,7 @@ namespace Services
                     b.PlayerCount, b.Status.ToString(), b.TotalAmount, b.DiscountAmount,
                     b.PayableAmount, b.PointsEarned, b.PointsRedeemed,
                     b.GroupId, b.VoucherRedemptionId,
-                    b.CreatedAt, user?.FullName, breakdown, b.CancelReason, b.QrToken, b.CheckedInAt));
+                    b.CreatedAt, user?.FullName, breakdown, b.CancelReason, b.QrToken, b.CheckedInAt, b.UserId));
             }
             return views;
         }
@@ -521,6 +524,8 @@ namespace Services
 
         public async Task<IReadOnlyList<CourtAvailabilityView>> GetAvailabilityAsync(int branchId, DateOnly date)
         {
+            var branch = await Repository<Branch>().GetByIdAsync(branchId);
+            if (branch is null) throw new NotFoundException("Branch", branchId);
             var courts = await Repository<Court>().GetByConditionAsync(
                 c => c.BranchId == branchId && c.IsActive && c.DeletedAt == null);
             var slots = await Repository<TimeSlot>().GetByConditionAsync(
@@ -547,7 +552,8 @@ namespace Services
                 var bookedSlots = bookedByCourt.TryGetValue(c.Id, out var set) ? set : default;
                 bookedSlots ??= new HashSet<int>();
 
-                var slotViews = slots.Select(sl =>
+                var slotViews = slots.Where(sl => sl.StartTime >= branch.OpenTime && sl.EndTime <= branch.CloseTime)
+                    .OrderBy(sl => sl.StartTime).Select(sl =>
                 {
                     var start = HanoiTime.SlotStart(date, sl.StartTime);
                     var dayStatus = schedule?.Blocks(sl.StartTime, sl.EndTime) == true ? schedule.Status : CourtDateStatus.Open;
@@ -642,7 +648,7 @@ namespace Services
                 b.PlayerCount, b.Status.ToString(), b.TotalAmount, b.DiscountAmount,
                 b.PayableAmount, b.PointsEarned, b.PointsRedeemed,
                 b.GroupId, b.VoucherRedemptionId,
-                b.CreatedAt, user?.FullName, breakdown, b.CancelReason, b.QrToken, b.CheckedInAt);
+                b.CreatedAt, user?.FullName, breakdown, b.CancelReason, b.QrToken, b.CheckedInAt, b.UserId);
         }
 
         private static bool IsWeekend(DateOnly d) =>

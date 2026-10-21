@@ -105,9 +105,6 @@ namespace Services
                 .OrderBy(v => v.MinSpend)
                 .Select(v => ToMyVoucher(v, alreadyUsed: false))
                 .ToList();
-            if (voucherUsed)
-                availableVouchers = new List<MyVoucher>();
-
             var nextVoucher = availableVouchers.FirstOrDefault();
 
             return new AccountSummary(

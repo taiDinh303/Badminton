@@ -45,7 +45,7 @@ namespace Services
                 Value = request.Value,
                 MaxValue = request.MaxValue,
                 MinSpend = request.MinSpend,
-                MaxPerUser = request.MaxPerUser,
+                MaxPerUser = 1,
                 TotalQty = request.TotalQty,
                 ValidFrom = string.IsNullOrWhiteSpace(request.ValidFrom)
                     ? HanoiTime.HanoiToday()
@@ -87,8 +87,9 @@ namespace Services
             var redemptions = Repository<VoucherRedemption>();
             var used = await redemptions.GetByConditionAsync(
                 r => r.VoucherId == v.Id && r.UserId == userId);
-            if (used.Count >= v.MaxPerUser) return 0;
-            if (await HasUsedOtherVoucherAsync(userId, v.Id)) return 0;
+            if (used.Count > 0)
+                throw new ConflictException("Bạn đã sử dụng mã voucher này. Hãy chọn mã khác.");
+            if (v.UsedQty >= v.TotalQty) return 0;
 
             return ComputeDiscount(v, baseAmount);
         }
@@ -98,6 +99,7 @@ namespace Services
         public async Task<(int Discount, VoucherRedemption Redemption)> ReserveVoucherAsync(
             string code, int userId, int baseAmount)
         {
+            await Uow.LockVoucherUserAsync(userId);
             var v = (await Repo.GetByConditionAsync(x => x.Code == code)).FirstOrDefault();
             if (v is not null && IsExpired(v)) throw new BadRequestException("Voucher đã hết hạn sử dụng.");
             if (v is null || !v.IsActive)
@@ -115,12 +117,8 @@ namespace Services
             var redemptions = Repository<VoucherRedemption>();
             var prior = await redemptions.GetByConditionAsync(
                 r => r.VoucherId == v.Id && r.UserId == userId);
-            if (prior.Count >= v.MaxPerUser)
-                throw new ConflictException("Da dung het so luot voucher nay (MaxPerUser).");
-
-            // Global "1 voucher/account" policy: one voucher per customer ever.
-            if (await HasUsedOtherVoucherAsync(userId, v.Id))
-                throw new ConflictException("Tai khoan chi duoc dung 1 voucher (da dung voucher khac).");
+            if (prior.Count > 0)
+                throw new ConflictException("Bạn đã sử dụng mã voucher này. Hãy chọn mã khác.");
 
             var discount = ComputeDiscount(v, baseAmount);
 
@@ -163,13 +161,6 @@ namespace Services
                 _ = Repository<VoucherRedemption>().RemoveAsync(redemption);
             }
             await SaveAsync();
-        }
-
-        private async Task<bool> HasUsedOtherVoucherAsync(int userId, int voucherId)
-        {
-            var rows = await Repository<VoucherRedemption>().GetByConditionAsync(
-                r => r.UserId == userId && r.VoucherId != voucherId);
-            return rows.Count > 0;
         }
 
         private static int ComputeDiscount(Voucher v, int baseAmount)

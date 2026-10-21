@@ -23,6 +23,20 @@ public sealed class RequestedFeatureRegressionTests : IAsyncLifetime
     public async Task DisposeAsync() => await _h.DisposeAsync();
 
     [Fact]
+    public async Task Outside_opening_hours_is_hidden_and_rejected_on_server()
+    {
+        var slot = await _h.RunScopeAsync(async sp =>
+        {
+            var db = sp.GetRequiredService<BadmintonBookingDbContext>();
+            var s = new Contract.Repositories.Entity.TimeSlot { Label = "02:00", StartTime = new TimeOnly(2, 0), EndTime = new TimeOnly(3, 0), IsActive = true };
+            db.TimeSlots.Add(s); await db.SaveChangesAsync(); return s.Id;
+        });
+        var grid = await _h.RunScopeAsync(sp => sp.GetRequiredService<IBookingService>().GetAvailabilityAsync(_h.BranchId, _h.FutureDate));
+        Assert.All(grid, c => Assert.DoesNotContain(c.Slots, s => s.SlotId == slot));
+        await Assert.ThrowsAsync<BadRequestException>(() => _h.BookAsync(_h.Alice, _h.Court1, slot, _h.FutureDate.ToString("yyyy-MM-dd")));
+    }
+
+    [Fact]
     public async Task Afternoon_hours_stay_unambiguous_across_branch_slots_availability_and_booking()
     {
         await _h.RunScopeAsync(async sp =>

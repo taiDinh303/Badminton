@@ -63,6 +63,7 @@ export interface PriceBreakdown {
 
 export interface Booking {
   id: number;
+  userId?: number;
   bookingCode: string;
   courtId: number;
   courtName: string;

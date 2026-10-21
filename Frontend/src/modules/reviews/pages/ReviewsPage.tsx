@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star, MessageSquare } from "lucide-react";
 import { api, type Court, type ReviewView } from "../../../services/api";
 import { formatDay } from "../../../utils/format";
@@ -32,18 +32,19 @@ function Stars({ rating, size = "h-4 w-4" }: { rating: number; size?: string }) 
  * Submission happens on a Completed booking's detail page.
  */
 export default function ReviewsPage() {
+  const qc = useQueryClient();
   const [courtId, setCourtId] = useState<number | null>(null);
 
-  const { data: courts = [], isFetching: fetchingCourts, error: courtsError } = useQuery({
+  const { data: courts = [], isLoading: fetchingCourts, error: courtsError } = useQuery({
     queryKey: ["courts"],
     queryFn: () => api.courts.list(),
   });
 
-  const { data: reviews = [], isFetching: fetchingReviews, isError, error } = useQuery({
+  const { data: reviews = [], isLoading: fetchingReviews, isError, error } = useQuery({
     queryKey: ["reviews", courtId, courts.map((c) => c.id)],
     queryFn: async () => courtId != null
-      ? api.reviews.forCourt(courtId)
-      : (await Promise.all(courts.map((c) => api.reviews.forCourt(c.id)))).flat()
+      ? qc.fetchQuery({ queryKey: ["reviews", "court", courtId], queryFn: () => api.reviews.forCourt(courtId) })
+      : (await Promise.all(courts.map((c) => qc.fetchQuery({ queryKey: ["reviews", "court", c.id], queryFn: () => api.reviews.forCourt(c.id) })))).flat()
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     enabled: courts.length > 0,
   });

@@ -38,6 +38,8 @@ Cấu trúc tham khảo Marixa: contracts độc lập persistence, repository D
 
 ## 4. Chính sách cần giữ tách source
 
+Ngày 21/10/2026, người dùng chốt voucher: mỗi tài khoản dùng **mỗi mã một lần**, vẫn dùng được mã khác. Bỏ cap toàn tài khoản cũ. Đồng thời yêu cầu tải trước trang theo quyền, review ngay trong chi tiết đơn (kể cả Admin là owner), bỏ nhãn ngày lặp và slot 02:00, thêm dữ liệu mẫu reviews/membership/vouchers trên Supabase. Các thay đổi này được triển khai theo URL live người dùng chỉ định; không phải quyền suy ra từ backlog.
+
 V1 chưa bán subscription; membership Silver/Gold có code là mở rộng, không tự xác nhận gói bán/giá/gia hạn. Retention, RPO/RTO, host/domain/plan và mốc staff no-show so với auto-complete cần quyết định/bằng chứng vận hành. Không lấy chính sách nhân sự Marixa để điền.
 
 Mỗi việc đóng bằng ID/source/lệnh/kết quả/giới hạn trong [worklog](worklog.md); release theo [14](14-release-checklist.md). Chỉ sửa docs không đóng lỗi ứng dụng hoặc xác nhận cloud.

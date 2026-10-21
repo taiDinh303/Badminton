@@ -28,7 +28,7 @@ export default function MyBookingsPage() {
   const [page, setPage] = useState(1);
   const staff = isStaff(user);
 
-  const { data, isFetching, refetch } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ["my-bookings", tab, page],
     queryFn: () => api.booking.mine(tab || undefined, page),
     placeholderData: (prev) => prev,
@@ -58,7 +58,7 @@ export default function MyBookingsPage() {
     (refund.error as Error | undefined)?.message ??
     null;
 
-  if (isFetching && !data) return <div className="p-4"><Busy /></div>;
+  if (isLoading && !data) return <div className="p-4"><Busy /></div>;
 
   return (
     <div className="mx-auto max-w-3xl p-4 md:p-6">

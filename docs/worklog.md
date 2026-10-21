@@ -36,7 +36,7 @@
 | Auth | SĐT/BCrypt/JWT, guard role và active user | Chưa OTP/refresh recovery đầy đủ |
 | Booking | Active slot unique, window/limit, owner/key binding, price snapshot | Chưa full payload hash/concurrent balance hardening |
 | Payment/cancel | Mock/real adapters, on-site, CancelRefund, chữ ký/replay tests | Chưa sandbox/live/đối soát crash |
-| Points/voucher | Earn Completed, full refund restore, redemption/ledger tests + account summary (points/voucher của tôi) + cap "1 voucher/account" (GlobalVoucherCapTests) | Kiểm tiếp nhiều instance/balance race; chốt định giá theo người vs theo slot (08-plan) |
+| Points/voucher | Earn Completed, full refund restore, redemption/ledger tests + account summary (points/voucher của tôi) + mỗi mã voucher dùng 1 lần/tài khoản (GlobalVoucherCapTests) | Kiểm tiếp nhiều instance/balance race; chốt định giá theo người vs theo slot (08-plan) |
 | Manager scope | List/summary/detail/payment-read/lifecycle/check-in shared guard | Full endpoint role matrix release chưa hoàn tất |
 | Groups/review | Owner booking/review Completed; UI module | Upload ảnh chưa có |
 | Waitlist/notify | Queue/promotion/notification ledger và test stub/log | Chưa chứng minh gửi ngoài/đa instance |
@@ -81,6 +81,17 @@ Ngày 14/10 ghi build 0 warning/error, 23 test pass với SQL Express; chưa có
 [08-plan.md](08-plan.md) là backlog/tiêu chí chuẩn; [14-release-checklist.md](14-release-checklist.md) là gate. Ưu tiên sandbox payment/đối soát, full idempotency/balance race, báo cáo theo tiền/kỳ, migration/restore, worker đa instance và QR chuẩn. Không dùng cấu trúc sạch/build xanh như xác nhận production.
 
 ## 6. Log sự kiện (mới trên cùng)
+### 21/10/2026 — Tải trước dữ liệu, review chi tiết, voucher theo mã và dữ liệu mẫu
+
+- Phạm vi: các URL Render người dùng chỉ định và ba ảnh; cho phép bổ sung dữ liệu mẫu reviews/membership/vouchers. Giữ thay đổi local TaiKhoan.txt/build.ps1; không đưa secrets/artifacts vào Git.
+- CURRENT: warmSession nạp module + dữ liệu màn đầu theo quyền, ba worker; account/profile/points, groups/waitlist, reviews theo sân, booking-list + ba detail đầu, availability cơ sở đầu, các màn quản trị khi đủ quyền. Dừng hàng đợi, hủy query và xóa cache khi đổi danh tính/quyền hoặc logout; cập nhật tên hồ sơ không xóa cache. Không tải toàn lịch sử vô hạn; cache memory120s/gc600s, availability stale10s/poll15s và Pending poll5s. Dữ liệu cache không bị thay bằng spinner khi refetch nền. Lần đầu/ngày lọc mới vẫn cần tải thật.
+- Booking detail thêm userId (additive), owner Completed mọi role gồm Admin có thể đánh giá sao + nhận xét2000 ký tự; tải lại hiện review đã gửi, không gửi trùng. Người khác chỉ xem review, server vẫn guard owner/Completed/unique booking. Review làm mới rating sân và review list.
+- Bỏ nhãn ngày lặp trên date input. Slot02:00 là bản ghi Id22 sai StartTime (Label14:00) có sẵn; chỉ deactivate giữ lịch sử. Booking availability sort giờ và lọc theo giờ mở cửa branch; Create từ chối ngoài giờ cả khi gọi API trực tiếp.
+- Voucher bỏ HasUsedOtherVoucherAsync; mỗi khách mỗi mã một lần, mã khác vẫn dùng được. Preview báo đúng mã đã dùng, summary vẫn có mã chưa dùng; input không khóa cả tài khoản. Repository transaction lock theo user ngăn race khác court; giữ unique redemption và total cap. Lịch sử MaxPerUser>1 vẫn bị giới hạn1 theo yêu cầu mới. Hủy Pending giữ chính sách trả reservation.
+- scripts/data/sample-reviews-membership-vouchers.sql là thao tác riêng có transaction/advisory lock và guard collision/idempotency. Diễn tập BadmintonTransfer_20261021 loopback55432 hai lần:6 user mẫu/6 review/6 voucher, không trùng. Áp Supabase otwhjkimfzxabbnaktpl bằng MCP execute_sql theo yêu cầu, SELECT xác minh6/6/6,0 slot02:00 active. Tài khoản và nhận xét có nhãn MẪU; mã DEMO*, 6 Completed mẫu0đ quá45ngày, không thêm Payment/PointLedger; không sửa tier của khách cũ.
+- Kiểm thử hiện tại: build/lint frontend và Node11/11 đạt; focused browser2/2 (Admin owner review + reload/không gửi trùng; prefetch cache/không gọi admin bằng Customer/voucher vẫn nhập được). Full SQLServer107/107 đạt, gồm HTTP regressions, outside-hours và voucher race. Full PostgreSQL106/106 đạt (loại SQLServer-only upgrade), browser full19/19 đạt; docs validator22Markdown/131links/33tables/0lỗi; git diff --check đạt.
+- Lượt kiểm đầu báo assertion cap-global/MaxPerUser cũ không còn đúng yêu cầu; cập nhật test phân biệt mã. Test total-cap dùng6 khách khác nhau (trước chỉ3 khách lặp, nay bị per-code cap chặn trước total-cap). Browser test mới ban đầu nhầm role button thay vì tab của Pills, sửa locator và focused2/2 đạt. Không chạy fixture/load test trên cloud/app DB.
+- NOT VERIFIED tại lúc ghi: deployment source mới và smoke browser live cuối đang chờ hoàn tất; sẽ ghi bằng chứng tiếp theo. Không cam kết không loading khi mạng lỗi/RenderFree cold start; không thử thanh toán thật hay tạo đơn thử trên live.
 
 ### 21/10/2026 — Supabase cutover và sửa cấu hình cloud
 

@@ -59,10 +59,11 @@ export default function BookingDetailPage() {
   const availableMethods = PAYMENT_METHODS.filter((m) => methods.data?.includes(m));
   const [copied, setCopied] = useState(false);
 
-  const { data: b, isFetching, refetch } = useQuery({
+  const { data: b, isLoading, refetch } = useQuery({
     queryKey: ["booking", bookingId],
     queryFn: () => api.booking.getById(bookingId),
     enabled: !Number.isNaN(bookingId),
+    staleTime: 0,
     // While the order is Pending we poll so a successful gateway callback is
     // picked up without the user refreshing (docs 03 §3).
     refetchInterval: (q) =>
@@ -75,11 +76,20 @@ export default function BookingDetailPage() {
     enabled: !Number.isNaN(bookingId),
   });
 
+  const reviews = useQuery({
+    queryKey: ["reviews", "court", b?.courtId],
+    queryFn: () => api.reviews.forCourt(b!.courtId),
+    enabled: !!b && b.status === "Completed",
+  });
+  const existingReview = reviews.data?.find((r) => r.bookingId === bookingId);
+
   const cancel = useMutation({
     mutationFn: () => api.booking.cancel(bookingId),
     onSuccess: () => {
       refetch();
       qc.invalidateQueries({ queryKey: ["my-bookings"] });
+      void qc.invalidateQueries({ queryKey: ["account"] });
+      void qc.invalidateQueries({ queryKey: ["availability"] });
     },
   });
 
@@ -105,12 +115,17 @@ export default function BookingDetailPage() {
   });
 
   const review = useMutation({
-    mutationFn: (rating: number) =>
-      api.reviews.create({ bookingId, rating }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["reviews"] }),
+    mutationFn: () => api.reviews.create({ bookingId, rating, comment: comment.trim() || null }),
+    onSuccess: (created) => {
+      qc.setQueryData(["reviews", "court", b!.courtId], [...(reviews.data ?? []), created]);
+      void qc.invalidateQueries({ queryKey: ["reviews"] });
+      void qc.invalidateQueries({ queryKey: ["courts"] });
+    },
   });
 
   const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  useEffect(() => { setRating(0); setComment(""); }, [bookingId]);
 
   const showQr = b?.status === "Confirmed" || b?.status === "Completed";
   const canPay = b?.status === "Pending" && !staff;
@@ -121,7 +136,7 @@ export default function BookingDetailPage() {
     [pays],
   );
 
-  if (isFetching && !b) return <div className="p-4"><Busy label="Đang tải đơn…" /></div>;
+  if (isLoading && !b) return <div className="p-4"><Busy label="Đang tải đơn…" /></div>;
   if (!b)
     return (
       <div className="p-4">
@@ -264,12 +279,17 @@ export default function BookingDetailPage() {
       )}
 
       {/* ── Review: only after Completed + one per booking (docs 03 §7) ── */}
-      {b.status === "Completed" && !staff && (
+      {b.status === "Completed" && (
         <Card className="mt-4">
           <p className="mb-2 flex items-center gap-1 text-sm font-semibold">
             <Star className="h-4 w-4 text-accent" /> Đánh giá lần tập
           </p>
-          <div className="flex items-center gap-3">
+          {reviews.isLoading ? <Busy label="Đang tải đánh giá…" /> : reviews.isError ? (
+            <Callout tone="error">Không tải được đánh giá. <Button size="sm" onClick={() => reviews.refetch()}>Thử lại</Button></Callout>
+          ) : existingReview ? (
+            <div><p aria-label={`${existingReview.rating}/5 sao`} className="font-semibold text-primary">{existingReview.rating}/5 sao</p><p className="mt-2 whitespace-pre-wrap text-sm">{existingReview.comment}</p><p className="mt-2 text-xs text-muted">Đơn này đã được đánh giá.</p></div>
+          ) : b.userId === user?.id ? <>
+          <div className="flex flex-wrap items-center gap-3">
             <Pills
               options={[
                 { key: "1", label: "1" },
@@ -286,11 +306,14 @@ export default function BookingDetailPage() {
               variant="ghost"
               size="sm"
               disabled={rating === 0 || review.isPending}
-              onClick={() => review.mutate(rating)}
+              onClick={() => review.mutate()}
             >
               {review.isPending ? "Đang gửi…" : "Gửi đánh giá"}
             </Button>
           </div>
+          <label className="mt-3 block text-sm">Nhận xét
+            <textarea aria-label="Nhận xét" maxLength={2000} rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Chia sẻ trải nghiệm của bạn tại sân…" className="mt-1 w-full rounded-lg border border-border bg-card p-3 text-fg" />
+          </label>
           {review.isSuccess && (
             <Callout tone="success" className="mt-2">Cảm ơn bạn đã đánh giá!</Callout>
           )}
@@ -301,6 +324,7 @@ export default function BookingDetailPage() {
                 : "Không gửi được đánh giá."}
             </Callout>
           )}
+          </> : <p className="text-sm text-muted">Chỉ người đặt sân mới được gửi đánh giá cho đơn này.</p>}
         </Card>
       )}
 

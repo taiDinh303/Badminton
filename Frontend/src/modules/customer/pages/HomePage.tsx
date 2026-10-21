@@ -18,7 +18,7 @@ import { useAuth } from "../../../store/auth";
  */
 export default function HomePage() {
   const user = useAuth((s) => s.user);
-  const { data: branches = [], isFetching, isError } = useQuery({
+  const { data: branches = [], isLoading, isError } = useQuery({
     queryKey: ["branches"],
     queryFn: api.branches.list,
   });
@@ -84,7 +84,7 @@ export default function HomePage() {
         </span>
       </div>
 
-      {isFetching && <p className="text-sm text-muted">Đang tải…</p>}
+      {isLoading && <p className="text-sm text-muted">Đang tải…</p>}
       {isError && <Callout tone="error">Không tải được danh sách cơ sở.</Callout>}
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -111,7 +111,7 @@ export default function HomePage() {
             </Link>
           </Card>
         ))}
-        {!isFetching && active.length === 0 && (
+        {!isLoading && active.length === 0 && (
           <p className="text-sm text-muted">Chưa có cơ sở nào.</p>
         )}
       </div>
