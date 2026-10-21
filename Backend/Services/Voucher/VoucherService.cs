@@ -23,7 +23,7 @@ namespace Services
             var all = activeOnly
                 ? await Repo.GetByConditionAsync(v => v.IsActive)
                 : await Repo.GetAllAsync();
-            return all.Select(ToView).ToList();
+            return all.Where(v => !activeOnly || !IsExpired(v)).Select(ToView).ToList();
         }
 
         public async Task<VoucherView> GetByCodeAsync(string code)
@@ -75,6 +75,7 @@ namespace Services
         public async Task<int> PreviewDiscountAsync(string code, int userId, int baseAmount)
         {
             var v = (await Repo.GetByConditionAsync(x => x.Code == code)).FirstOrDefault();
+            if (v is not null && IsExpired(v)) throw new BadRequestException("Voucher đã hết hạn sử dụng.");
             if (v is null || !v.IsActive) return 0;
 
             // P1-4: Hanoi business day, not the machine clock.
@@ -87,6 +88,7 @@ namespace Services
             var used = await redemptions.GetByConditionAsync(
                 r => r.VoucherId == v.Id && r.UserId == userId);
             if (used.Count >= v.MaxPerUser) return 0;
+            if (await HasUsedOtherVoucherAsync(userId, v.Id)) return 0;
 
             return ComputeDiscount(v, baseAmount);
         }
@@ -97,13 +99,14 @@ namespace Services
             string code, int userId, int baseAmount)
         {
             var v = (await Repo.GetByConditionAsync(x => x.Code == code)).FirstOrDefault();
+            if (v is not null && IsExpired(v)) throw new BadRequestException("Voucher đã hết hạn sử dụng.");
             if (v is null || !v.IsActive)
                 throw new BadRequestException("Voucher khong ap dung cho don nay.");
 
             // P1-4: Hanoi business day, not the machine clock.
             var today = HanoiTime.HanoiToday();
             if (v.ValidUntil.HasValue && today > v.ValidUntil.Value)
-                throw new BadRequestException("Voucher da het han.");
+                throw new BadRequestException("Voucher đã hết hạn sử dụng.");
             if (today < v.ValidFrom)
                 throw new BadRequestException("Voucher chua co hieu luc.");
             if (baseAmount < v.MinSpend)
@@ -115,12 +118,16 @@ namespace Services
             if (prior.Count >= v.MaxPerUser)
                 throw new ConflictException("Da dung het so luot voucher nay (MaxPerUser).");
 
+            // Global "1 voucher/account" policy: one voucher per customer ever.
+            if (await HasUsedOtherVoucherAsync(userId, v.Id))
+                throw new ConflictException("Tai khoan chi duoc dung 1 voucher (da dung voucher khac).");
+
             var discount = ComputeDiscount(v, baseAmount);
 
             int claimed = await Uow.ExecuteSqlRawAsync(
-                "UPDATE Vouchers SET UsedQty = UsedQty + 1 " +
-                "WHERE Code = @p0 AND IsActive = 1 AND UsedQty < TotalQty",
-                code);
+                "UPDATE \"Vouchers\" SET \"UsedQty\" = \"UsedQty\" + 1 " +
+                "WHERE \"Code\" = @p0 AND \"IsActive\" = @p1 AND \"UsedQty\" < \"TotalQty\"",
+                code, true);
             if (claimed == 0)
                 throw new ConflictException("Voucher da het luot (total cap).");
 
@@ -145,8 +152,8 @@ namespace Services
             {
                 // Decrement only if the counter is still above zero (guarded).
                 var released = await Uow.ExecuteSqlRawAsync(
-                    "UPDATE Vouchers SET UsedQty = UsedQty - 1 " +
-                    "WHERE Id = @p0 AND UsedQty > 0",
+                    "UPDATE \"Vouchers\" SET \"UsedQty\" = \"UsedQty\" - 1 " +
+                    "WHERE \"Id\" = @p0 AND \"UsedQty\" > 0",
                     v.Id);
                 if (released > 0)
                     _ = Repository<VoucherRedemption>().RemoveAsync(redemption);
@@ -156,6 +163,13 @@ namespace Services
                 _ = Repository<VoucherRedemption>().RemoveAsync(redemption);
             }
             await SaveAsync();
+        }
+
+        private async Task<bool> HasUsedOtherVoucherAsync(int userId, int voucherId)
+        {
+            var rows = await Repository<VoucherRedemption>().GetByConditionAsync(
+                r => r.UserId == userId && r.VoucherId != voucherId);
+            return rows.Count > 0;
         }
 
         private static int ComputeDiscount(Voucher v, int baseAmount)
@@ -188,6 +202,8 @@ namespace Services
         private static VoucherView ToView(Voucher v) => new(
             v.Id, v.Code, v.Type.ToString(), v.Value, v.MaxValue, v.MinSpend,
             v.MaxPerUser, v.TotalQty, v.UsedQty,
-            v.ValidUntil?.ToString(), v.ValidFrom.ToString(), v.IsActive);
+            v.ValidUntil?.ToString("yyyy-MM-dd"), v.ValidFrom.ToString("yyyy-MM-dd"), v.IsActive && !IsExpired(v));
+
+        private static bool IsExpired(Voucher v) => v.ValidUntil is { } end && end < HanoiTime.HanoiToday();
     }
 }

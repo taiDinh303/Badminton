@@ -45,6 +45,8 @@ namespace Services
         {
             var u = await Repository<User>().GetByIdAsync(userId);
             if (u is null) throw new NotFoundException("User", userId);
+            if (!Enum.IsDefined(tier)) throw new BadRequestException("Hạng thành viên không hợp lệ.");
+            if (u.Status != UserStatus.Active || u.DeletedAt.HasValue) throw new ConflictException("Khách đã bị khóa hoặc xóa.");
             if (u.Role != Role.Customer)
                 throw new ConflictException("Chỉ khách (Customer) mới được gán membership.");
 
@@ -63,11 +65,11 @@ namespace Services
             return u;
         }
 
-        public async Task<IReadOnlyList<MembershipView>> GetMembersAsync()
+        public async Task<IReadOnlyList<MembershipView>> GetMembersAsync(bool includeCustomers = false)
         {
             var now = DateTime.UtcNow;
             var rows = await Repository<User>().GetByConditionAsync(
-                u => u.Tier != MembershipTier.None && u.Role == Role.Customer);
+                u => (includeCustomers || u.Tier != MembershipTier.None) && u.Role == Role.Customer && u.DeletedAt == null && u.Status == UserStatus.Active);
             return rows
                 .Select(u => new MembershipView(
                     u.Id, u.FullName, u.PhoneNumber, u.Tier, u.MembershipExpiresAt,

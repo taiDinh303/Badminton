@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using Badminton.Core.Domain;
-using Microsoft.Data.SqlClient;
+using Repositories;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -12,7 +12,7 @@ namespace Badminton.API.Jobs
         private readonly SemaphoreSlim _gate = new(1, 1);
         private readonly ConcurrentDictionary<string, byte> _held = new();
         private readonly Lazy<IMetricsReporter?> _metrics;
-        private SqlConnection? _connection;
+        private readonly JobLease _lease;
         private bool _disposed;
 
         public JobLock(IConfiguration configuration,
@@ -23,7 +23,8 @@ namespace Badminton.API.Jobs
                 ?? configuration.GetConnectionString("DefaultConnection")
                 ?? throw new InvalidOperationException(
                     "JobLock requires the BadmintonBooking (or DefaultConnection) " +
-                    "connection string to acquire sp_getapplock locks.");
+                    "connection string to acquire database job locks.");
+            _lease = new JobLease(_connectionString, string.Equals(configuration["Database:Provider"], "PostgreSQL", StringComparison.OrdinalIgnoreCase));
             _metrics = new Lazy<IMetricsReporter?>(
                 () => services?.GetService<IMetricsReporter>());
         }
@@ -34,19 +35,8 @@ namespace Badminton.API.Jobs
             await _gate.WaitAsync(ct);
             try
             {
-                var c = await EnsureConnectionAsync(ct);
-                using var cmd = c.CreateCommand();
-                cmd.CommandText =
-                    "SELECT CAST(sp_getapplock(@r, @t, 'Session') AS int)";
-                cmd.Parameters.Add(
-                    new SqlParameter("@r", $"BadmintonJob_{job}"));
-                cmd.Parameters.Add(
-                    new SqlParameter("@t", timeoutSeconds * 1000));
-                var res = await cmd.ExecuteScalarAsync(ct);
-                var code = Convert.ToInt32(
-                    res, System.Globalization.CultureInfo.InvariantCulture);
-
-                var ok = code >= 0;
+                if (_held.ContainsKey(job)) return false;
+                var ok = await _lease.AcquireAsync(job, timeoutSeconds, ct);
                 if (ok)
                 {
                     _held[job] = 1;
@@ -64,13 +54,7 @@ namespace Badminton.API.Jobs
             await _gate.WaitAsync(ct);
             try
             {
-                var c = await EnsureConnectionAsync(ct);
-                using var cmd = c.CreateCommand();
-                cmd.CommandText =
-                    "SELECT CAST(sp_releaseapplock(@r, 'Session') AS int)";
-                cmd.Parameters.Add(
-                    new SqlParameter("@r", $"BadmintonJob_{job}"));
-                await cmd.ExecuteScalarAsync(ct);
+                await _lease.ReleaseAsync(job, ct);
                 _held.TryRemove(job, out _);
             }
             catch
@@ -80,21 +64,11 @@ namespace Badminton.API.Jobs
             finally { _gate.Release(); }
         }
 
-        private async Task<SqlConnection> EnsureConnectionAsync(CancellationToken ct)
-        {
-            if (_connection is not null && _connection.State == System.Data.ConnectionState.Open)
-                return _connection;
-            _connection ??= new SqlConnection(_connectionString);
-            await _connection.OpenAsync(ct);
-            return _connection;
-        }
-
         public void Dispose()
         {
             if (_disposed) return;
             _disposed = true;
-            _connection?.Dispose();
-            _connection = null;
+            _lease.Dispose();
         }
     }
 }

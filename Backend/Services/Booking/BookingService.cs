@@ -69,7 +69,7 @@ namespace Services
 
             var date = ParseDate(request.Date);
 
-            var dateStatus = await GetCourtDateStatus(court.Id, date);
+            var dateStatus = await GetCourtDateStatus(court.Id, date, slot);
             if (dateStatus != CourtDateStatus.Open)
                 throw new ConflictException("San dang bao tri hoac dong trong ngay nay.");
 
@@ -105,13 +105,24 @@ namespace Services
                     throw new ConflictException("Ban da dat gi?i han 4 slot/ngay.");
             }
 
-            var total = (int)_pricing.WithWeekend(
+            var perPerson = (int)_pricing.WithWeekend(
                 court.PriceLowPeak, court.PricePeak, slot.IsPeak,
                 court.WeekendSurcharge, IsWeekend(date));
+
+            var playerCount = Math.Max(1, request.PlayerCount);
+            // Order total = court-hour rate × number of players. The frontend
+            // previews the voucher against this same base (per-person, group
+            // booking), so preview and submit stay consistent. NOTE: docs 01 §3
+            // describes the rate as VND/giờ (per court-hour); billing per
+            // person is the policy applied here — confirm in 08-plan.
+            var total = perPerson * playerCount;
 
             Booking? booking = null;
             await Uow.RunInTransactionAsync(async () =>
             {
+                await LockCourtDateAsync(court.Id, date);
+                if (await GetCourtDateStatus(court.Id, date, slot) != CourtDateStatus.Open)
+                    throw new ConflictException("Sân bảo trì/đóng trong khung giờ này.");
                 int voucherDiscount = 0;
                 int pointsDiscount = 0;
                 VoucherRedemption? voucherRedemption = null;
@@ -315,12 +326,36 @@ namespace Services
                     b.PlayerCount, b.Status.ToString(), b.TotalAmount, b.DiscountAmount,
                     b.PayableAmount, b.PointsEarned, b.PointsRedeemed,
                     b.GroupId, b.VoucherRedemptionId,
-                    b.CreatedAt, user?.FullName, breakdown, b.CancelReason));
+                    b.CreatedAt, user?.FullName, breakdown, b.CancelReason, b.QrToken, b.CheckedInAt));
             }
             return views;
         }
 
         // - cancel (P0-1: paid orders go through a tiered refund) ----------
+
+        public async Task CancelForMaintenanceAsync(int bookingId, int actorId)
+        {
+            var b = await Repo.GetByIdAsync(bookingId) ?? throw new NotFoundException("Booking", bookingId);
+            await AuthorizeStaffBranchAsync(b.BranchId, actorId);
+            if (b.Status == BookingStatus.Confirmed)
+            {
+                await _payments.RefundForMaintenanceAsync(bookingId, actorId, "Hoàn toàn phần do sân bảo trì/đóng");
+                if (b.VoucherRedemptionId is { } rid) await _vouchers.ReleaseVoucherAsync(rid);
+                return;
+            }
+            if (b.Status != BookingStatus.Pending) return;
+            var now = DateTime.UtcNow;
+            var claimed = await Uow.ExecuteSqlRawAsync(
+                "UPDATE \"Bookings\" SET \"Status\"='Cancelled', \"CancelReason\"=@p0, \"CancelledAt\"=@p1, \"UpdatedAt\"=@p1 WHERE \"Id\"=@p2 AND \"Status\"='Pending'",
+                "Sân bảo trì/đóng", now, bookingId);
+            if (claimed == 0) throw new ConflictException("Đơn vừa thay đổi trạng thái. Lưu lại lịch để xử lý hoàn tiền.");
+            b.Status = BookingStatus.Cancelled; b.CancelReason = "Sân bảo trì/đóng"; b.CancelledAt = now; b.UpdatedAt = now;
+            Repo.Update(b);
+            if (b.VoucherRedemptionId is { } pendingRid) await _vouchers.ReleaseVoucherAsync(pendingRid);
+            if (b.PointsRedeemed > 0) await _points.RestoreAsync(b.UserId, b.Id, b.PointsRedeemed, b.BookingCode);
+            await SaveAsync();
+            await _audit.LogAsync(actorId, "booking.maintenance-cancel", "Booking", b.Id.ToString(), null, new { b.Status }, b.CancelReason);
+        }
 
         public async Task<BookingView> CancelAsync(int bookingId, int actorId)
         {
@@ -387,9 +422,9 @@ namespace Services
                 throw new ConflictException($"Chi duoc danh dau hoan thanh don o trang thai Confirmed (hien tai: {b.Status}).");
 
             int claimed = await Uow.ExecuteSqlRawAsync(
-                "UPDATE Bookings SET Status = 'Completed', PointsEarned = @p0, " +
-                "  UpdatedAt = @p1 " +
-                "WHERE Id = @p2 AND Status = 'Confirmed'",
+                "UPDATE \"Bookings\" SET \"Status\" = 'Completed', \"PointsEarned\" = @p0, " +
+                "  \"UpdatedAt\" = @p1 " +
+                "WHERE \"Id\" = @p2 AND \"Status\" = 'Confirmed'",
                 b.PayableAmount, DateTime.UtcNow, bookingId);
             if (claimed == 0)
             {
@@ -431,9 +466,9 @@ namespace Services
             }
 
             int claimed = await Uow.ExecuteSqlRawAsync(
-                "UPDATE Bookings SET Status = 'NoShow', CancelReason = @p0, " +
-                "  CancelledAt = @p1, UpdatedAt = @p2 " +
-                "WHERE Id = @p3 AND Status = 'Confirmed'",
+                "UPDATE \"Bookings\" SET \"Status\" = 'NoShow', \"CancelReason\" = @p0, " +
+                "  \"CancelledAt\" = @p1, \"UpdatedAt\" = @p2 " +
+                "WHERE \"Id\" = @p3 AND \"Status\" = 'Confirmed'",
                 "No-show: khach khong den san" + (string.IsNullOrWhiteSpace(note) ? "" : " - " + note),
                 DateTime.UtcNow, DateTime.UtcNow, bookingId);
             if (claimed == 0)
@@ -496,7 +531,7 @@ namespace Services
             var dateStatusRows = await Repository<CourtDateStatusEntry>().GetByConditionAsync(
                 r => r.Date == date && courtIds.Contains(r.CourtId));
             var statusByCourt = dateStatusRows
-                .ToDictionary(r => r.CourtId, r => r.Status);
+                .ToDictionary(r => r.CourtId);
 
             var bookedRows = await Repo.GetByConditionAsync(b =>
                 b.Date == date && courtIds.Contains(b.CourtId)
@@ -508,20 +543,21 @@ namespace Services
             var views = new List<CourtAvailabilityView>(courts.Count);
             foreach (var c in courts)
             {
-                var dayStatus = statusByCourt.TryGetValue(c.Id, out var s) ? s : CourtDateStatus.Open;
+                statusByCourt.TryGetValue(c.Id, out var schedule);
                 var bookedSlots = bookedByCourt.TryGetValue(c.Id, out var set) ? set : default;
                 bookedSlots ??= new HashSet<int>();
 
                 var slotViews = slots.Select(sl =>
                 {
                     var start = HanoiTime.SlotStart(date, sl.StartTime);
+                    var dayStatus = schedule?.Blocks(sl.StartTime, sl.EndTime) == true ? schedule.Status : CourtDateStatus.Open;
                     var isLocked = dayStatus != CourtDateStatus.Open
                         || bookedSlots.Contains(sl.Id)
                         || start < hanoiNowAvail.AddMinutes(30);
                     var lockReason = isLocked
-                        ? (dayStatus != CourtDateStatus.Open ? "San bao tri/dong"
-                          : bookedSlots.Contains(sl.Id) ? "Da duoc dat"
-                          : "Trong qua khuc")
+                        ? (dayStatus != CourtDateStatus.Open ? (dayStatus == CourtDateStatus.Maintenance ? "Bảo trì" : "Đóng")
+                          : bookedSlots.Contains(sl.Id) ? "Đã đặt"
+                          : "Đã qua giờ đặt")
                         : "";
                     return new SlotView(sl.Id, sl.Label,
                         sl.StartTime.ToString("hh\\:mm"), sl.EndTime.ToString("hh\\:mm"),
@@ -546,11 +582,12 @@ namespace Services
                 (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed));
         }
 
-        private async Task<CourtDateStatus> GetCourtDateStatus(int courtId, DateOnly date)
+        private async Task<CourtDateStatus> GetCourtDateStatus(int courtId, DateOnly date, TimeSlot slot)
         {
             var rows = await Repository<CourtDateStatusEntry>().GetByConditionAsync(
                 r => r.CourtId == courtId && r.Date == date);
-            return rows.FirstOrDefault()?.Status ?? CourtDateStatus.Open;
+            var row = rows.FirstOrDefault();
+            return row?.Blocks(slot.StartTime, slot.EndTime) == true ? row.Status : CourtDateStatus.Open;
         }
 
         private async Task AuthorizeView(Booking b, int requestingUserId)
@@ -605,7 +642,7 @@ namespace Services
                 b.PlayerCount, b.Status.ToString(), b.TotalAmount, b.DiscountAmount,
                 b.PayableAmount, b.PointsEarned, b.PointsRedeemed,
                 b.GroupId, b.VoucherRedemptionId,
-                b.CreatedAt, user?.FullName, breakdown, b.CancelReason);
+                b.CreatedAt, user?.FullName, breakdown, b.CancelReason, b.QrToken, b.CheckedInAt);
         }
 
         private static bool IsWeekend(DateOnly d) =>

@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import { useParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -26,35 +27,25 @@ import {
 import { isStaff } from "../../../store/auth";
 import { useAuth } from "../../../store/auth";
 
-/** Deterministic visual tile from the server QR token (display-only, docs 03 §3). */
+/** The QR contains the server-issued token accepted by /checkin. */
 function QrTile({ code }: { code: string }) {
-  const n = 9;
-  let seed = 0;
-  for (let i = 0; i < code.length; i++) seed = (seed * 31 + code.charCodeAt(i)) >>> 0;
-  const cells: boolean[] = [];
-  for (let i = 0; i < n * n; i++) {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    cells.push((seed >> 13) % 100 < 52);
-  }
-  return (
-    <div className="inline-block rounded-lg border border-border bg-card p-2">
-      <div
-        style={{ display: "grid", gridTemplateColumns: `repeat(${n}, 10px)`, gap: 2 }}
-        aria-label={`QR mã ${code}`}
-      >
-        {cells.map((on, i) => (
-          <span key={i} className={on ? "h-2.5 w-2.5 bg-fg" : "h-2.5 w-2.5"} />
-        ))}
-      </div>
-      <p className="mt-2 max-w-28 break-all text-center text-[10px] font-semibold tnum">
-        {code}
-      </p>
-    </div>
-  );
+  const [src, setSrc] = useState("");
+  useEffect(() => {
+    let active = true;
+    QRCode.toDataURL(code, { width: 180, margin: 4, errorCorrectionLevel: "M" })
+      .then((value) => { if (active) setSrc(value); }).catch(() => { if (active) setSrc(""); });
+    return () => { active = false; };
+  }, [code]);
+  return <div className="max-w-48 rounded-lg border border-border p-2">
+    {src && <img src={src} alt="QR token check-in" width={180} height={180} />}
+    <p className="break-all text-center text-xs font-mono">{code}</p>
+    <Button variant="ghost" size="xs" onClick={() => navigator.clipboard.writeText(code)}>Sao chép token</Button>
+  </div>;
 }
 
-const ONLINE_METHODS = ["VnPay", "MoMo", "Zalopay"] as const;
-type Method = (typeof ONLINE_METHODS)[number] | "Cash";
+const PAYMENT_METHODS = ["Cash", "QR", "VnPay", "MoMo", "Zalopay"] as const;
+type Method = (typeof PAYMENT_METHODS)[number];
+const methodLabel = (method: Method) => method === "Cash" ? "Tiền mặt tại sân" : method === "QR" ? "QR tại quầy" : method;
 
 export default function BookingDetailPage() {
   const { id } = useParams();
@@ -63,7 +54,9 @@ export default function BookingDetailPage() {
   const staff = isStaff(user);
   const qc = useQueryClient();
 
-  const [method, setMethod] = useState<Method>("VnPay");
+  const [method, setMethod] = useState<Method>("Cash");
+  const methods = useQuery({ queryKey: ["payment-methods"], queryFn: api.payments.methods });
+  const availableMethods = PAYMENT_METHODS.filter((m) => methods.data?.includes(m));
   const [copied, setCopied] = useState(false);
 
   const { data: b, isFetching, refetch } = useQuery({
@@ -181,7 +174,7 @@ export default function BookingDetailPage() {
               {formatDay(b.date)} · {slotLabelClean(b.slotLabel)} · {b.playerCount} người
             </p>
           </div>
-          {showQr && <QrTile code={b.qrToken ?? b.bookingCode} />}
+          {showQr && b.qrToken && <QrTile code={b.qrToken} />}
         </div>
         {showQr && (
           <p className="flex items-center gap-1 border-t border-border bg-bg/40 px-4 py-2.5 text-xs text-muted">
@@ -226,7 +219,7 @@ export default function BookingDetailPage() {
           </p>
 
           <div className="flex flex-wrap gap-2">
-            {ONLINE_METHODS.map((m) => (
+            {availableMethods.map((m) => (
               <button
                 key={m}
                 type="button"
@@ -239,7 +232,7 @@ export default function BookingDetailPage() {
                     : "border-border bg-card text-muted hover:text-fg")
                 }
               >
-                {m}
+                {methodLabel(m)}
               </button>
             ))}
           </div>
@@ -247,15 +240,20 @@ export default function BookingDetailPage() {
           <Button
             variant="accent"
             className="mt-3 w-full"
-            disabled={pay.isPending}
+            disabled={pay.isPending || !methods.data?.includes(method)}
             onClick={() => pay.mutate()}
           >
             {pay.isPending ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Đang tạo thanh toán…</>
             ) : (
-              <>Thanh toán bằng {method}</>
+              <>{method === "Cash" || method === "QR" ? "Hướng dẫn thanh toán tại sân" : `Thanh toán bằng ${methodLabel(method)}`}</>
             )}
           </Button>
+
+          {pay.isSuccess && (method === "Cash" || method === "QR") && (
+            <Callout tone="info" className="mt-2">Vui lòng thanh toán tại quầy và nhờ nhân viên xác nhận trước khi hết thời gian giữ chỗ. Đơn chỉ được xác nhận sau khi nhân viên ghi nhận thanh toán.</Callout>
+          )}
+          {methods.isError && <Callout tone="error" className="mt-2">Không tải được phương thức thanh toán. Vui lòng tải lại trang.</Callout>}
 
           {pay.isError && (
             <Callout tone="error" className="mt-2">

@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: badminton-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /ready
+    envVars:
+      - key: Database__Provider
+        value: PostgreSQL
+      - key: ConnectionStrings__BadmintonBooking
+        sync: false
+      - key: JwtSettings__Key
+        generateValue: true
+      - key: Cors__AllowedOrigins
+        sync: false
+      - key: Payment__Provider
+        value: onsite
+      - key: DatabaseInitialization__MigrateOnStartup
+        value: false
+      - key: DatabaseInitialization__SeedDemoData
+        value: false
+      - key: BackgroundJobs__Enabled
+        value: true
+  - type: web
+    name: badminton-frontend
+    runtime: static
+    rootDir: Frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

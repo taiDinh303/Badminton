@@ -48,9 +48,9 @@ namespace Services
 
             var now = DateTime.UtcNow;
             int claimed = await Uow.ExecuteSqlRawAsync(
-                "UPDATE Bookings SET CheckedInAt = @p0, UpdatedAt = @p0 " +
-                "WHERE Id = @p1 AND CheckedInAt IS NULL " +
-                "AND Status IN ('Confirmed', 'Pending')",
+                "UPDATE \"Bookings\" SET \"CheckedInAt\" = @p0, \"UpdatedAt\" = @p0 " +
+                "WHERE \"Id\" = @p1 AND \"CheckedInAt\" IS NULL " +
+                "AND \"Status\" IN ('Confirmed', 'Pending')",
                 now, b.Id);
             if (claimed == 0)
                 throw new ConflictException(

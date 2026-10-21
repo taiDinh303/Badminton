@@ -127,7 +127,7 @@ export default function VouchersPage() {
       label: "Trạng thái",
       width: 120,
       render: (v) => (
-        <StatusBadge status={v.isActive ? "Open" : "Locked"} size="sm" />
+        isExpired(v) ? <span className="text-xs font-semibold text-state-danger">Hết hạn sử dụng</span> : <StatusBadge status={v.isActive ? "Open" : "Locked"} size="sm" />
       ),
     },
     {
@@ -137,7 +137,7 @@ export default function VouchersPage() {
       align: "right",
       render: (v) => (
         canManage ? (
-          v.isActive ? (
+          v.isActive && !isExpired(v) ? (
             <Button
               variant="ghost"
               size="xs"
@@ -259,4 +259,8 @@ export default function VouchersPage() {
       )}
     </div>
   );
+}
+
+function isExpired(v: Voucher) {
+  return !!v.validUntil && v.validUntil.slice(0, 10) < new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }

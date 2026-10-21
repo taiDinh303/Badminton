@@ -13,7 +13,12 @@ public static class DependencyInjection
     {
         var connection = configuration.GetConnectionString("BadmintonBooking")
             ?? configuration.GetConnectionString("DefaultConnection");
-        services.AddDbContext<BadmintonBookingDbContext>(options => options.UseSqlServer(connection));
+        if (string.Equals(configuration["Database:Provider"], "PostgreSQL", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddDbContext<PostgresBookingDbContext>(options => options.UseNpgsql(connection));
+            services.AddScoped<BadmintonBookingDbContext>(sp => sp.GetRequiredService<PostgresBookingDbContext>());
+        }
+        else services.AddDbContext<BadmintonBookingDbContext>(options => options.UseSqlServer(connection));
         services.AddScoped<IUnitOfWork, Repositories.UnitOfWork.UnitOfWork>();
         return services;
     }

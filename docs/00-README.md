@@ -45,14 +45,14 @@ Nguồn nghiệp vụ là [01](01-business-analysis.md), quyết định/backlog
 | --- | --- | --- |
 | Backend | ASP.NET Core .NET 8, EF Core, service/repository, REST `/api/v1` | Hoàn thiện quyền và nhất quán trước dùng thật |
 | Frontend | React 19, Vite 8, TypeScript, Tailwind 4, Router 7, React Query, zustand | Kiểm thử browser, hoàn thiện trải nghiệm |
-| DB | SQL Server `UseSqlServer`, 17 bảng, đa số PK int | PostgreSQL/Supabase; cần đổi provider/migration/raw SQL |
+| DB | SQL Server local và PostgreSQL/Supabase, 17 bảng, đa số PK int | Giữ bộ migration riêng theo provider; bằng chứng cutover ở worklog |
 | Danh tính | SĐT + BCrypt + JWT .NET | Phone OTP qua Supabase Auth là hướng cũ, chưa tích hợp |
 | Thanh toán | Mock/real adapter + Cash/QR tại quầy | Sandbox thật và đối soát, chưa nghiệm thu live |
 | Jobs | 5 BackgroundService, SQL applock/heartbeat | Nghiệm thu tải/restart nhiều instance |
-| Ảnh/QR | URL/metadata, server QrToken/check-in; tile minh họa | Upload Storage, QR quét/xác thực thực sự |
-| Hosting | Có `Frontend/vercel.json`; chưa có Dockerfile/blueprint API | SPA Vercel; host API/project DB cần xác nhận |
+| Ảnh/QR | URL/metadata, server QrToken/check-in; QR mã hóa token | Upload Storage; nghiệm thu quét thiết bị thật |
+| Hosting | SPA Vercel/Render Static; Dockerfile API và render.yaml; Supabase đã nhập dữ liệu | Trạng thái API/frontend live mới nhất ở worklog |
 
-Không sao chép URL, project ID, plan, tài khoản hoặc quyết định riêng của Marixa. Chưa có snapshot hosting Badminton được xác nhận trong nhiệm vụ này.
+Không sao chép URL, project ID, plan, tài khoản hoặc quyết định riêng của Marixa. Hạ tầng Badminton được người dùng chỉ định ngày 21/10/2026; chi tiết ở [15](15-cloud-runtime.md).
 
 ## 4. Quy tắc bảo trì
 

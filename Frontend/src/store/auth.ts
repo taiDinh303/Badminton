@@ -12,6 +12,7 @@ interface AuthState {
   user: AuthUser | null;
   login: (phone: string, password: string) => Promise<void>;
   register: (b: { fullName: string; phone: string; password: string }) => Promise<void>;
+  updateProfile: (fullName: string) => void;
   logout: () => void;
 }
 
@@ -47,6 +48,10 @@ export const useAuth = create<AuthState>((set) => ({
     persist(u);
     set({ user: u });
   },
+  updateProfile: (fullName) => set((state) => {
+    if (!state.user) return state;
+    const user = { ...state.user, fullName }; persist(user); return { user };
+  }),
   logout: () => {
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem("bb_user");

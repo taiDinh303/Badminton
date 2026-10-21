@@ -36,7 +36,7 @@ namespace Services
             var active = await Repository<Booking>()
                 .CountByConditionAsync(b =>
                     b.CourtId == courtId && b.SlotId == slotId && b.Date == date
-                    && b.Status == BookingStatus.Confirmed);
+                    && (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Pending));
             if (active == 0)
                 throw new Badminton.Core.Base.BadRequestException(
                     "Slot còn trống, không cần danh sách chờ — hãy đặt trực tiếp.");
@@ -45,6 +45,9 @@ namespace Services
             var slot = await Repository<TimeSlot>().GetByIdAsync(slotId);
             if (court is null || slot is null)
                 throw new Badminton.Core.Base.NotFoundException("Court or Slot", courtId);
+
+            if (playerCount < 1 || playerCount > 10) throw new Badminton.Core.Base.BadRequestException("Số khách phải từ 1 đến 10.");
+            if (!court.IsActive || !slot.IsActive) throw new Badminton.Core.Base.BadRequestException("Sân/khung giờ không hoạt động.");
 
             // The slot must still be in the future (Hanoi business clock).
             var startHanoi = Badminton.Core.Utils.HanoiTime.SlotStart(date, slot.StartTime);
@@ -67,7 +70,7 @@ namespace Services
                 SlotId = slotId,
                 BranchId = court.BranchId,
                 Date = date,
-                PlayerCount = Math.Max(1, playerCount),
+                PlayerCount = playerCount,
                 Note = note,
                 Status = WaitlistStatus.Waiting,
                 CreatedAt = DateTime.UtcNow

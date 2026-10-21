@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft,
@@ -44,6 +44,7 @@ type Sel = { court: CourtAvailability; slot: Slot };
  *  - chú giải trạng thái (text + màu + icon); drawer không bị che bottom nav.
  */
 export default function BookPage() {
+  const qc = useQueryClient();
   const today = localDate(new Date());
   const [date, setDate] = useState(today);
   const [branchId, setBranchId] = useState<number | null>(null);
@@ -99,11 +100,20 @@ export default function BookPage() {
     },
   });
 
+  // "1 voucher/account" policy: once used, the voucher field is locked.
+  const { data: acctSummary } = useQuery({
+    queryKey: ["account", "voucher-state"],
+    queryFn: api.account.summary,
+    enabled: user != null,
+    staleTime: 60_000,
+  });
+  const voucherAlreadyUsed = acctSummary?.voucherUsed ?? false;
+
   const [voucherErr, setVoucherErr] = useState<string | null>(null);
   const [waitlistDone, setWaitlistDone] = useState(false);
   const previewVoucher = useMutation({
     mutationFn: (baseAmount: number) => api.vouchers.preview(voucher.trim(), baseAmount),
-    onError: () => setVoucherErr("Voucher không áp dụng cho đơn này (chưa đạt điều kiện)."),
+    onError: (error) => setVoucherErr(error.message),
   });
 
   const joinWaitlist = useMutation({
@@ -114,10 +124,11 @@ export default function BookPage() {
         date,
         playerCount: players,
       }),
-    onSuccess: () => setWaitlistDone(true),
+    onSuccess: () => { setWaitlistDone(true); qc.invalidateQueries({ queryKey: ["waitlist"] }); },
   });
 
-  const createFailed = create.isError;
+  const createFailed = create.isError && create.error instanceof ApiError && create.error.status === 409;
+  const selectedBooked = !!sel && isBooked(sel.slot);
 
   const price = useMemo(() => {
     if (!sel) return null;
@@ -129,7 +140,8 @@ export default function BookPage() {
     courts?.filter((c) => c.slots.some((s) => !s.isLocked)) ?? [];
 
   function selectSlot(court: CourtAvailability, slot: Slot) {
-    if (slot.isLocked) return;
+    if (slot.isLocked && !isBooked(slot)) return;
+    create.reset(); joinWaitlist.reset(); setVoucherErr(null);
     setSel({ court, slot });
     setWaitlistDone(false);
   }
@@ -263,7 +275,7 @@ export default function BookPage() {
 
       {/* Grid — compact per-court cards, slots wrap within viewport (no h-scroll) */}
       <div className="mt-4 space-y-3">
-        {openCourts.map((c) => (
+        {(courts ?? []).map((c) => (
           <Card key={c.courtId} className="p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div className="min-w-0">
@@ -278,7 +290,7 @@ export default function BookPage() {
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
               {c.slots.map((s) => {
-                const state = s.isLocked ? "maint" : "free";
+                const state = !s.isLocked ? "free" : isBooked(s) ? "booked" : s.lockReason === "Bảo trì" || s.lockReason === "San bao tri/dong" ? "maint" : "closed";
                 const isSel =
                   sel?.court.courtId === c.courtId && sel?.slot.slotId === s.slotId;
                 const cellPrice = s.isPeak ? c.pricePeak : c.priceLowPeak;
@@ -287,11 +299,11 @@ export default function BookPage() {
                     key={s.slotId}
                     state={state}
                     label={s.startTime.slice(0, 5)}
-                    sub={s.isLocked ? "Bảo trì" : formatVnd(cellPrice)}
+                    sub={isBooked(s) ? "Nhấn để vào danh sách chờ" : s.isLocked ? s.lockReason : formatVnd(cellPrice)}
                     peak={s.isPeak}
                     selected={isSel}
                     onClick={() => selectSlot(c, s)}
-                    disabled={s.isLocked}
+                    disabled={s.isLocked && !isBooked(s)}
                   />
                 );
               })}
@@ -377,6 +389,7 @@ export default function BookPage() {
                   </span>
                   <input
                     value={voucher}
+                    disabled={voucherAlreadyUsed}
                     onChange={(e) => setVoucher(e.target.value)}
                     onBlur={() => {
                       setVoucherErr(null);
@@ -388,6 +401,12 @@ export default function BookPage() {
                   />
                 </label>
               </div>
+
+              {voucherAlreadyUsed && (
+                <p className="mt-2 text-[11px] text-muted">
+                  Tài khoản đã dùng 1 voucher — không dùng được voucher khác.
+                </p>
+              )}
 
               {/* Group (owner-only) */}
               {myGroups.length > 0 && (
@@ -457,13 +476,13 @@ export default function BookPage() {
               <Button
                 variant="accent"
                 className="mt-3 w-full"
-                disabled={create.isPending}
+                disabled={create.isPending || selectedBooked}
                 onClick={() => create.mutate()}
               >
                 {create.isPending ? "Đang đặt…" : "Xác nhận đặt sân"}
               </Button>
 
-              {createFailed && !waitlistDone && (
+              {(createFailed || selectedBooked) && !waitlistDone && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -475,6 +494,7 @@ export default function BookPage() {
                   {joinWaitlist.isPending ? "Đang xếp hàng…" : "Tham gia danh sách chờ"}
                 </Button>
               )}
+              {joinWaitlist.isError && <Callout tone="error" className="mt-2">{joinWaitlist.error.message}</Callout>}
               {waitlistDone && (
                 <Callout tone="success" className="mt-2">
                   Đã xếp bạn vào danh sách chờ (FIFO).
@@ -502,3 +522,5 @@ export default function BookPage() {
     </div>
   );
 }
+
+function isBooked(slot: Slot) { return slot.isLocked && ["Đã đặt", "Da duoc dat"].includes(slot.lockReason); }

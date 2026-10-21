@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../../store/auth";
 import { api, type WaitlistEntryView } from "../../../services/api";
@@ -6,7 +7,6 @@ import {
   Busy,
   Callout,
   Card,
-  StatusBadge,
   Button,
 } from "../../../components/ui";
 import { ListChecks, X } from "lucide-react";
@@ -47,9 +47,11 @@ export default function WaitlistPage() {
         Khi slot được trả về, bạn sẽ được ưu tiên (FIFO) với đơn Pending mới.
       </p>
 
+      {leave.isError && <Callout tone="error" className="mt-3">{leave.error.message}</Callout>}
       {entries.length === 0 ? (
         <Card className="mt-5 p-8 text-center text-sm text-muted">
           Bạn chưa nằm trong danh sách chờ nào.
+          <Link to="/book" className="mt-3 block font-semibold text-primary">Chọn khung giờ đã đặt để tham gia chờ</Link>
         </Card>
       ) : (
         <div className="mt-5 space-y-3">
@@ -65,15 +67,9 @@ export default function WaitlistPage() {
                     {formatDay(e.date)} · {e.playerCount} khách
                   </p>
                 </div>
-                <StatusBadge
-                  status={
-                    e.status === "Waiting" ? "Pending"
-                    : e.status === "Promoted" ? "Confirmed"
-                    : "Cancelled"
-                  }
-                  size="sm"
-                />
+                <span className="rounded-full bg-bg px-2 py-1 text-xs font-semibold">{{ Waiting: "Đang chờ", Promoted: "Đã có chỗ — chờ thanh toán", Cancelled: "Đã rời", Expired: "Hết hiệu lực", Declined: "Đã từ chối" }[e.status] ?? e.status}</span>
               </div>
+              {e.promotedBookingId && <Link className="mt-3 block text-sm font-semibold text-primary" to={`/bookings/${e.promotedBookingId}`}>Xem đơn và thanh toán</Link>}
               {e.status === "Waiting" && (
                 <div className="mt-3 flex justify-end">
                   <Button

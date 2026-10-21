@@ -1,3 +1,4 @@
+using Contract.Services.Account;
 using Contract.Services.Audit;
 using Contract.Services.Auth;
 using Contract.Services.Booking;
@@ -97,7 +98,7 @@ namespace Services.DI
                         sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ZalopaySettings>>().Value,
                         sp.GetRequiredService<IZalopayClient>()));
             }
-            else
+            else if (string.Equals(provider, "mock", System.StringComparison.OrdinalIgnoreCase))
             {
                 // P0-3: mock online gateways only in mock/dev mode.
                 services.AddScoped<IPaymentGateway>(sp =>
@@ -170,6 +171,7 @@ namespace Services.DI
 
             // FEAT 2 — Waitlist (join/leave/promote + promotion job).
             services.AddScoped<IWaitlistService, WaitlistService>();
+            services.AddScoped<IAccountService, AccountService>();
 
             return services;
         }

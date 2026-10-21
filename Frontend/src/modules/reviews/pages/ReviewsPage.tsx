@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Star, MessageSquare } from "lucide-react";
 import { api, type Court, type ReviewView } from "../../../services/api";
@@ -33,15 +34,18 @@ function Stars({ rating, size = "h-4 w-4" }: { rating: number; size?: string }) 
 export default function ReviewsPage() {
   const [courtId, setCourtId] = useState<number | null>(null);
 
-  const { data: courts = [], isFetching: fetchingCourts } = useQuery({
+  const { data: courts = [], isFetching: fetchingCourts, error: courtsError } = useQuery({
     queryKey: ["courts"],
     queryFn: () => api.courts.list(),
   });
 
-  const { data: reviews = [], isFetching: fetchingReviews, isError } = useQuery({
-    queryKey: ["reviews", courtId],
-    queryFn: () => api.reviews.forCourt(courtId!),
-    enabled: courtId != null,
+  const { data: reviews = [], isFetching: fetchingReviews, isError, error } = useQuery({
+    queryKey: ["reviews", courtId, courts.map((c) => c.id)],
+    queryFn: async () => courtId != null
+      ? api.reviews.forCourt(courtId)
+      : (await Promise.all(courts.map((c) => api.reviews.forCourt(c.id)))).flat()
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    enabled: courts.length > 0,
   });
 
   const avg =
@@ -100,16 +104,18 @@ export default function ReviewsPage() {
           )}
 
           <div className="mt-4">
-            {isError && <Callout tone="error">Không tải được đánh giá.</Callout>}
+            {(isError || courtsError) && <Callout tone="error">Không tải được đánh giá. {(error ?? courtsError)?.message}</Callout>}
             {fetchingReviews && !reviews.length && (
               <Busy label="Đang tải đánh giá…" />
             )}
-            {!fetchingReviews && reviews.length === 0 && (
+            {!fetchingReviews && !isError && !courtsError && reviews.length === 0 && (
               <EmptyState
                 icon={<MessageSquare className="h-5 w-5" />}
                 title="Chưa có đánh giá nào"
                 hint="Đánh giá được tạo sau khi một đơn đã hoàn thành."
-              />
+              >
+                <Link to="/bookings" className="mt-2 text-sm font-semibold text-primary">Đánh giá đơn đã hoàn thành</Link>
+              </EmptyState>
             )}
 
             <div className="space-y-3">
@@ -121,7 +127,7 @@ export default function ReviewsPage() {
                         {r.userName.charAt(0).toUpperCase()}
                       </span>
                       <div>
-                        <p className="text-sm font-semibold">{r.userName}</p>
+                        <p className="text-sm font-semibold">{r.userName} · {r.courtName}</p>
                         <p className="text-[11px] text-muted tnum">
                           {formatDay(r.createdAt.slice(0, 10))}
                         </p>

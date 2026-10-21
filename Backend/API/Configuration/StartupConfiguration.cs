@@ -1,9 +1,9 @@
 using System.Text;
 using Microsoft.Data.SqlClient;
+using Npgsql;
 
 namespace Badminton.API.Configuration;
 
-/// <summary>Pure configuration inspection: never connects, starts jobs or prints secrets.</summary>
 public static class StartupConfiguration
 {
     public static string[] Origins(IConfiguration configuration)
@@ -18,17 +18,32 @@ public static class StartupConfiguration
     {
         var errors = new List<string>();
         var production = !environment.IsDevelopment() && !environment.IsEnvironment("Testing");
-        if (!string.Equals(configuration["Database:Provider"] ?? "SqlServer", "SqlServer", StringComparison.OrdinalIgnoreCase))
-            errors.Add("Database:Provider must be SqlServer; PostgreSQL is not implemented.");
+        var databaseProvider = configuration["Database:Provider"] ?? "SqlServer";
+        var postgres = databaseProvider.Equals("PostgreSQL", StringComparison.OrdinalIgnoreCase);
+        if (!postgres && !databaseProvider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase))
+            errors.Add("Database:Provider must be SqlServer or PostgreSQL.");
         var connection = configuration.GetConnectionString("BadmintonBooking")
             ?? configuration.GetConnectionString("DefaultConnection");
         try
         {
+            if (postgres)
+            {
+                var pg = new NpgsqlConnectionStringBuilder(connection);
+                if (string.IsNullOrWhiteSpace(pg.Host) || string.IsNullOrWhiteSpace(pg.Database) || string.IsNullOrWhiteSpace(pg.Username))
+                    errors.Add("ConnectionStrings:BadmintonBooking requires host, database and username.");
+                if (production && pg.SslMode is not (SslMode.VerifyFull or SslMode.VerifyCA))
+                    errors.Add("ConnectionStrings:BadmintonBooking requires verified TLS outside Development/Testing.");
+                if (pg.Port == 6543)
+                    errors.Add("ConnectionStrings:BadmintonBooking requires direct or session pooling (port 5432) for job locks.");
+            }
+            else
+            {
             var sql = new SqlConnectionStringBuilder(connection);
             if (string.IsNullOrWhiteSpace(sql.DataSource) || string.IsNullOrWhiteSpace(sql.InitialCatalog))
                 errors.Add("ConnectionStrings:BadmintonBooking requires a server and database.");
             if (production && sql.DataSource.Contains("localdb", StringComparison.OrdinalIgnoreCase))
                 errors.Add("ConnectionStrings:BadmintonBooking cannot use LocalDB outside Development/Testing.");
+            }
         }
         catch (ArgumentException) { errors.Add("ConnectionStrings:BadmintonBooking has invalid syntax."); }
 
@@ -57,8 +72,8 @@ public static class StartupConfiguration
             errors.Add("DatabaseInitialization and Seed:AllowInProduction must not enable migration/demo seeding outside Development/Testing.");
 
         var provider = (configuration["Payment:Provider"] ?? "mock").Trim().ToLowerInvariant();
-        if (provider is not ("mock" or "real")) errors.Add("Payment:Provider must be mock or real.");
-        if (production && provider != "real") errors.Add("Payment:Provider must be real outside Development/Testing.");
+        if (provider is not ("mock" or "real" or "onsite")) errors.Add("Payment:Provider must be mock, real or onsite.");
+        if (production && provider == "mock") errors.Add("Payment:Provider must be real or onsite outside Development/Testing.");
         if (provider == "real")
         {
             foreach (var path in new[] { "Payment:Momo:AppId", "Payment:Momo:SecretKey", "Payment:Vnpay:MerchantCode", "Payment:Vnpay:SecretKey", "Payment:Zalopay:AppId", "Payment:Zalopay:ApiKey", "Payment:Zalopay:ApiSecret" })

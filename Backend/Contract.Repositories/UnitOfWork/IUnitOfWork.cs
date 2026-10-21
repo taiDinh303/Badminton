@@ -9,5 +9,7 @@ namespace Contract.Repositories.UnitOfWork
         Task RunInTransactionAsync(Func<Task> action, CancellationToken ct = default);
 
         Task<int> ExecuteSqlRawAsync(string sql, params object[] sqlParameters);
+
+        Task LockCourtDateAsync(int courtId, DateOnly date, CancellationToken ct = default);
     }
 }

@@ -105,8 +105,8 @@ namespace Services
             if (!verified.Success)
             {
                 await Uow.ExecuteSqlRawAsync(
-                    "UPDATE Payments SET Status = 'Failed' " +
-                    "WHERE GatewayRef = @p0 AND Status = 'Pending'",
+                    "UPDATE \"Payments\" SET \"Status\" = 'Failed' " +
+                    "WHERE \"GatewayRef\" = @p0 AND \"Status\" = 'Pending'",
                     raw.GatewayRef);
                 await SaveAsync();
                 return WebhookResult.Reject("gateway bao loi, don vao tung pending/failed.");
@@ -121,9 +121,9 @@ namespace Services
                 string rawBody = Trunc(raw.RawResponse) ?? string.Empty;
 
                 int claimed = await Uow.ExecuteSqlRawAsync(
-                    "UPDATE Payments SET Status = 'Success', PaidAt = @p0, " +
-                    "  RawResponse = @p1 " +
-                    "WHERE GatewayRef = @p2 AND Status IN ('Pending', 'Failed')",
+                    "UPDATE \"Payments\" SET \"Status\" = 'Success', \"PaidAt\" = @p0, " +
+                    "  \"RawResponse\" = @p1 " +
+                    "WHERE \"GatewayRef\" = @p2 AND \"Status\" IN ('Pending', 'Failed')",
                     DateTime.UtcNow, rawBody, refNo);
                 if (claimed == 0) return; // lost a same-instant race → skip
 
@@ -137,9 +137,9 @@ namespace Services
                 bookingId = booking.Id;
 
                 confirmed = await Uow.ExecuteSqlRawAsync(
-                    "UPDATE Bookings SET Status = 'Confirmed', QrToken = @p0, " +
-                    "  UpdatedAt = @p1 " +
-                    "WHERE Id = @p2 AND Status = 'Pending'",
+                    "UPDATE \"Bookings\" SET \"Status\" = 'Confirmed', \"QrToken\" = @p0, " +
+                    "  \"UpdatedAt\" = @p1 " +
+                    "WHERE \"Id\" = @p2 AND \"Status\" = 'Pending'",
                     GenerateQrToken(), DateTime.UtcNow, bookingId);
 
                 await SaveAsync();
@@ -181,9 +181,9 @@ namespace Services
             await Uow.RunInTransactionAsync(async () =>
             {
                 confirmed = await Uow.ExecuteSqlRawAsync(
-                    "UPDATE Bookings SET Status = 'Confirmed', QrToken = @p0, " +
-                    "  UpdatedAt = @p1 " +
-                    "WHERE Id = @p2 AND Status = 'Pending'",
+                    "UPDATE \"Bookings\" SET \"Status\" = 'Confirmed', \"QrToken\" = @p0, " +
+                    "  \"UpdatedAt\" = @p1 " +
+                    "WHERE \"Id\" = @p2 AND \"Status\" = 'Pending'",
                     GenerateQrToken(), DateTime.UtcNow, bookingId);
                 if (confirmed == 0)
                     throw new ConflictException(
@@ -218,7 +218,13 @@ namespace Services
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int,
             System.Threading.SemaphoreSlim> _refundLocks = new();
 
-        public async Task<PaymentView> RefundAsync(int bookingId, int actorId, string? reason = null)
+        public Task<PaymentView> RefundAsync(int bookingId, int actorId, string? reason = null)
+            => RefundCoreAsync(bookingId, actorId, reason, false);
+
+        public Task<PaymentView> RefundForMaintenanceAsync(int bookingId, int actorId, string? reason = null)
+            => RefundCoreAsync(bookingId, actorId, reason, true);
+
+        private async Task<PaymentView> RefundCoreAsync(int bookingId, int actorId, string? reason, bool maintenance)
         {
             var refundLock = GetRefundLock(bookingId);
             await refundLock.WaitAsync();
@@ -248,7 +254,7 @@ namespace Services
                     throw new ConflictException("Khung gio cua don bi mat, khong the tinh ty le hoan tien.");
                 // Refund tiers are computed in the business wall clock (Asia/Ho_Chi_Minh).
                 var slotStart = HanoiTime.SlotStart(booking.Date, slot.StartTime);
-                var (ratio, label) = RefundPolicy.Tier(HanoiTime.HanoiNow(), slotStart);
+                var (ratio, label) = maintenance ? (1.0, "Hoàn toàn phần do sân bảo trì/đóng") : RefundPolicy.Tier(HanoiTime.HanoiNow(), slotStart);
                 var refundAmount = (int)(booking.PayableAmount * ratio);
 
                 var original = (await Repo.GetByConditionAsync(
@@ -257,9 +263,9 @@ namespace Services
                 var method = original?.Method ?? PaymentMethod.Cash;
 
                 int claimed = await Uow.ExecuteSqlRawAsync(
-                    "UPDATE Bookings SET Status = 'Refunded', CancelReason = @p0, " +
-                    "  UpdatedAt = @p1 " +
-                    "WHERE Id = @p2 AND Status IN ('Confirmed','Completed')",
+                    "UPDATE \"Bookings\" SET \"Status\" = 'Refunded', \"CancelReason\" = @p0, " +
+                    "  \"UpdatedAt\" = @p1 " +
+                    "WHERE \"Id\" = @p2 AND \"Status\" IN ('Confirmed','Completed')",
                     label, DateTime.UtcNow, bookingId);
                 if (claimed == 0)
                 {
@@ -279,9 +285,9 @@ namespace Services
                 if (!gatewayResult.Ok)
                 {
                     await Uow.ExecuteSqlRawAsync(
-                        "UPDATE Bookings SET Status = 'Confirmed', " +
-                        "  CancelReason = @p0, UpdatedAt = @p1 " +
-                        "WHERE Id = @p2 AND Status = 'Refunded'",
+                        "UPDATE \"Bookings\" SET \"Status\" = 'Confirmed', " +
+                        "  \"CancelReason\" = @p0, \"UpdatedAt\" = @p1 " +
+                        "WHERE \"Id\" = @p2 AND \"Status\" = 'Refunded'",
                         "refund gateway failed, reverted", DateTime.UtcNow, bookingId);
                     await SaveAsync();
                     throw new ConflictException(
@@ -359,9 +365,9 @@ namespace Services
                 var method = original?.Method ?? PaymentMethod.Cash;
 
                 int claimed = await Uow.ExecuteSqlRawAsync(
-                    "UPDATE Bookings SET Status = 'Cancelled', CancelReason = @p0, " +
-                    "  CancelledAt = @p1, UpdatedAt = @p2 " +
-                    "WHERE Id = @p3 AND Status IN ('Confirmed','Completed')",
+                    "UPDATE \"Bookings\" SET \"Status\" = 'Cancelled', \"CancelReason\" = @p0, " +
+                    "  \"CancelledAt\" = @p1, \"UpdatedAt\" = @p2 " +
+                    "WHERE \"Id\" = @p3 AND \"Status\" IN ('Confirmed','Completed')",
                     "Huy da thanh toan: " + label, DateTime.UtcNow, DateTime.UtcNow, bookingId);
                 if (claimed == 0)
                 {
@@ -383,9 +389,9 @@ namespace Services
                     if (!gatewayResult.Ok)
                     {
                         await Uow.ExecuteSqlRawAsync(
-                            "UPDATE Bookings SET Status = 'Confirmed', " +
-                            "  CancelReason = @p0, UpdatedAt = @p1 " +
-                            "WHERE Id = @p2 AND Status = 'Cancelled'",
+                            "UPDATE \"Bookings\" SET \"Status\" = 'Confirmed', " +
+                            "  \"CancelReason\" = @p0, \"UpdatedAt\" = @p1 " +
+                            "WHERE \"Id\" = @p2 AND \"Status\" = 'Cancelled'",
                             "cancel-refund gateway failed, reverted", DateTime.UtcNow, bookingId);
                         await SaveAsync();
                         throw new ConflictException(

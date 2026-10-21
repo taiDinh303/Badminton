@@ -687,7 +687,7 @@ export function SlotCell({
   onClick,
   disabled,
 }: {
-  state: "free" | "booked" | "maint";
+  state: "free" | "booked" | "maint" | "closed";
   label: string;
   sub?: string;
   peak?: boolean;
@@ -699,15 +699,16 @@ export function SlotCell({
     free: "bg-slot-free-bg text-slot-free-fg",
     booked: "bg-slot-booked-bg text-slot-booked-fg",
     maint: "bg-slot-maint-bg text-slot-maint-fg",
+    closed: "bg-slot-booked-bg text-slot-booked-fg",
   };
   const icon =
     state === "free" ? <Check className="h-3 w-3" /> : state === "booked" ? <Lock className="h-3 w-3" /> : <Wrench className="h-3 w-3" />;
   const text =
-    state === "free" ? "Trống" : state === "booked" ? "Đã đặt" : "Bảo trì";
+    state === "free" ? "Trống" : state === "booked" ? "Đã đặt" : state === "closed" ? "Đóng" : "Bảo trì";
   return (
     <button
       type="button"
-      disabled={disabled || state !== "free"}
+      disabled={disabled}
       onClick={onClick}
       aria-pressed={selected}
       aria-label={`${label} ${text}${peak ? " giờ cao điểm" : ""}`}

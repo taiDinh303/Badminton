@@ -168,7 +168,7 @@ export function VirtualizedTable<T>({
                       <div
                         key={c.key}
                         className={clsx(
-                          "flex items-center px-3",
+                          "flex min-w-0 items-center overflow-hidden px-3",
                           c.align === "right" && "justify-end",
                           c.align === "center" && "justify-center",
                         )}

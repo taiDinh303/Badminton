@@ -42,20 +42,25 @@ const ENTITY_LABEL: Record<string, string> = {
 
 /**
  * Decode an audit entityId. Most are plain ids, but the maintenance service
- * logs a composite "courtId@yyyy-MM-dd" (docs 03 §8) → render it readably.
+ * logs a composite "courtId@yyyy-MM-dd" (docs 03 §8). We split it into an id
+ * ("Sân #2") plus an optional detail line (the court's date) so the cell can
+ * render a bounded two-line block instead of one long line that wraps to
+ * three lines and bleeds into the row below ("đối tượng hiện thêm" bug).
  */
-function renderEntityId(entityType: string, entityId: string | null): ReactNode {
-  if (!entityId) return null;
+function renderEntityId(
+  entityType: string,
+  entityId: string | null,
+): { id: ReactNode; detail?: ReactNode } {
+  if (!entityId) return { id: null };
   if (entityType === "CourtDateStatus" && entityId.includes("@")) {
     const [courtId, day] = entityId.split("@");
-    return (
-      <>
-        Sân #{courtId} · <span className="tnum">{formatDay(day)}</span>
-      </>
-    );
+    return {
+      id: <>Sân #{courtId}</>,
+      detail: <span className="tnum">{formatDay(day)}</span>,
+    };
   }
-  if (/^\d+$/.test(entityId)) return <span className="tnum">#{entityId}</span>;
-  return entityId;
+  if (/^\d+$/.test(entityId)) return { id: <span className="tnum">#{entityId}</span> };
+  return { id: entityId };
 }
 
 function tsToVi(iso: string): string {
@@ -110,15 +115,27 @@ export default function AuditPage() {
       key: "entity",
       label: "Đối tượng",
       width: 200,
-      render: (a) => (
-        <span className="inline-flex items-center gap-1.5 text-sm">
-          <ScrollText className="h-3.5 w-3.5 shrink-0 text-muted" />
-          <span className="font-medium">{ENTITY_LABEL[a.entityType] ?? a.entityType}</span>
-          {renderEntityId(a.entityType, a.entityId)}
-        </span>
-      ),
+      render: (a) => {
+        const { id, detail } = renderEntityId(a.entityType, a.entityId);
+        return (
+          <div className="flex min-w-0 items-center gap-1.5 text-sm">
+            <ScrollText className="h-3.5 w-3.5 shrink-0 text-muted" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">
+                {ENTITY_LABEL[a.entityType] ?? a.entityType}
+              </p>
+              {(id || detail) && (
+                <p className="truncate text-xs text-muted tnum">
+                  {id}
+                  {detail ? <> · {detail}</> : null}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      },
     },
-    { key: "reason", label: "Lý do", width: 200, render: (a) => <span className="text-xs text-muted">{a.reason ?? "—"}</span> },
+    { key: "reason", label: "Lý do", width: 200, render: (a) => <span className="truncate text-xs text-muted">{a.reason ?? "—"}</span> },
   ];
 
   return (

@@ -27,6 +27,9 @@ namespace Badminton.API.Controllers.Admin
             }, "Đã gán membership thành công.");
         }
 
+        [HttpGet("customers")]
+        public async Task<IActionResult> Customers() => Resp(await _svc.GetMembersAsync(true));
+
         [HttpGet("members")]
         public async Task<IActionResult> Members()
             => Resp(await _svc.GetMembersAsync());
