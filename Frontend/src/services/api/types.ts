@@ -63,6 +63,7 @@ export interface PriceBreakdown {
 
 export interface Booking {
   id: number;
+  userId?: number;
   bookingCode: string;
   courtId: number;
   courtName: string;
@@ -81,7 +82,7 @@ export interface Booking {
   userName: string | null;
   price: PriceBreakdown;
   cancelReason: string | null;
-  /** FEAT check-in: server-generated 64-hex token shown as the QR (docs 03 §3). */
+  /** FEAT check-in: server-generated 64-hex token shown as the QR (docs 03 Â§3). */
   qrToken?: string | null;
   checkedInAt?: string | null;
   cancelledAt?: string | null;
@@ -164,13 +165,14 @@ export interface ReportSummary {
   usersToday: number;
   activeCourts: number;
   activeBranches: number;
-  /** FEAT 4 — paid members currently active (Silver + Gold, not lapsed). */
+  /** FEAT 4 â€” paid members currently active (Silver + Gold, not lapsed). */
   activeMembers?: number;
-  /** FEAT 2 — count of customers currently waiting on a full slot. */
+  /** FEAT 2 â€” count of customers currently waiting on a full slot. */
   waitingListCount?: number;
+  // NOTE: RevenueByDay / OccupancyByDay live at the bottom of this file.
 }
 
-// ── FEAT 4: Membership V2 ─────────────────────────────────────────────
+// â”€â”€ FEAT 4: Membership V2 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export type MembershipTier = "None" | "Silver" | "Gold";
 
 export interface MembershipView {
@@ -183,7 +185,7 @@ export interface MembershipView {
   multiplier: number;
 }
 
-// ── FEAT 2: Waitlist ───────────────────────────────────────────────────
+// â”€â”€ FEAT 2: Waitlist â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface WaitlistEntryView {
   id: number;
   courtId: number;
@@ -196,7 +198,7 @@ export interface WaitlistEntryView {
   promotedBookingId: number | null;
 }
 
-// ── FEAT 7: Groups (docs 03 §7) ───────────────────────────────────────
+// â”€â”€ FEAT 7: Groups (docs 03 Â§7) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface GroupView {
   id: number;
   name: string;
@@ -215,7 +217,7 @@ export interface GroupMemberView {
   joinedAt: string;
 }
 
-// ── FEAT 8: Reviews (docs 03 §7) ──────────────────────────────────────
+// â”€â”€ FEAT 8: Reviews (docs 03 Â§7) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface ReviewView {
   id: number;
   bookingId: number;
@@ -229,7 +231,7 @@ export interface ReviewView {
   flaggedRefunded: boolean;
 }
 
-// ── FEAT 9: Staff check-in (docs 03 §3) ───────────────────────────────
+// â”€â”€ FEAT 9: Staff check-in (docs 03 Â§3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface SlotCheckinView {
   id: number;
   bookingCode: string;
@@ -237,6 +239,39 @@ export interface SlotCheckinView {
   checkedInAt: string | null;
 }
 
+// â”€â”€ Account summary: loyalty points + voucher usage (docs 07 Â§4) â”€â”€â”€â”€â”€â”€
+export interface PointSummary {
+  balance: number;
+  redeemableVnd: number;
+  vndPer1000Points: number;
+  pointsPerVndUnit: number;
+}
+
+export interface MyVoucher {
+  id: number;
+  code: string;
+  type: string;
+  value: number;
+  maxValue: number | null;
+  minSpend: number;
+  alreadyUsed: boolean;
+  validFrom: string | null;
+  validUntil: string | null;
+  isActive: boolean;
+}
+
+export interface AccountSummary {
+  pointsBalance: number;
+  pointsRedeemableVnd: number;
+  vndPer1000Points: number;
+  pointsPerVndUnit: number;
+  voucherUsed: boolean;
+  usedVoucher: MyVoucher | null;
+  nextVoucher: MyVoucher | null;
+  availableVouchers: MyVoucher[];
+}
+
+// â”€â”€ Admin report views (docs 05) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface RevenueByDay {
   date: string;
   bookings: number;
@@ -255,3 +290,5 @@ export interface OccupancyByDay {
   peakTotal: number;
   peakFillRatePct: number;
 }
+
+export interface ProfileView { id: number; fullName: string; phoneNumber: string; email: string | null; avatarUrl: string | null; tier: MembershipTier; membershipExpiresAt: string | null; multiplier: number; }

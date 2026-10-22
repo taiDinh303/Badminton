@@ -37,15 +37,23 @@ namespace Badminton.Tests
         public async Task ConcurrentReservations_NeverOverReserve()
         {
             var voucher = await _h.AddVoucherAsync("RACE", totalQty: 3, maxPerUser: 100, value: 5_000);
+            var extraUsers = await _h.RunScopeAsync(async sp =>
+            {
+                var db = sp.GetRequiredService<Repositories.Context.BadmintonBookingDbContext>();
+                var users = Enumerable.Range(4, 3).Select(i => new Contract.Repositories.Entity.User {
+                    FullName = $"Voucher racer {i}", PhoneNumber = $"090000001{i}", PasswordHash = "unused", IsVerified = true
+                }).ToList();
+                db.Users.AddRange(users); await db.SaveChangesAsync(); return users.Select(u => u.Id).ToArray();
+            });
 
             var combos = new[]
             {
                 (_h.Court1, _h.SlotMorning, _h.Alice),
                 (_h.Court1, _h.SlotNoon,   _h.Bob),
                 (_h.Court1, _h.SlotPeak,   _h.Carol),
-                (_h.Court2, _h.SlotMorning, _h.Alice),
-                (_h.Court2, _h.SlotNoon,   _h.Bob),
-                (_h.Court2, _h.SlotPeak,   _h.Carol),
+                (_h.Court2, _h.SlotMorning, extraUsers[0]),
+                (_h.Court2, _h.SlotNoon,   extraUsers[1]),
+                (_h.Court2, _h.SlotPeak,   extraUsers[2]),
             };
 
             var results = await Task.WhenAll(combos.Select(async c =>
@@ -111,7 +119,7 @@ namespace Badminton.Tests
             var (second, e2) = await TryVoucherBook(_h.Alice, _h.Court1, _h.SlotNoon, "PERUSER");
             Assert.Null(second);
             Assert.IsType<ConflictException>(e2);
-            Assert.Contains("MaxPerUser", e2!.Message);
+            Assert.Contains("Bạn đã sử dụng mã voucher này", e2!.Message);
 
             // A different user is unaffected by Alice's per-user cap.
             var (third, e3) = await TryVoucherBook(_h.Bob, _h.Court1, _h.SlotNoon, "PERUSER");

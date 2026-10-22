@@ -1,5 +1,5 @@
 import { request } from "../http";
-import type { Branch, Court, TimeSlot, CourtAvailability, Booking, Paged, LoginResponse, Voucher, PaymentView, Staff, AuditEntry, ReportSummary, MembershipTier, MembershipView, WaitlistEntryView, GroupView, GroupMemberView, ReviewView, SlotCheckinView, RevenueByDay, OccupancyByDay } from "./types";
+import type { Branch, Court, TimeSlot, CourtAvailability, Booking, Paged, LoginResponse, Voucher, PaymentView, Staff, AuditEntry, ReportSummary, MembershipTier, MembershipView, WaitlistEntryView, GroupView, GroupMemberView, ReviewView, SlotCheckinView, RevenueByDay, OccupancyByDay, PointSummary, MyVoucher, AccountSummary, ProfileView } from "./types";
 export type * from "./types";
 export { ApiError, TOKEN_KEY } from "../http";
 
@@ -124,6 +124,7 @@ export const api = {
       request<Booking>("POST", `/bookings/${id}/no-show`, undefined, { note }),
   },
   payments: {
+    methods: () => request<string[]>("GET", "/payments/methods"),
     init: (b: { bookingId: number; method: string; returnUrl?: string }) =>
       request<{ method: string; gatewayUrl: string | null; gatewayRef: string | null; bookingCode: string }>(
         "POST",
@@ -211,17 +212,20 @@ export const api = {
         }),
     },
     maintenance: {
+      schedule: (courtId: number, date: string) => request<{ status: "Open" | "Maintenance" | "Closed"; startTime: string | null; endTime: string | null; note: string | null }>("GET", `/admin/courts/${courtId}/maintenance/${date}/schedule`),
       set: (
         courtId: number,
         date: string,
         status: "Open" | "Maintenance" | "Closed",
         note?: string,
+        startTime?: string,
+        endTime?: string,
       ) =>
         request<unknown>(
           "POST",
           `/admin/courts/${courtId}/maintenance`,
           undefined,
-          { date, status, note },
+          { date, status, note, startTime, endTime },
         ),
       get: (courtId: number, date: string) =>
         request<unknown>(
@@ -254,6 +258,7 @@ export const api = {
     },
     // ── FEAT 4: Membership V2 (admin assigns paid tiers) ───────────
     membership: {
+      customers: () => request<MembershipView[]>("GET", "/admin/membership/customers"),
       assign: (userId: number, tier: MembershipTier) =>
         request<unknown>("POST", "/admin/membership/assign", { userId, tier }),
       members: () =>
@@ -295,19 +300,29 @@ export const api = {
   // ── FEAT 9: Staff check-in (docs 03 §3) ───────────────────────────
   checkin: {
     byCode: (code: string) =>
-      request<{ BookingId: number; Message: string }>(
+      request<{ bookingId: number; message: string }>(
         "POST",
         `/checkin/code/${encodeURIComponent(code)}`,
       ),
     byQr: (token: string) =>
-      request<{ BookingId: number; Message: string }>(
+      request<{ bookingId: number; message: string }>(
         "POST",
-        `/checkin/qr/${encodeURIComponent(token)}`,
+        "/checkin/token",
+        { token },
       ),
     slot: (courtId: number, date: string, slotLabel: string) =>
       request<SlotCheckinView[]>(
         "GET",
         `/checkin/slot/${courtId}/${date}/${encodeURIComponent(slotLabel)}`,
       ),
+  },
+
+  // ── Account summary: points + voucher usage (docs 07 §4) ──────────
+  account: {
+    profile: () => request<ProfileView>("GET", "/account/profile"),
+    update: (b: { fullName: string; email: string | null; avatarUrl: string | null }) => request<ProfileView>("PATCH", "/account/profile", b),
+    points: () => request<PointSummary>("GET", "/account/points"),
+    vouchers: () => request<MyVoucher[]>("GET", "/account/vouchers"),
+    summary: () => request<AccountSummary>("GET", "/account/summary"),
   },
 };

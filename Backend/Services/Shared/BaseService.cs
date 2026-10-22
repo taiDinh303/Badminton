@@ -41,6 +41,8 @@ namespace Services
             await ResolveStaffBranchAsync(branch);
         }
 
+        protected Task LockCourtDateAsync(int courtId, DateOnly date) => Uow.LockCourtDateAsync(courtId, date);
+
         protected Task<int> SaveAsync() => Uow.SaveChangesAsync();
     }
 }

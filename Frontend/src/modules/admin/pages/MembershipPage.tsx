@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Crown, Medal, RefreshCw } from "lucide-react";
 import {
-  StatusBadge,
   Busy,
   Callout,
   Button,
@@ -25,11 +24,14 @@ const TIER_META: Record<string, { label: string; mult: string; tone: string }> =
  */
 export default function MembershipPage() {
   const qc = useQueryClient();
+  const [search, setSearch] = useState("");
+  const customersQuery = useQuery({ queryKey: ["membership", "customers"], queryFn: api.admin.membership.customers });
+  const customers = customersQuery.data ?? [];
   const [assignOpen, setAssignOpen] = useState(false);
   const [targetUser, setTargetUser] = useState("");
   const [tier, setTier] = useState<MembershipTier>("Silver");
 
-  const { data: members = [], isFetching, refetch } = useQuery({
+  const { data: members = [], isLoading, refetch, error: loadError } = useQuery({
     queryKey: ["membership", "members"],
     queryFn: api.admin.membership.members,
   });
@@ -37,7 +39,8 @@ export default function MembershipPage() {
   const assign = useMutation({
     mutationFn: () => api.admin.membership.assign(Number(targetUser), tier),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["membership", "members"] });
+      qc.invalidateQueries({ queryKey: ["membership"] });
+      qc.invalidateQueries({ queryKey: ["account", "profile"] });
       setAssignOpen(false);
       setTargetUser("");
     },
@@ -84,15 +87,16 @@ export default function MembershipPage() {
       label: "Trạng thái",
       width: 120,
       render: (m) =>
-        m.lapsed ? <StatusBadge status="Cancelled" size="sm" /> : m.tier === "None" ? <StatusBadge status="Pending" size="sm" /> : <StatusBadge status="Confirmed" size="sm" />,
+        <span className={m.lapsed ? "text-state-danger" : "text-primary"}>{m.lapsed ? "Đã hết hạn" : m.tier === "None" ? "Khách thường" : "Còn hiệu lực"}</span>,
     },
+    { key: "actions", label: "", width: 120, render: (m) => <Button size="xs" variant="ghost" onClick={() => { setTargetUser(String(m.id)); setTier(m.tier); setAssignOpen(true); assign.reset(); }}>Đổi / gia hạn</Button> },
   ];
 
   return (
     <div>
       <Toolbar
         title="Membership"
-        subtitle="Hành khách trả phí: Silver 1.5x · Gold 2.0x điểm"
+        subtitle="Quản lý hạng thành viên, gia hạn và hệ số tích điểm"
         actions={
           <>
             <Button variant="ghost" size="sm" onClick={() => setAssignOpen((v) => !v)}>
@@ -105,22 +109,19 @@ export default function MembershipPage() {
         }
       />
 
+      {(loadError || customersQuery.error) && <Callout tone="error">{(loadError ?? customersQuery.error)?.message}</Callout>}
       {assignOpen && (
         <Card className="mt-4 p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-muted" htmlFor="assign-user">
-                ID khách
+                Khách hàng
               </label>
-              <input
-                id="assign-user"
-                type="number"
-                min={1}
-                value={targetUser}
-                onChange={(e) => setTargetUser(e.target.value)}
-                placeholder="VD: 3"
-                className="h-9 w-28 rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-primary"
-              />
+              <input aria-label="Tìm khách" placeholder="Tên hoặc số điện thoại" value={search} onChange={(e) => setSearch(e.target.value)} className="mb-2 h-9 w-full rounded-lg border border-border px-3 text-sm" />
+              <select id="assign-user" value={targetUser} onChange={(e) => setTargetUser(e.target.value)} className="h-9 rounded-lg border border-border bg-card px-3 text-sm">
+                <option value="">Chọn khách hàng…</option>
+                {customers.filter((c) => c.id === Number(targetUser) || `${c.fullName} ${c.phoneNumber}`.toLowerCase().includes(search.toLowerCase())).map((c) => <option key={c.id} value={c.id}>{c.fullName} · {c.phoneNumber}</option>)}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-muted" htmlFor="assign-tier">
@@ -146,7 +147,7 @@ export default function MembershipPage() {
       )}
 
       <div className="mt-4">
-        {isFetching && !members.length ? (
+        {isLoading && !members.length ? (
           <Busy label="Đang tải thành viên…" />
         ) : (
           <VirtualizedTable
@@ -154,7 +155,7 @@ export default function MembershipPage() {
             columns={columns}
             rowKey={(m) => m.id}
             maxHeight={520}
-            emptyLabel="Chưa có thành viên trả phí. Dùng “Gán hạng” để thêm."
+            emptyLabel="Chưa có thành viên. Dùng “Gán hạng” để thêm."
           />
         )}
       </div>

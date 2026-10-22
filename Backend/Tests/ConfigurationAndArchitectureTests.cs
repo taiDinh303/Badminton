@@ -38,7 +38,7 @@ public class ConfigurationAndArchitectureTests
     public void Production_configuration_can_be_checked_without_a_database_or_external_service() => Assert.Empty(Check(Valid()));
 
     [Theory]
-    [InlineData("Database:Provider", "PostgreSQL")]
+    [InlineData("Database:Provider", "Unknown")]
     [InlineData("JwtSettings:Key", "short")]
     [InlineData("JwtSettings:ExpireMinutes", "0")]
     [InlineData("JwtSettings:Audience", "")]
@@ -83,6 +83,44 @@ public class ConfigurationAndArchitectureTests
         values["Payment:Provider"] = "mock";
         values["DatabaseInitialization:MigrateOnStartup"] = "true";
         Assert.Empty(Check(values, "Development"));
+    }
+
+    [Fact]
+    public void PostgreSql_production_accepts_verified_tls_and_onsite_without_online_secrets()
+    {
+        var values = Valid();
+        values["Database:Provider"] = "PostgreSQL";
+        values["ConnectionStrings:BadmintonBooking"] = "Host=db.example.invalid;Database=postgres;Username=postgres;Password=synthetic;SSL Mode=VerifyFull";
+        values["Payment:Provider"] = "onsite";
+        foreach (var key in values.Keys.Where(k => k.StartsWith("Payment:") && k != "Payment:Provider").ToArray()) values.Remove(key);
+        Assert.Empty(Check(values));
+    }
+
+    [Theory]
+    [InlineData("SSL Mode=Disable")]
+    [InlineData("SSL Mode=Require")]
+    [InlineData("SSL Mode=VerifyFull;Port=6543")]
+    public void PostgreSql_production_rejects_unverified_tls_and_transaction_pooling(string setting)
+    {
+        var values = Valid();
+        values["Database:Provider"] = "PostgreSQL";
+        values["ConnectionStrings:BadmintonBooking"] = "Host=db.example.invalid;Database=postgres;Username=postgres;Password=synthetic;" + setting;
+        Assert.NotEmpty(Check(values));
+    }
+
+    [Fact]
+    public void Onsite_mode_never_registers_mock_or_online_gateways()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Payment:Provider"] = "onsite" }).Build();
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Services.DI.ServiceRegistration.AddBookingServices(services, configuration);
+        using var provider = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(services);
+        using var scope = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.CreateScope(provider);
+        var factory = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<Badminton.Core.Domain.IPaymentGatewayFactory>(scope.ServiceProvider);
+        Assert.IsType<OnSiteGateway>(factory.GetGateway(Badminton.Core.Enums.PaymentMethod.Cash));
+        Assert.IsType<OnSiteGateway>(factory.GetGateway(Badminton.Core.Enums.PaymentMethod.QR));
+        Assert.Throws<Badminton.Core.Base.BadRequestException>(() => factory.GetGateway(Badminton.Core.Enums.PaymentMethod.MoMo));
+        Assert.Throws<Badminton.Core.Base.BadRequestException>(() => factory.GetGatewayByProvider("VnPay"));
     }
 
     [Fact]

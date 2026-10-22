@@ -34,7 +34,7 @@ export default function GroupsPage() {
   const [createdGroup, setCreatedGroup] = useState<GroupView | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const { data: rawGroups = [], isFetching, isError } = useQuery({
+  const { data: rawGroups = [], isLoading, isError } = useQuery({
     queryKey: ["groups", "mine"],
     queryFn: api.groups.mine,
   });
@@ -92,7 +92,7 @@ export default function GroupsPage() {
     },
   });
 
-  if (isFetching && !groups.length)
+  if (isLoading && !groups.length)
     return <div className="p-4"><Busy label="Đang tải nhóm…" /></div>;
 
   return (

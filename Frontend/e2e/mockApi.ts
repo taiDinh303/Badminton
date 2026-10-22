@@ -52,7 +52,7 @@ export async function mockApi(
   await page.route(apiRoute(), async (route: Route) => {
     const req = route.request();
     const url = new URL(req.url());
-    const path = url.pathname + (url.search ? "?" + url.search : "");
+    const path = url.pathname + url.search;
 
     for (const h of handlers) {
       if (h.method && h.method !== req.method()) continue;

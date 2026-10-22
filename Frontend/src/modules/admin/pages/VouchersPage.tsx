@@ -42,7 +42,7 @@ export default function VouchersPage() {
 
   // Show ALL vouchers (active + deactivated) so "Vô hiệu" flips the row to a
   // locked state instead of making it vanish (it was hidden by activeOnly).
-  const { data: vouchers = [], isFetching, refetch } = useQuery({
+  const { data: vouchers = [], isLoading, refetch } = useQuery({
     queryKey: ["vouchers"],
     queryFn: () => api.vouchers.list(false),
   });
@@ -127,7 +127,7 @@ export default function VouchersPage() {
       label: "Trạng thái",
       width: 120,
       render: (v) => (
-        <StatusBadge status={v.isActive ? "Open" : "Locked"} size="sm" />
+        isExpired(v) ? <span className="text-xs font-semibold text-state-danger">Hết hạn sử dụng</span> : <StatusBadge status={v.isActive ? "Open" : "Locked"} size="sm" />
       ),
     },
     {
@@ -137,7 +137,7 @@ export default function VouchersPage() {
       align: "right",
       render: (v) => (
         canManage ? (
-          v.isActive ? (
+          v.isActive && !isExpired(v) ? (
             <Button
               variant="ghost"
               size="xs"
@@ -174,7 +174,7 @@ export default function VouchersPage() {
       {err && <Callout tone="error" className="mt-3">{err}</Callout>}
 
       <div className="mt-4">
-        {isFetching && vouchers.length === 0 ? (
+        {isLoading && vouchers.length === 0 ? (
           <Busy label="Đang tải voucher…" />
         ) : (
           <VirtualizedTable
@@ -259,4 +259,8 @@ export default function VouchersPage() {
       )}
     </div>
   );
+}
+
+function isExpired(v: Voucher) {
+  return !!v.validUntil && v.validUntil.slice(0, 10) < new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }

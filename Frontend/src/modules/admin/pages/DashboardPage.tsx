@@ -22,7 +22,7 @@ import { isAdmin, useAuth } from "../../../store/auth";
  */
 export default function DashboardPage() {
   const isAdminUser = isAdmin(useAuth((s) => s.user));
-  const { data: s, isFetching, isError, refetch } = useQuery({
+  const { data: s, isLoading, isError, refetch } = useQuery({
     queryKey: ["report", "summary"],
     queryFn: () => api.admin.report.summary(),
   });
@@ -45,7 +45,7 @@ export default function DashboardPage() {
     enabled: isAdminUser,
   });
 
-  if (isFetching && !s)
+  if (isLoading && !s)
     return <div className="p-4"><Busy label="Đang tải tổng quan…" /></div>;
 
   const revenueData = (revenue ?? [])

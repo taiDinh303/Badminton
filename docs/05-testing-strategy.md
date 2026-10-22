@@ -26,7 +26,8 @@ dotnet tool restore
 dotnet build Backend/Badminton.slnx -c Release -warnaserror
 $env:BADMINTON_TEST_SQLSERVER = '.'
 dotnet test Backend/Tests/Badminton.Tests.csproj -c Release --no-build
-dotnet ef migrations has-pending-model-changes --project Backend/Repositories --startup-project Backend/API --configuration Release --no-build
+dotnet ef migrations has-pending-model-changes --context BadmintonBookingDbContext --project Backend/Repositories --startup-project Backend/API --configuration Release --no-build
+dotnet ef migrations has-pending-model-changes --context PostgresBookingDbContext --project Backend/Repositories --startup-project Backend/API --configuration Release --no-build
 ```
 
 Chỉ chọn instance local/test có quyền tạo/xóa BadmintonTest_*. Máy kiểm dùng default instance '.', CI dùng LocalDB. EF drift check không áp migration hoặc chứng minh dữ liệu đã chuyển.

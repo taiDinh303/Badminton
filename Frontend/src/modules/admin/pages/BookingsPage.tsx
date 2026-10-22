@@ -50,7 +50,7 @@ export default function BookingsPage() {
     queryFn: api.branches.list,
   });
 
-  const { data, isFetching, refetch } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ["admin-bookings", status, branchId, page],
     queryFn: () =>
       api.booking.all(
@@ -149,7 +149,7 @@ export default function BookingsPage() {
       </div>
 
       <div className="mt-4">
-        {isFetching && !data ? (
+        {isLoading && !data ? (
           <Busy label="Đang tải đơn…" />
         ) : items.length === 0 ? (
           <Callout tone="info">Không có đơn nào khớp bộ lọc.</Callout>

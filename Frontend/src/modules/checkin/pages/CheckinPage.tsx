@@ -1,5 +1,6 @@
+import TokenScanner from "../components/TokenScanner";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ScanLine,
@@ -31,6 +32,7 @@ import { isStaff, useAuth } from "../../../store/auth";
  */
 export default function CheckinPage() {
   const user = useAuth((s) => s.user);
+  const qc = useQueryClient();
 
   const [code, setCode] = useState("");
   const [token, setToken] = useState("");
@@ -43,7 +45,8 @@ export default function CheckinPage() {
   const byCode = useMutation({
     mutationFn: () => api.checkin.byCode(code.trim()),
     onSuccess: (r) => {
-      setDone(`Check-in đơn ${r.BookingId} thành công.`);
+      setDone(`Check-in đơn ${r.bookingId} thành công.`);
+      qc.invalidateQueries({ queryKey: ["checkin-slot"] });
       setCode("");
     },
   });
@@ -51,7 +54,8 @@ export default function CheckinPage() {
   const byQr = useMutation({
     mutationFn: () => api.checkin.byQr(token.trim()),
     onSuccess: (r) => {
-      setDone(`Check-in đơn ${r.BookingId} thành công.`);
+      setDone(`Check-in đơn ${r.bookingId} thành công.`);
+      qc.invalidateQueries({ queryKey: ["checkin-slot"] });
       setToken("");
     },
   });
@@ -111,6 +115,8 @@ export default function CheckinPage() {
           mã đặt. Nhân viên nhập mã → bấm check-in.
         </p>
 
+        <TokenScanner onToken={(value) => { setToken(value); setDone(null); byQr.reset(); }} />
+        <p className="mb-3 text-xs text-muted">Quét để điền token, kiểm tra rồi nhấn Check-in. Máy quét USB có thể nhập token và nhấn Enter.</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <Field
@@ -132,9 +138,10 @@ export default function CheckinPage() {
           </div>
           <div>
             <Field
-              label="QR token (quét / paste)"
+              label="Token check-in (quét / dán)"
+              onKeyDown={(e) => { if (e.key === "Enter" && token.trim() && !byQr.isPending) { setDone(null); byQr.mutate(); } }}
               value={token}
-              onChange={(e) => setToken(e.target.value)}
+              onChange={(e) => { setToken(e.target.value); setDone(null); byQr.reset(); }}
               placeholder="Dữ liệu QR của đơn"
             />
             <Button
@@ -145,7 +152,7 @@ export default function CheckinPage() {
               onClick={() => byQr.mutate()}
             >
               <QrCode className="h-4 w-4" />
-              {byQr.isPending ? "Đang check-in…" : "Check-in bằng QR"}
+              {byQr.isPending ? "Đang check-in…" : "Check-in bằng token"}
             </Button>
           </div>
         </div>
@@ -165,7 +172,7 @@ export default function CheckinPage() {
           )}
         </AnimatePresence>
 
-        {(byCode.isError || byQr.isError) && (
+        {!done && (byCode.isError || byQr.isError) && (
           <Callout tone="error" className="mt-4">
             {byCode.isError
               ? byCode.error instanceof Error
@@ -243,7 +250,7 @@ export default function CheckinPage() {
         </div>
 
         <div className="mt-4">
-          {slotRoster.isFetching ? (
+          {slotRoster.isError ? <Callout tone="error">{slotRoster.error.message}</Callout> : slotRoster.isLoading ? (
             <Busy label="Đang tải danh sách…" />
           ) : courtId !== "" && slotLabel ? (
             slots.length === 0 ? (

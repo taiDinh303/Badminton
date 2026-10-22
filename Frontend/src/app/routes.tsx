@@ -1,27 +1,28 @@
+import { pageLoaders } from "./pageLoaders";
 import { lazy, Suspense } from "react";
 import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router-dom";
 import Layout from "../components/Layout";
 import { Busy } from "../components/ui";
 import { useAuth } from "../store/auth";
 
-const Auth = lazy(() => import("../modules/auth/pages/AuthPage"));
-const Home = lazy(() => import("../modules/customer/pages/HomePage"));
-const Book = lazy(() => import("../modules/booking/pages/BookPage"));
-const Bookings = lazy(() => import("../modules/booking/pages/MyBookingsPage"));
-const Detail = lazy(() => import("../modules/booking/pages/BookingDetailPage"));
-const Account = lazy(() => import("../modules/account/pages/AccountPage"));
-const Waitlist = lazy(() => import("../modules/waitlist/pages/WaitlistPage"));
-const Groups = lazy(() => import("../modules/groups/pages/GroupsPage"));
-const Reviews = lazy(() => import("../modules/reviews/pages/ReviewsPage"));
-const Checkin = lazy(() => import("../modules/checkin/pages/CheckinPage"));
-const Dashboard = lazy(() => import("../modules/admin/pages/DashboardPage"));
-const AdminBookings = lazy(() => import("../modules/admin/pages/BookingsPage"));
-const Courts = lazy(() => import("../modules/admin/pages/CourtsPage"));
-const Vouchers = lazy(() => import("../modules/admin/pages/VouchersPage"));
-const Slots = lazy(() => import("../modules/admin/pages/SlotsPage"));
-const Staff = lazy(() => import("../modules/admin/pages/StaffPage"));
-const Audit = lazy(() => import("../modules/admin/pages/AuditPage"));
-const Membership = lazy(() => import("../modules/admin/pages/MembershipPage"));
+const Auth = lazy(pageLoaders.Auth);
+const Home = lazy(pageLoaders.Home);
+const Book = lazy(pageLoaders.Book);
+const Bookings = lazy(pageLoaders.Bookings);
+const Detail = lazy(pageLoaders.Detail);
+const Account = lazy(pageLoaders.Account);
+const Waitlist = lazy(pageLoaders.Waitlist);
+const Groups = lazy(pageLoaders.Groups);
+const Reviews = lazy(pageLoaders.Reviews);
+const Checkin = lazy(pageLoaders.Checkin);
+const Dashboard = lazy(pageLoaders.Dashboard);
+const AdminBookings = lazy(pageLoaders.AdminBookings);
+const Courts = lazy(pageLoaders.Courts);
+const Vouchers = lazy(pageLoaders.Vouchers);
+const Slots = lazy(pageLoaders.Slots);
+const Staff = lazy(pageLoaders.Staff);
+const Audit = lazy(pageLoaders.Audit);
+const Membership = lazy(pageLoaders.Membership);
 
 function Gate({ roles }: { roles?: string[] }) {
   const user = useAuth(state => state.user);

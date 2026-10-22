@@ -94,8 +94,8 @@ namespace Badminton.API.Jobs
                             {
                                 // Decrement UsedQty (guarded).
                                 await uow.ExecuteSqlRawAsync(
-                                    "UPDATE Vouchers SET UsedQty = UsedQty - 1 " +
-                                    "WHERE Id = @p0 AND UsedQty > 0", v.Id);
+                                    "UPDATE \"Vouchers\" SET \"UsedQty\" = \"UsedQty\" - 1 " +
+                                    "WHERE \"Id\" = @p0 AND \"UsedQty\" > 0", v.Id);
                                 await voucherRepo.RemoveAsync(redemption);
                             }
                         }
@@ -219,9 +219,9 @@ namespace Badminton.API.Jobs
                     if (HanoiTime.SlotEnd(b.Date, slot.EndTime) > hanoiNow) continue;
 
                     int claimed = await uow.ExecuteSqlRawAsync(
-                        "UPDATE Bookings SET Status = 'Completed', PointsEarned = @p0, " +
-                        "  UpdatedAt = @p1 " +
-                        "WHERE Id = @p2 AND Status = 'Confirmed'",
+                        "UPDATE \"Bookings\" SET \"Status\" = 'Completed', \"PointsEarned\" = @p0, " +
+                        "  \"UpdatedAt\" = @p1 " +
+                        "WHERE \"Id\" = @p2 AND \"Status\" = 'Confirmed'",
                         b.PayableAmount, nowUtc, b.Id);
                     if (claimed == 0) continue;
 
@@ -313,7 +313,7 @@ namespace Badminton.API.Jobs
                 var today = HanoiTime.HanoiToday();
                 var repo = uow.GetRepository<Voucher>();
                 var expired = await repo.GetByConditionAsync(v =>
-                    v.IsActive && v.ValidUntil.HasValue && v.ValidUntil.Value <= today);
+                    v.IsActive && v.ValidUntil.HasValue && v.ValidUntil.Value < today);
                 if (expired.Count == 0) return;
 
                 foreach (var v in expired)

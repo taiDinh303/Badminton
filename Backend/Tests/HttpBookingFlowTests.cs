@@ -19,7 +19,6 @@ using Xunit;
 
 namespace Badminton.Tests;
 
-/// <summary>Real Kestrel + JWT + controllers + service + isolated SQL database, never demo/live DB.</summary>
 public sealed class HttpBookingFlowTests : IAsyncLifetime
 {
     private readonly TestHost _fixture = new();
@@ -40,6 +39,7 @@ public sealed class HttpBookingFlowTests : IAsyncLifetime
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:BadmintonBooking"] = _fixture.ConnectionString,
+            ["Database:Provider"] = Environment.GetEnvironmentVariable("BADMINTON_TEST_POSTGRES") is null ? "SqlServer" : "PostgreSQL",
             ["JwtSettings:Key"] = _jwt.Key,
             ["JwtSettings:Issuer"] = _jwt.Issuer,
             ["JwtSettings:Audience"] = _jwt.Audience,
@@ -175,6 +175,67 @@ public sealed class HttpBookingFlowTests : IAsyncLifetime
         var after = await _client.GetFromJsonAsync<JsonElement>($"/api/v1/bookings/{id}");
         Assert.Equal(before.GetProperty("data").GetProperty("price").GetRawText(),
             after.GetProperty("data").GetProperty("price").GetRawText());
+    }
+
+    [Fact]
+    public async Task Token_checkin_returns_camelcase_id_and_enforces_staff_branch()
+    {
+        var id = await CreateBooking();
+        ActAs(_fixture.Manager, "Manager");
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"/api/v1/payments/{id}/on-site?method=Cash", null)).StatusCode);
+        ActAs(_fixture.Alice, "Customer");
+        var booking = await _client.GetFromJsonAsync<JsonElement>($"/api/v1/bookings/{id}");
+        var token = booking.GetProperty("data").GetProperty("qrToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.PostAsJsonAsync("/api/v1/checkin/token", new { token })).StatusCode);
+        ActAs(_fixture.ManagerOtherBranch, "Manager");
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync("/api/v1/checkin/token", new { token })).StatusCode);
+        ActAs(_fixture.Manager, "Manager");
+        var response = await _client.PostAsJsonAsync("/api/v1/checkin/token", new { token });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(id, json.GetProperty("data").GetProperty("bookingId").GetInt32());
+    }
+
+    [Fact]
+    public async Task Profile_patch_uses_identity_and_validates_input()
+    {
+        ActAs(_fixture.Alice, "Customer");
+        var result = await _client.PatchAsJsonAsync("/api/v1/account/profile", new { fullName = "New name", email = "new@example.test", avatarUrl = "https://example.test/avatar.png", userId = _fixture.Bob, role = "Admin" });
+        Assert.Equal(HttpStatusCode.OK, result.StatusCode);
+        var profile = await result.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(_fixture.Alice, profile.GetProperty("data").GetProperty("id").GetInt32());
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PatchAsJsonAsync("/api/v1/account/profile", new { fullName = " ", email = "bad-email" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Worker_lock_excludes_another_session_and_can_be_released()
+    {
+        using var first = new Badminton.API.Jobs.JobLock(_app.Configuration);
+        using var second = new Badminton.API.Jobs.JobLock(_app.Configuration);
+        Assert.True(await first.AcquireAsync("test-worker", 0));
+        Assert.False(await second.AcquireAsync("test-worker", 0));
+        await first.ReleaseAsync("test-worker");
+        Assert.True(await second.AcquireAsync("test-worker", 0));
+        await second.ReleaseAsync("test-worker");
+    }
+
+    [Fact]
+    public async Task Voucher_worker_expires_yesterday_but_preserves_last_valid_day()
+    {
+        var yesterday = await _fixture.AddVoucherAsync("YESTERDAY", 5, 1, 10000);
+        var today = await _fixture.AddVoucherAsync("TODAY", 5, 1, 10000);
+        await _fixture.RunScopeAsync(async sp => {
+            var db = sp.GetRequiredService<BadmintonBookingDbContext>();
+            await db.Vouchers.Where(v => v.Id == yesterday.Id).ExecuteUpdateAsync(u => u.SetProperty(v => v.ValidUntil, _fixture.FutureDate.AddDays(-1)));
+            await db.Vouchers.Where(v => v.Id == today.Id).ExecuteUpdateAsync(u => u.SetProperty(v => v.ValidUntil, _fixture.FutureDate));
+        });
+        using var worker = ActivatorUtilities.CreateInstance<Badminton.API.Jobs.VoucherExpiryJob>(_app.Services);
+        var tick = typeof(Badminton.API.Jobs.VoucherExpiryJob).GetMethod("RunOnceAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        await (Task)tick.Invoke(worker, null)!;
+        var states = await _fixture.RunScopeAsync(sp => sp.GetRequiredService<BadmintonBookingDbContext>().Vouchers.ToDictionaryAsync(v => v.Code, v => v.IsActive));
+        Assert.False(states["YESTERDAY"]);
+        Assert.True(states["TODAY"]);
     }
 
     public async Task DisposeAsync()

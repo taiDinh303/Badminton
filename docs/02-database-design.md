@@ -48,7 +48,7 @@ erDiagram
 | `Branches` | `Branch` | `Name`,`Address`,`OpenTime`,`CloseTime`,`Status` | Unique `Name`; `Status` = `Active/Closed`. Manager có thể gắn `BranchId` (1 manager = 1 cơ sở). |
 | `Courts` | `Court` | `BranchId`,`Code`,`Name`,`Surface`,`PriceLowPeak`,`PricePeak`,`WeekendSurcharge`,`Capacity`,`Amenities`,`ImageUrl`,`RatingAvg`,`RatingCount`,`IsActive` | Unique `(BranchId,Code)`; `Surface` = `Sindalo/Carpet/Wood`; giá là **int** VND/giờ; `Amenities` = JSON array string. |
 | `TimeSlots` | `TimeSlot` | `Label`,`StartTime`,`EndTime`,`IsPeak`,`IsActive` | Unique `(StartTime,EndTime)`. Seed = 17 slot 06:00–22:00; `IsPeak` = bắt đầu ≥18:00. Có API quản trị; V1 yêu cầu slot 60 phút. |
-| `CourtDateStatus` | `CourtDateStatusEntry` | `CourtId`,`Date`,`Status`,`Note` | PK `(CourtId,Date)`; `Status` = `Open/Maintenance/Closed`, default `Open`. Khác `Open` → không cho đặt. |
+| `CourtDateStatus` | `CourtDateStatusEntry` | `CourtId`,`Date`,`Status`,`Note`,`StartTime?`,`EndTime?` | PK `(CourtId,Date)`; `Status` = `Open/Maintenance/Closed`, default `Open`. Khóa khung giao nhau với khoảng giờ; null giờ là cả ngày. |
 | `PlayGroups` | `PlayGroup` | `Name`,`OwnerId`,`MaxMembers` | `OwnerId` = customer tạo nhóm; `MaxMembers` tối đa 10. |
 | `GroupMembers` | `GroupMember` | `GroupId`,`UserId` | PK `(GroupId,UserId)`; khách thuộc nhiều nhóm; nhóm không trùng khách. |
 | `Bookings` | `Booking` | `BookingCode`,`IdempotencyKey`,`UserId`,`GroupId`,`CourtId`,`SlotId`,`BranchId`,`Date`,`PlayerCount`,`Status`,`TotalAmount`,`DiscountAmount`,`PayableAmount`,`PointsEarned`,`PointsRedeemed`,`PendingExpiresAt`,`CancelReason`,`CancelledAt`,`VoucherRedemptionId`,`QrToken`,`CheckedInAt` | Unique `BookingCode`; filtered unique `IdempotencyKey` (chống double-create); **filtered unique `ux_court_slot_active`** chống overbooking; `Status` = `Pending/Confirmed/Completed/Cancelled/NoShow/Refunded`. |
@@ -92,7 +92,7 @@ e.HasIndex(x => new { x.CourtId, x.Date, x.SlotId })
 - **Hoàn tiền** không sửa payment gốc; tạo record mới `status=Refunded/PartialRefund`.
 - **Voucher** 1 khách 1 lần (unique redemption); job expire vô hiệu khi qua `ValidUntil`.
 - **Điểm** append-only; hoàn tiền đơn có cộng điểm → giao dịch âm cùng `booking_id` (truy vết).
-- Khi `CourtDateStatus` ≠ `Open`: **lock slot mới, KHÔNG tự hủy** booking `Confirmed` đã có; manager quyết định hủy/hoàn qua API (audit + refund).
+- Theo yêu cầu 21/10: `CourtDateStatus` khác `Open` khóa slot giao khoảng giờ; Pending bị hủy/trả điểm/voucher, Confirmed được hoàn toàn phần. Lỗi hoàn giữ lịch khóa, staff lưu lại cùng lịch để thử lại. Lịch sử migration không sửa; AddCourtMaintenanceHours thêm hai cột time nullable, giữ lịch cả ngày cũ.
 
 ## 6. Quyền dữ liệu (RLS) & ảnh
 

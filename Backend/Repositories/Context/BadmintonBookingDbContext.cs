@@ -9,6 +9,8 @@ namespace Repositories.Context
         public BadmintonBookingDbContext(DbContextOptions<BadmintonBookingDbContext> options)
             : base(options) { }
 
+        protected BadmintonBookingDbContext(DbContextOptions options) : base(options) { }
+
         public DbSet<User> Users => Set<User>();
         public DbSet<Branch> Branches => Set<Branch>();
         public DbSet<Court> Courts => Set<Court>();
@@ -55,7 +57,7 @@ namespace Repositories.Context
                 e.HasIndex(x => new { x.Role, x.Status });
 
                 e.HasIndex(x => x.Role)
-                    .HasFilter("[Status] = N'Active' AND [Role] = N'Admin'")
+                    .HasFilter(Database.IsNpgsql() ? "\"Status\" = 'Active' AND \"Role\" = 'Admin'" : "[Status] = N'Active' AND [Role] = N'Admin'")
                     .IsUnique()
                     .HasDatabaseName("ux_active_admin");
                 e.HasOne(x => x.Branch).WithMany().HasForeignKey(x => x.BranchId)
@@ -132,16 +134,16 @@ namespace Repositories.Context
                 e.Property(x => x.Status)
                     .HasConversion(s => s.ToString(), s => Enum.Parse<BookingStatus>(s))
                     .HasMaxLength(20).HasDefaultValue(BookingStatus.Pending);
-                e.HasIndex(x => x.IdempotencyKey).IsUnique().HasFilter("[IdempotencyKey] IS NOT NULL");
+                e.HasIndex(x => x.IdempotencyKey).IsUnique().HasFilter(Database.IsNpgsql() ? "\"IdempotencyKey\" IS NOT NULL" : "[IdempotencyKey] IS NOT NULL");
 
                 // QR check-in token: unique among non-null values.
                 e.Property(x => x.QrToken).HasMaxLength(64);
-                e.HasIndex(x => x.QrToken).IsUnique().HasFilter("[QrToken] IS NOT NULL");
+                e.HasIndex(x => x.QrToken).IsUnique().HasFilter(Database.IsNpgsql() ? "\"QrToken\" IS NOT NULL" : "[QrToken] IS NOT NULL");
 
                 // one slot may hold at most ONE active (pending/confirmed) booking.
                 e.HasIndex(x => new { x.CourtId, x.Date, x.SlotId })
                     .IsUnique()
-                    .HasFilter("[Status] IN (N'Pending', N'Confirmed')")
+                    .HasFilter(Database.IsNpgsql() ? "\"Status\" IN ('Pending', 'Confirmed')" : "[Status] IN (N'Pending', N'Confirmed')")
                     .HasDatabaseName("ux_court_slot_active");
                 e.HasIndex(x => x.UserId);
                 e.HasIndex(x => x.Date);
@@ -254,7 +256,7 @@ namespace Repositories.Context
 
                 e.HasIndex(x => x.LedgerKey)
                     .IsUnique()
-                    .HasFilter("[LedgerKey] IS NOT NULL");
+                    .HasFilter(Database.IsNpgsql() ? "\"LedgerKey\" IS NOT NULL" : "[LedgerKey] IS NOT NULL");
                 e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
                     .OnDelete(DeleteBehavior.Restrict);
                 e.HasOne(x => x.Booking).WithMany().HasForeignKey(x => x.BookingId)
@@ -336,7 +338,7 @@ namespace Repositories.Context
                 // Only one waiting entry per (user, court, slot, date) — no double queue.
                 e.HasIndex(x => new { x.UserId, x.CourtId, x.Date, x.SlotId })
                     .IsUnique()
-                    .HasFilter("[Status] = N'Waiting'");
+                    .HasFilter(Database.IsNpgsql() ? "\"Status\" = 'Waiting'" : "[Status] = N'Waiting'");
                 e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
                     .OnDelete(DeleteBehavior.Restrict);
                 e.HasOne(x => x.Court).WithMany().HasForeignKey(x => x.CourtId)

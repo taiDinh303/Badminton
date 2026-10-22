@@ -38,7 +38,7 @@ export default function StaffPage() {
     queryKey: ["branches"],
     queryFn: api.branches.list,
   });
-  const { data: staff = [], isFetching, refetch } = useQuery({
+  const { data: staff = [], isLoading, refetch } = useQuery({
     queryKey: ["staff"],
     queryFn: api.admin.staff.list,
   });
@@ -182,7 +182,7 @@ export default function StaffPage() {
       {err && <Callout tone="error" className="mt-3">{err}</Callout>}
 
       <div className="mt-4">
-        {isFetching && staff.length === 0 ? (
+        {isLoading && staff.length === 0 ? (
           <Busy label="Đang tải nhân viên…" />
         ) : (
           <VirtualizedTable

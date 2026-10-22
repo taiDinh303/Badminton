@@ -14,6 +14,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
+  // Optional before/after desktop comparison; generated images stay outside Git.
+  snapshotPathTemplate: process.env.VERIFY_DESKTOP_BASELINE
+    ? "../artifacts/responsive-desktop-baseline/{arg}{ext}"
+    : undefined,
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:4173",
     trace: "on-first-retry",

@@ -48,10 +48,12 @@ namespace Services
                      && b.Status != BookingStatus.Pending
                      && (bi == null || b.BranchId == bi),
                 b => b.PayableAmount);
+            var todayUtc = DateTime.SpecifyKind(today.ToDateTime(TimeOnly.MinValue).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc);
+            var tomorrowUtc = todayUtc.AddDays(1);
             int usersToday = await users.CountByConditionAsync(u =>
                 u.DeletedAt == null
-                && u.CreatedAt >= today.ToDateTime(TimeOnly.MinValue)
-                && u.CreatedAt < today.AddDays(1).ToDateTime(TimeOnly.MinValue)
+                && u.CreatedAt >= todayUtc
+                && u.CreatedAt < tomorrowUtc
                 && (bi == null || u.BranchId == null || u.BranchId == bi));
             int activeCourts = await Repository<Court>().CountByConditionAsync(c =>
                 c.IsActive && c.DeletedAt == null && (bi == null || c.BranchId == bi));
@@ -112,8 +114,8 @@ namespace Services
                 .ToList();
 
             // Refunds (separate table; no DeletedAt on Payment).
-            var fromDt = from.ToDateTime(TimeOnly.MinValue);
-            var toEnd = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
+            var fromDt = DateTime.SpecifyKind(from.ToDateTime(TimeOnly.MinValue).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc);
+            var toEnd = DateTime.SpecifyKind(to.AddDays(1).ToDateTime(TimeOnly.MinValue).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc);
             var pmts = await Repository<Payment>().GetByConditionAsync(p =>
                 p.RefundedAt.HasValue && p.RefundedAt!.Value >= fromDt && p.RefundedAt.Value < toEnd);
 

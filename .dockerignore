@@ -1,0 +1,11 @@
+**/bin
+**/obj
+**/node_modules
+.git
+.vs
+artifacts
+Frontend
+**/.env*
+**/appsettings.*.json
+**/*.user
+TaiKhoan.txt

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Trash2, Star, Dumbbell, Wrench } from "lucide-react";
 import {
   Toolbar,
@@ -42,6 +42,9 @@ const emptyForm = (): CourtForm => ({
  * phụ thu, sức chứa, rating) + form modal (tạo / sửa).
  */
 export default function CourtsPage() {
+  const qc = useQueryClient();
+  const [maintStart, setMaintStart] = useState("");
+  const [maintEnd, setMaintEnd] = useState("");
   const [form, setForm] = useState<CourtForm | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   // FEAT maintenance: Open/Maintenance/Closed per court per date (docs 03 §8).
@@ -59,7 +62,7 @@ export default function CourtsPage() {
     queryKey: ["branches"],
     queryFn: api.branches.list,
   });
-  const { data: courts = [], isFetching, refetch } = useQuery({
+  const { data: courts = [], isLoading, refetch } = useQuery({
     queryKey: ["courts"],
     queryFn: () => api.courts.list(),
   });
@@ -96,8 +99,13 @@ export default function CourtsPage() {
         maintDate,
         maintStatus,
         maintNote.trim() || undefined,
+        maintStart || undefined,
+        maintEnd || undefined,
       ),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["maintenance"] });
+      qc.invalidateQueries({ queryKey: ["availability"] });
+      qc.invalidateQueries({ queryKey: ["bookings"] });
       setMaintCourt(null);
       setMaintNote("");
       setMaintStatus("Maintenance");
@@ -115,9 +123,12 @@ export default function CourtsPage() {
     (setMaint.error as Error | undefined)?.message ?? null;
 
   function openMaint(c: Court) {
+    const schedule = qc.getQueryData<Awaited<ReturnType<typeof api.admin.maintenance.schedule>>>(["maintenance", c.id, maintDate]);
+    setMaint.reset();
     setMaintCourt(c);
-    setMaintStatus("Maintenance");
-    setMaintNote("");
+    setMaintStatus(schedule?.status ?? "Maintenance");
+    setMaintStart(schedule?.startTime ?? ""); setMaintEnd(schedule?.endTime ?? "");
+    setMaintNote(schedule?.note ?? "");
   }
 
   function openEdit(c: Court) {
@@ -150,6 +161,7 @@ export default function CourtsPage() {
         }
       />
 
+      <div className="mt-4 max-w-xs"><Field label="Ngày xem trạng thái sân" type="date" value={maintDate} onChange={(e) => setMaintDate(e.target.value)} /></div>
       {maintSaved && (
         <Callout tone="success" className="mt-3">
           Đã lưu trạng thái bảo trì. Khung giờ của sân vào ngày đó đã được cập nhật.
@@ -157,7 +169,7 @@ export default function CourtsPage() {
       )}
       {err && <Callout tone="error" className="mt-3">{err}</Callout>}
 
-      {isFetching && courts.length === 0 ? (
+      {isLoading && courts.length === 0 ? (
         <Busy label="Đang tải danh sách sân…" />
       ) : (
         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -175,7 +187,7 @@ export default function CourtsPage() {
                     </div>
                   </div>
                 </div>
-                <StatusBadge status={c.isActive ? "Open" : "Closed"} size="sm" />
+                <CourtScheduleBadge court={c} date={maintDate} />
               </div>
 
               {/* Price */}
@@ -290,7 +302,7 @@ export default function CourtsPage() {
               <Button
                 variant="accent"
                 size="sm"
-                disabled={setMaint.isPending}
+                disabled={setMaint.isPending || (!!maintStart !== !!maintEnd) || (!!maintStart && maintStart >= maintEnd)}
                 onClick={() => setMaint.mutate()}
               >
                 {setMaint.isPending ? "Đang lưu…" : "Lưu trạng thái"}
@@ -313,7 +325,7 @@ export default function CourtsPage() {
                     key={st}
                     type="button"
                     aria-pressed={maintStatus === st}
-                    onClick={() => setMaintStatus(st)}
+                    onClick={() => { setMaintStatus(st); if (st === "Open") { setMaintStart(""); setMaintEnd(""); } }}
                     className={
                       "flex-1 rounded-lg border px-2 py-2 text-xs font-semibold transition-colors cursor-pointer " +
                       (maintStatus === st
@@ -330,6 +342,10 @@ export default function CourtsPage() {
                 ))}
               </div>
             </div>
+            {maintStatus !== "Open" && <div className="grid grid-cols-2 gap-3">
+              <Field label="Từ giờ" type="time" value={maintStart} onChange={(e) => setMaintStart(e.target.value)} />
+              <Field label="Đến giờ" type="time" value={maintEnd} onChange={(e) => setMaintEnd(e.target.value)} />
+            </div>}
             <Field
               label="Ghi chú (tuỳ chọn)"
               value={maintNote}
@@ -337,7 +353,7 @@ export default function CourtsPage() {
               placeholder="VD: sửa mặt sân Sindalo"
             />
             <p className="text-xs text-muted">
-              Sân bảo trì/đóng sẽ khóa các khung giờ trong ngày (docs 03 §8).
+              Mỗi sân có một khoảng bảo trì/đóng trong ngày. Để trống giờ để áp dụng cả ngày. Khung giờ giao nhau sẽ bị khóa; đơn chưa trả sẽ hủy, đơn đã trả được hoàn toàn phần. Mở sẽ xóa lịch khóa ngày này.
             </p>
             {setMaint.isError && (
               <Callout tone="error">
@@ -365,4 +381,12 @@ export default function CourtsPage() {
       )}
     </div>
   );
+}
+
+function CourtScheduleBadge({ court, date }: { court: Court; date: string }) {
+  const schedule = useQuery({ queryKey: ["maintenance", court.id, date], queryFn: () => api.admin.maintenance.schedule(court.id, date) });
+  return <div className="text-right"><StatusBadge status={court.isActive ? schedule.data?.status ?? "Open" : "Closed"} size="sm" />
+    {schedule.data?.startTime && <p className="mt-1 text-xs text-muted">{schedule.data.startTime}–{schedule.data.endTime}</p>}
+    {schedule.isError && <p className="text-xs text-state-error">Không tải được lịch</p>}
+  </div>;
 }

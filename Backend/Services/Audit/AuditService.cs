@@ -33,10 +33,10 @@ namespace Services
         {
             var hOffset = HanoiTime.FixedOffset;
             DateTime? fromUtc = from is { } f
-                ? f.ToDateTime(TimeOnly.MinValue).Add(-hOffset)
+                ? DateTime.SpecifyKind(f.ToDateTime(TimeOnly.MinValue).Add(-hOffset), DateTimeKind.Utc)
                 : null;
             DateTime? toUtc = to is { } t
-                ? t.AddDays(1).ToDateTime(TimeOnly.MinValue).Add(-hOffset)
+                ? DateTime.SpecifyKind(t.AddDays(1).ToDateTime(TimeOnly.MinValue).Add(-hOffset), DateTimeKind.Utc)
                 : null;
             var et = entityType; var eid = entityId;
             System.Linq.Expressions.Expression<Func<AuditLog, bool>> predicate =

@@ -1,10 +1,10 @@
 # 10 — Thiết lập và chạy local
 
-> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **20/10/2026**. Đường dẫn theo checkout; kết quả máy kiểm ở worklog.
+> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **21/10/2026**. Đường dẫn theo checkout; kết quả máy kiểm ở worklog.
 
 ## 1. Yêu cầu và build
 
-SDK 9 theo global.json, runtime .NET/ASP.NET Core 8, Node 24, Git, SQL Server local (default/Express/LocalDB). Không cần Docker/Supabase local cho baseline.
+SDK từ 9.0.300 theo global.json (`rollForward: latestMajor`, chọn SDK stable mới nhất đã cài, hỗ trợ máy chỉ có SDK 10), runtime .NET/ASP.NET Core 8, Node 24, Git, SQL Server local (default/Express/LocalDB). Target ứng dụng vẫn net8.0. Không cần Docker/Supabase local cho baseline.
 
 Từ root repo:
 
@@ -14,7 +14,7 @@ dotnet restore Backend/Badminton.slnx
 .\build.ps1
 ```
 
-Script dùng PSScriptRoot; -Run chạy API, -StopApi mới dừng process. Cấu trúc API/Tests hiện hành thay đường dẫn cũ.
+Script dùng PSScriptRoot; -Run chạy API, -StopApi mới dừng process API có executable trong Backend/API/bin của checkout này. Khi -Run/-StopApi, script kiểm tra cổng 5131 trước build; nếu process khác còn giữ cổng thì báo PID và dừng, không tự kill process khác. Cấu trúc API/Tests hiện hành thay đường dẫn cũ.
 
 ## 2. Cấu hình local
 
@@ -60,7 +60,8 @@ Root:
 ```powershell
 $env:BADMINTON_TEST_SQLSERVER = '.'
 dotnet test Backend/Tests/Badminton.Tests.csproj -c Release
-dotnet ef migrations has-pending-model-changes --project Backend/Repositories --startup-project Backend/API --configuration Release --no-build
+dotnet ef migrations has-pending-model-changes --context BadmintonBookingDbContext --project Backend/Repositories --startup-project Backend/API --configuration Release --no-build
+dotnet ef migrations has-pending-model-changes --context PostgresBookingDbContext --project Backend/Repositories --startup-project Backend/API --configuration Release --no-build
 ```
 
 Fixture tạo/xóa BadmintonTest_*, chỉ local/test. Frontend: npm test, npm run lint, npm run build, npx --no-install playwright install chromium, npm run test:e2e. [05](05-testing-strategy.md) giải thích phạm vi.
@@ -69,11 +70,21 @@ Fixture tạo/xóa BadmintonTest_*, chỉ local/test. Frontend: npm test, npm ru
 
 | Lỗi | Cách kiểm tra |
 | --- | --- |
-| Pin SDK 10.0.401 không có | Dùng global.json mới, SDK9/latestFeature |
+| Unable to resolve SDK theo global.json | Chạy dotnet --list-sdks và dotnet --version trong Backend; cần SDK stable từ 9.0.300, global.json dùng latestMajor để nhận SDK 10 khi máy không có SDK 9 |
 | Startup fail | Check-config → instance/schema → /ready |
-| Port/DLL bận | Dừng đúng process, -StopApi khi cần |
+| Failed to bind / address already in use / Port 5131 bận | Có API khác đang chạy. Ctrl+C ở terminal cũ hoặc Shift+F5 trong Visual Studio. Từ root chạy `.\build.ps1 -StopApi` để dừng API của checkout này và build, sau đó F5 trong Visual Studio; hoặc `.\build.ps1 -StopApi -Run` nếu chỉ dùng terminal. Không chạy đồng thời cả hai. |
 | Playwright thiếu package | npm ci sau pull, dùng --no-install |
 | Test tiền lệch cuối tuần | Expected phải theo ngày fixture |
 | Import page không tìm thấy | modules/<feature>/pages thay pages cũ |
 
 Không dùng loadtest/start_api.ps1 để start thông thường: helper legacy có reset DB. Dùng dotnet run bên trên; không chạy helper vào dữ liệu cần giữ.
+
+Để xem process đang giữ cổng trước khi xử lý:
+
+```powershell
+Get-NetTCPConnection -LocalPort 5131 -State Listen |
+    Select-Object LocalAddress, LocalPort, OwningProcess
+Get-Process -Id <OwningProcess> | Select-Object Id, ProcessName, Path
+```
+
+Thay `<OwningProcess>` bằng số PID vừa thấy. Kiểm tra tên/đường dẫn trước khi dừng; không dùng lệnh tắt toàn bộ dotnet. Giữ cổng 5131 vì frontend proxy mặc định gọi API tại đây. Lỗi xuất hiện ở `app.RunAsync()` vì đó là lúc API mở cổng HTTP, không phải lỗi đặt sân hay database.

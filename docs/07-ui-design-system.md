@@ -18,7 +18,7 @@ Tham khảo shell trắng/xám, sidebar và header rõ của Marixa; giữ thư�
 | fg/muted/border | #0F172A / #475569 / #E2E8F0 | Nội dung phụ/cấu trúc |
 | slot-free | #DCFCE7 / #15803D | Trống |
 | slot-booked | #FEE2E2 / #991B1B | Đã đặt |
-| slot-maint | #E5E7EB / #6B7280 | Bảo trì |
+| slot-maint | #FEF3C7 / #92400E | Bảo trì (vàng); Open xanh, Closed đỏ |
 
 Font stack Be Vietnam Pro/Inter/system chưa chứng minh font web được tải. Spacing thang 4–32px, input/button radius 8px, card 12px, touch ≥44px; số tabular, focus-visible và reduced-motion. Mọi trạng thái phải có chữ/icon, không chỉ màu. Contrast phải đo theo cặp thực tế.
 
@@ -39,11 +39,16 @@ app/navigation.ts quản lý sidebar/customer/mobile/staff items, app/routes.tsx
 
 - Giá lịch sử đọc snapshot server. BasePrice hiện gồm phụ thu, WeekendSurcharge=0 vì không lưu split lịch sử; label cần nói rõ, không cộng lại giá hiện tại.
 - Payment chỉ thành công khi server xác nhận; returnUrl không là bằng chứng. Refund phân biệt gửi yêu cầu và kết quả đã đối soát.
-- QR token có server API; tile hiển thị hiện chưa là QR chuẩn quét. Không gọi đó là camera scan hoàn tất.
+- QR mã hóa token server; camera BarcodeDetector nếu hỗ trợ, nhập/dán/USB dự phòng. Chưa nghiệm thu thiết bị thật.
+- Tài khoản sửa họ tên/email và URL ảnh đại diện (HTTP/HTTPS), lưu server theo danh tính đăng nhập; hiện membership/hạn/hệ số thực. Chưa có upload Storage.
+- Membership admin chọn khách theo tên/SĐT, đổi/gia hạn/hủy và phân biệt còn hiệu lực/đã hết hạn.
+- Đánh giá “Tất cả” tải đánh giá từng sân; danh sách chờ lấy dữ liệu người đang đăng nhập, liên kết đơn được nhường chỗ.
 - 401 xóa session và về login; identity đổi hủy/clear query cache. Loading không dùng empty state; network timeout không báo thất bại chắc chắn rồi tạo key mới.
 - Role guard chỉ giúp UI, API/DB vẫn enforce ownership/branch.
 
 ## 5. State và nghiệm thu
+
+CURRENT 22/10/2026: `Frontend/src/mobile.css` áp dụng dưới breakpoint `md` hiện có (768px), cùng điện thoại xoay ngang có pointer coarse/hover none, chiều cao <512px và chiều rộng <1024px. Mobile dùng một lớp padding nội dung, header gọn, KPI co hàng, input 16px, nút có vùng chạm tối thiểu 44px và safe-area. Bảng quản trị giữ đủ cột trong vùng cuộn ngang có hướng dẫn; drawer đặt sân và modal có vùng cuộn theo chiều cao viewport, dùng được ở màn hình ngang thấp. Style PC giữ nguyên; ảnh đối chiếu và phạm vi browser mock ghi ở worklog. Thiết bị iOS/Android thật chưa nghiệm thu.
 
 Mỗi màn cần loading/empty/validation/submitting/success/conflict/network/forbidden. Giữ dữ liệu form, focus lỗi đầu, disable gửi lặp, refresh query sau mutation; slot conflict cập nhật grid. Dialog có label/keyboard/Escape; menu có aria-expanded/controls và skip-to-main.
 

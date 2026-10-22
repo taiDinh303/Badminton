@@ -52,9 +52,9 @@ Membership None/Silver/Gold đã có source/UI/admin assign, hệ số và số 
 
 ## 6. Check-in và danh sách chờ
 
-QrToken được server phát hành/lưu cho booking; staff nhập code/token qua checkin API, có branch scope. CURRENT giao diện vẫn QrTile minh họa, chưa là QR chuẩn quét được; không hứa tính năng camera scan.
+CURRENT: chi tiết đơn trả QrToken/CheckedInAt; QR mã hóa token thực. Staff gửi token trong body POST /checkin/token, giữ route code/qr cũ và quyền theo cơ sở. Camera dùng BarcodeDetector khi trình duyệt hỗ trợ, có nhập/dán/máy quét USB dự phòng. NOT VERIFIED: camera/USB trên thiết bị thật.
 
-Waitlist join khi slot đầy → Waiting → job promotion tạo Pending khi slot được giải phóng → lưu PromotedBookingId; leave kết thúc lượt. Năm worker dùng SQL application locks và heartbeat; đa instance/restart cần tải thử trước release.
+Waitlist cho phép chọn trực tiếp ô “Đã đặt”, kể cả Pending; không ẩn sân khi mọi giờ đã đặt. Join khi slot đầy → Waiting → job promotion tạo Pending khi slot được giải phóng → lưu PromotedBookingId; leave kết thúc lượt. Năm worker dùng SQL application locks và heartbeat; đa instance/restart cần tải thử trước release.
 
 ## 7. Jobs
 
@@ -68,7 +68,14 @@ Waitlist join khi slot đầy → Waiting → job promotion tạo Pending khi sl
 
 Không bảo đảm xử lý đúng giây TTL. BackgroundJobs:Enabled=false phục vụ test/local chỉ API, không dùng để quên chạy nghiệp vụ trong production. /ready phản ánh cấu hình này.
 
-## 8. Ngoại lệ và UX
+## 8. Bảo trì và ngoại lệ UX
+
+CURRENT: mỗi sân/ngày có một lịch Open/Maintenance/Closed, tùy chọn giờ bắt đầu/kết thúc (cùng ngày); không nhập giờ là khóa cả ngày. Khung giờ giao nhau với lịch bị khóa ngay khi khách xem ngày đó, ngoài khoảng vẫn đặt được. Mở xóa khoảng giờ khóa. Cần migration AddCourtMaintenanceHours, giữ bảng/PK/lịch sử cũ; hai cột nullable giữ lịch khóa cả ngày hiện có.
+
+Khi khóa sân, hủy Pending và trả điểm/voucher; Confirmed hoàn toàn phần qua adapter hiện có, giữ ledger và kiểm quyền cơ sở. Nếu lỗi xử lý, giữ sân khóa và báo mã đơn để staff lưu lại cùng lịch/thử lại. Lưu lịch và tạo đơn dùng cùng transaction-owned SQL applock để tránh nhận đơn mới trong khoảng khóa. NOT VERIFIED: gateway thật/crash giữa gọi gateway và lưu ledger; không coi kiểm mock là hoàn tiền ngân hàng thật.
+
+Voucher có hiệu lực đến hết ValidUntil theo ngày Việt Nam; job khóa khi ValidUntil < hôm nay. API không cho dùng mã hết hạn ngay cả trước tick job, preview/submit báo “Voucher đã hết hạn sử dụng”.
+
 
 | Ngoại lệ | Phản hồi / phục hồi |
 | --- | --- |
