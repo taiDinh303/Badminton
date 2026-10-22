@@ -309,7 +309,7 @@ export default function BookPage() {
       <AnimatePresence>
         {sel && price && (
           <motion.div
-            className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-2xl md:bottom-4 md:right-4 md:left-auto md:w-80"
+            className="booking-drawer fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-2xl md:bottom-4 md:right-4 md:left-auto md:w-80"
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}

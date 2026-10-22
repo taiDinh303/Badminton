@@ -48,6 +48,8 @@ app/navigation.ts quản lý sidebar/customer/mobile/staff items, app/routes.tsx
 
 ## 5. State và nghiệm thu
 
+CURRENT 22/10/2026: `Frontend/src/mobile.css` áp dụng dưới breakpoint `md` hiện có (768px), cùng điện thoại xoay ngang có pointer coarse/hover none, chiều cao <512px và chiều rộng <1024px. Mobile dùng một lớp padding nội dung, header gọn, KPI co hàng, input 16px, nút có vùng chạm tối thiểu 44px và safe-area. Bảng quản trị giữ đủ cột trong vùng cuộn ngang có hướng dẫn; drawer đặt sân và modal có vùng cuộn theo chiều cao viewport, dùng được ở màn hình ngang thấp. Style PC giữ nguyên; ảnh đối chiếu và phạm vi browser mock ghi ở worklog. Thiết bị iOS/Android thật chưa nghiệm thu.
+
 Mỗi màn cần loading/empty/validation/submitting/success/conflict/network/forbidden. Giữ dữ liệu form, focus lỗi đầu, disable gửi lặp, refresh query sau mutation; slot conflict cập nhật grid. Dialog có label/keyboard/Escape; menu có aria-expanded/controls và skip-to-main.
 
 Kiểm 375/768/1024/1440px; desktop/mobile staff; deep link/Back/refresh; logout/expired token/cache; một vòng khách đặt/đọc đơn và staff đúng/sai cơ sở. Browser mock test không chứng minh tiền/DB thật; HTTP fixture kiểm boundary server riêng. [05](05-testing-strategy.md), [12](12-figma-sync.md) quản lý bằng chứng tiếp theo.

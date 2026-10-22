@@ -168,7 +168,7 @@ export function KpiCard({
     danger: "bg-slot-booked-bg text-slot-booked-fg",
   }[tone];
   return (
-    <Card className="p-4">
+    <Card className="kpi-card p-4">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>
@@ -244,7 +244,7 @@ export function Toolbar({
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="page-toolbar flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
@@ -279,7 +279,7 @@ export function PageHeader({
   right?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3">
+    <div className="page-header flex items-start justify-between gap-3">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
@@ -526,7 +526,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
       role="dialog"
       aria-modal="true"
@@ -619,7 +619,7 @@ export function Pagination({
   onNext: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between text-sm text-muted">
+    <div className="pagination flex items-center justify-between text-sm text-muted">
       <span className="tnum">{totalItems !== undefined ? `${totalItems} bản ghi · ` : ""}Trang {page}/{totalPages || 1}</span>
       <div className="flex gap-1.5">
         <Button

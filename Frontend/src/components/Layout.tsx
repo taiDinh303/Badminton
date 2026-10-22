@@ -45,7 +45,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="app-shell flex min-h-dvh">
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:p-3">Bỏ qua điều hướng</a>
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-y-auto border-r border-border bg-card md:flex">
@@ -120,7 +120,7 @@ export default function Layout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 border-b border-border bg-card/95 px-4 py-3 backdrop-blur md:px-6">
+        <header className="app-header sticky top-0 z-30 border-b border-border bg-card/95 px-4 py-3 backdrop-blur md:px-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <button ref={menuButton} type="button" aria-label="Mở menu" aria-expanded={menuOpen} aria-controls="mobile-menu"
@@ -141,7 +141,7 @@ export default function Layout() {
             <button type="button" onClick={doLogout} className="mt-2 flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-muted"><LogOut className="h-4 w-4" />Đăng xuất</button>
           </nav>}
         </header>
-        <main id="main-content" tabIndex={-1} className="flex-1 px-4 py-5 pb-24 md:px-6 md:pb-6">
+        <main id="main-content" tabIndex={-1} className="app-content flex-1 px-4 py-5 pb-24 md:px-6 md:pb-6">
           <Outlet />
         </main>
 

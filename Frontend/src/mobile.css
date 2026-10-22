@@ -1,0 +1,201 @@
+/* Phone layout only: narrow viewports and short, touch-only landscape phones.
+   Desktop styles stay unchanged. Load after Tailwind to keep overrides here. */
+@media (width < 48rem), (hover: none) and (pointer: coarse) and (height < 32rem) and (width < 64rem) {
+  .app-shell > aside {
+    display: none;
+  }
+
+  .app-header [aria-controls="mobile-menu"] {
+    display: flex;
+  }
+
+  #mobile-menu,
+  .app-shell > div > nav.fixed {
+    display: block;
+  }
+
+  .data-table > p {
+    display: block;
+  }
+  .app-shell {
+    overflow-wrap: anywhere;
+  }
+
+  .app-header {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  .app-header > div > div {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .app-header > div > div > button {
+    flex-shrink: 0;
+  }
+
+  .app-header > div > span {
+    flex-shrink: 0;
+    padding-inline: 0.5rem;
+    font-size: 0.625rem;
+  }
+
+  .app-header > div > div > div > .text-xs {
+    display: none;
+  }
+
+  .app-content {
+    min-width: 0;
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+  }
+
+  /* Feature pages already have their own desktop inset. On phones the shell
+     supplies the inset once, leaving room for the actual content. */
+  .app-content > .mx-auto.p-4 {
+    padding: 0;
+  }
+
+  .app-content :is(input, select, textarea),
+  .modal-overlay :is(input, select, textarea),
+  .booking-drawer :is(input, select, textarea) {
+    min-width: 0;
+    max-width: 100%;
+    min-height: 2.75rem;
+    font-size: 1rem; /* Avoid automatic input zoom on iOS. */
+  }
+
+  .app-shell button,
+  .app-shell [role="tab"],
+  .modal-overlay button {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+
+  .app-shell button > svg {
+    flex-shrink: 0;
+  }
+
+  .app-content :is(.grid, .flex) > :not(button):not(svg),
+  .modal-overlay .grid > :not(button) {
+    min-width: 0;
+  }
+
+  .app-content select {
+    width: 100%;
+  }
+
+  .page-toolbar > div:last-child > .relative {
+    width: 100%;
+  }
+
+  .page-toolbar input {
+    width: 100%;
+  }
+
+  .page-header,
+  .pagination {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .kpi-card > div {
+    flex-wrap: wrap-reverse;
+    gap: 0.75rem;
+  }
+
+  .kpi-card .text-2xl {
+    font-size: 1.25rem;
+    line-height: 1.4;
+  }
+
+  .app-content .grid-cols-3:has(> .kpi-card) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-content .grid-cols-3 > .kpi-card:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .data-table,
+  .data-table > [role="region"] {
+    min-width: 0;
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+  }
+
+  .data-table > [role="region"] {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .booking-drawer {
+    z-index: 40;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .booking-drawer > [role="dialog"] {
+    max-height: calc(100dvh - env(safe-area-inset-top) - 0.75rem);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    margin-bottom: 0 !important;
+  }
+
+  .booking-drawer .mt-4.flex.items-end {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .modal-overlay {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+    align-items: flex-end;
+  }
+
+  .modal-overlay > div {
+    display: flex;
+    flex-direction: column;
+    max-height: 100%;
+    border-radius: 1rem 1rem 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .modal-overlay > div > :first-child,
+  .modal-overlay > div > :last-child:not(:nth-child(2)) {
+    flex-shrink: 0;
+  }
+
+  .modal-overlay > div > :nth-child(2) {
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  .modal-overlay > div > :last-child:not(:nth-child(2)) {
+    flex-wrap: wrap;
+  }
+
+  [role="radiogroup"].grid-cols-5 {
+    gap: 0.25rem;
+  }
+
+  .app-shell > div > nav.fixed > div {
+    padding-left: max(0.25rem, env(safe-area-inset-left));
+    padding-right: max(0.25rem, env(safe-area-inset-right));
+  }
+
+  .app-shell > div > nav.fixed a {
+    min-height: 3.5rem;
+    justify-content: center;
+  }
+}
+
+@media (width < 23rem) {
+  .app-content .grid-cols-2:has(> .kpi-card),
+  .app-content > .mx-auto > .grid-cols-2:has(> .rounded-xl) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
