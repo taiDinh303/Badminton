@@ -15,17 +15,23 @@ namespace Badminton.API.Controllers
 
         [HttpPost("courts/{courtId:int}/maintenance")]
         public async Task<IActionResult> Set(int courtId, [FromQuery] string date,
-            [FromQuery] CourtDateStatus status, [FromQuery] string? note = null)
+            [FromQuery] CourtDateStatus status, [FromQuery] string? note = null,
+            [FromQuery] TimeSpan? startTime = null, [FromQuery] TimeSpan? endTime = null)
         {
-            var d = DateOnly.Parse(date, System.Globalization.CultureInfo.InvariantCulture);
-            await _svc.SetAsync(courtId, d, status, CurrentUserId, note);
+            if (!DateOnly.TryParse(date, System.Globalization.CultureInfo.InvariantCulture, out var d))
+                throw new Badminton.Core.Base.BadRequestException("Ngày không hợp lệ.");
+            await _svc.SetAsync(courtId, d, status, CurrentUserId, note, startTime, endTime);
             return RespMsg("Đã cập nhật trạng thái bảo trì.");
         }
+
+        [HttpGet("courts/{courtId:int}/maintenance/{date}/schedule")]
+        public async Task<IActionResult> Schedule(int courtId, DateOnly date) => Resp(await _svc.GetScheduleAsync(courtId, date));
 
         [HttpGet("courts/{courtId:int}/maintenance/{date}")]
         public async Task<IActionResult> Get(int courtId, [FromRoute] string date)
         {
-            var d = DateOnly.Parse(date, System.Globalization.CultureInfo.InvariantCulture);
+            if (!DateOnly.TryParse(date, System.Globalization.CultureInfo.InvariantCulture, out var d))
+                throw new Badminton.Core.Base.BadRequestException("Ngày không hợp lệ.");
             return Resp(await _svc.GetStatusAsync(courtId, d));
         }
     }

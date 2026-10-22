@@ -13,6 +13,15 @@ namespace Badminton.API.Controllers
         private readonly ICheckinService _svc;
         public CheckinController(ICheckinService svc) => _svc = svc;
 
+        public sealed record TokenRequest([System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.StringLength(128)] string Token);
+
+        [HttpPost("token")]
+        public async Task<IActionResult> ByToken(TokenRequest request) => Resp(new
+        {
+            BookingId = (await _svc.CheckinByTokenAsync(request.Token.Trim(), CurrentUserId)).Id,
+            Message = "Đã check-in thành công."
+        });
+
         [HttpPost("qr/{token}")]
         public async Task<IActionResult> ByQr(string token)
             => Resp(new { BookingId = (await _svc.CheckinByTokenAsync(token, CurrentUserId)).Id,

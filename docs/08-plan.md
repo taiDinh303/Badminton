@@ -1,58 +1,45 @@
-# 08 — Kế hoạch, quyết định và backlog Badminton V1
+# 08 — Quyết định, hiện trạng và kế hoạch
 
-> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **16/10/2026**.
-> Phạm vi: kế hoạch dựa trên source; chưa xác nhận runtime/hạ tầng.
+> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **20/10/2026**. CURRENT theo source; kết quả kiểm tra ở worklog.
 
-## 1. Quyết định nền đang giữ
+## 1. Nền được giữ
 
-| Chủ đề | Nội dung | Căn cứ |
+.NET 8 service/repository + React/Vite, SQL Server local, JWT/BCrypt; múi giờ nghiệp vụ UTC+7, timestamp UTC; ba role, manager một branch; một active slot; điểm bank khi Completed và restore điểm đã dùng khi full refund. Ngày 21/10/2026, người dùng chỉ định Supabase cho cloud và cho phép chuyển toàn bộ dữ liệu local: đã thêm PostgreSQL với bộ migration riêng. Không chuyển Identity/OTP chỉ để giống Marixa.
+
+Cấu trúc tham khảo Marixa: contracts độc lập persistence, repository DI, composition ở API, pure config validation, explicit initialization, React feature modules/theme/navigation/providers. Người dùng giao chuẩn hóa docs/ASP.NET/React ngày 20/10; không bao gồm deploy live hoặc mua dịch vụ.
+
+## 2. Kết quả kỹ thuật hiện tại
+
+| ID | Trạng thái CURRENT | Giới hạn |
 | --- | --- | --- |
-| V1 | Đặt sân cá nhân/nhóm, thanh toán, voucher, điểm, review, bảo trì, quản trị | [01](01-business-analysis.md) |
-| Stack | .NET 8 service/repository + React/Vite SPA; chưa CQRS/MediatR | Source/worklog cũ |
-| Thời gian | Asia/Ho_Chi_Minh, UTC+7; timestamp UTC | HanoiTime/yêu cầu hiện hữu |
-| Quyền | Customer, Manager, Admin; manager chỉ cơ sở được gán | Yêu cầu; code thiếu coverage |
-| Giá | Low/peak; cuối tuần phụ thu trên giá cơ sở của slot; tiền đơn có snapshot | PricingService/Booking |
-| Giữ chỗ | Pending 10 phút; unique index bảo vệ Pending/Confirmed | Mapping/job |
-| Admin | Cần đúng một admin active; index chỉ bảo đảm tối đa một | Model/StaffService |
-| Cloud | PostgreSQL/Supabase, OTP, Storage; scheduler/Redis/gateway thật chưa tích hợp | Hướng tài liệu trước, chưa nghiệm thu |
+| LAYER-01 | Contract.Services/Services không reference Repositories/EF/SqlClient/HttpContext; ICurrentUser API adapter | Raw SQL nghiệp vụ vẫn gắn SQL Server |
+| CONFIG-01 | Pure validation/check-config, Production cấm startup init/seed; dev flags, array/legacy CORS | Không xác minh credential/network thật |
+| SEC-01 | Cancel owner guard có trong source mới; kiểm HTTP customer khác | Status domain conflict hiện vẫn 409, chưa đổi contract |
+| SEC-02 | Shared staff active/branch guard cho list/summary/detail/payment-read/lifecycle/check-in | Cần full matrix các endpoint khi release |
+| PAY-01 | CancelRefundAsync nối hủy đã trả với refund, có tests | Crash/gateway sandbox cần đối soát |
+| DATA-01 | Retry key bind actor và slot/date/group/playerCount; tiền lịch sử theo snapshot | Chưa hash đầy đủ voucher/points/note |
+| UI-01 | Lazy feature routes, shared nav/theme, mobile staff menu, cache/401 reset | QR mã hóa token thực/camera BarcodeDetector; chưa nghiệm thu thiết bị thật |
+| DEV-01 | SDK9/paths/API/Tests/EF manifest/CI chuẩn hóa | CI remote phải đọc run thực tế |
 
-Định mức nghiệp vụ chỉ quản lý ở [01](01-business-analysis.md). Hướng cloud không đồng nghĩa đã chọn host, region, plan hoặc có tài khoản dịch vụ.
+## 3. Việc còn mở và tiêu chí
 
-## 2. Các điểm cần chốt
-
-| Mã | Mâu thuẫn / thiếu quyết định | Cần xác nhận trước sửa hành vi |
+| Ưu tiên | Việc | Điều kiện đóng |
 | --- | --- | --- |
-| DEC-01 | Spec cộng điểm khi Completed; code cộng ngay Confirmed | Thời điểm ghi nhận; điểm đã tiêu trước hoàn tiền |
-| DEC-02 | Spec trả điểm đã dùng khi hoàn full; code trả ở mọi tỷ lệ | Full/partial/0%, voucher và số dư âm |
-| DEC-03 | No-show mô tả giờ bắt đầu/kết thúc khác nhau; job complete có thể chạy trước nhân viên | Mốc đánh dấu, thời gian xử lý, ưu tiên job/nhân viên |
-| DEC-04 | Voucher có MaxPerUser nhưng unique ép một lượt/khách | V1 giữ một lượt; tăng lượt phải đổi constraint/test |
-| DEC-05 | Retention 90 ngày/12 tháng chưa có job hoặc căn cứ pháp lý | Thời hạn, quyền xóa, backup, trách nhiệm |
-| DEC-06 | Host/project cloud, Auth cutover và nhiều instance chưa bàn giao | Môi trường, chi phí, vận hành, rollback |
+| P0 trước thu tiền thật | Ba gateway sandbox/late/refund/đối soát | Evidence từ provider thực, không stub |
+| P0 | Full idempotency payload hash và concurrent points balance | Hai ý định khác không dùng key; không tiêu vượt balance |
+| P0 | Doanh thu theo tiền thu/hoàn/kỳ Việt Nam và full branch coverage | Dataset refund-only/Pending/Refunded/low/peak/qua ngày |
+| P0 | Migration sạch/nâng cấp/backup restore | DB test riêng, kiểm index/ledger/tổng tiền |
+| P1 | Worker multi-instance/restart/crash giữa claim và ledger | Không mất/nhân đôi nghiệp vụ, load evidence |
+| P1 | QR chuẩn quét/server verify; camera UX nếu cần | Scan thiết bị thật, đúng trạng thái/branch |
+| P1 | Upload ảnh/retention/RPO/RTO/metrics ingress | Quyết định owner và test quyền/vận hành |
+| P2 | Offline retry, Figma UI Kit/file mapping | Không thành công giả, thiết kế có link thật |
+| Riêng (PRICING-01) | Chốt định giá: **theo người** (giá 1 người × số người — chính sách đang áp dụng ở `BookingService`, khớp preview UI) hay **theo slot** (1 giờ = 1 đơn giá, số người chỉ cap). `01-business-analysis` §3 mô tả "giá là VND/giờ" (theo slot), nhưng frontend đã chạy theo người. Chốt một chiều rồi giữ `total` + `min_spend` voucher + breakdown đồng bộ. | Owner chốt đơn giá; đổi 1 chiều, cập nhật test `LifecycleAndRedeemTests` nếu theo slot |
+| Riêng | PostgreSQL/Supabase đã có provider, migration, raw SQL/lock và chuyển dữ liệu theo yêu cầu 21/10; OTP/Storage còn mở | Trạng thái cloud/test thực ở worklog; OTP/Storage cần nhiệm vụ riêng |
 
-## 3. Backlog và phụ thuộc
+## 4. Chính sách cần giữ tách source
 
-| ID | Ưu tiên | Công việc | Tiêu chí đóng |
-| --- | --- | --- | --- |
-| SEC-01 | P0 | AuthorizeCancel từ chối actor không có quyền | A không hủy đơn B; staff đúng scope; test HTTP |
-| SEC-02 | P0 | Manager scope: list, summary, payment read, lifecycle; chưa gán cơ sở fail closed | Không vượt scope qua ID/query/thiếu branch; 2 manager |
-| SEC-03 | P0 | Quyền cấu hình slot theo đặc tả chỉ Admin; CURRENT Manager được POST/PATCH | Chốt/sửa quyền, test HTTP và UI theo role |
-| PAY-01 | P0 | Liên kết hủy đơn đã trả và hoàn tiền | Không rơi Cancelled mất khả năng refund; audit/ledger đúng |
-| PAY-02 | P0 | Gateway thật, callback muộn/hoàn lỗi | Sandbox chữ ký sai/lặp/đảo thứ tự/timeout; đối soát |
-| DATA-01 | P0 | Idempotency theo actor/payload; giá lịch sử không tính lại từ cấu hình mới | Retry cùng yêu cầu cùng đơn; không lộ đơn actor khác |
-| REP-01 | P0 | Đúng doanh thu, hoàn tiền, peak occupancy và UTC+7 | Dataset Pending/Refunded/low/peak; tổng khớp payment |
-| DEV-01 | Đã sửa 16/10 | API/Tests, build.ps1/CI, SDK và EF manifest chuẩn hóa | Local build/model/test đạt; CI remote cần xác minh run sau push |
-| QA-01 | P0 | HTTP/browser/load và assertion đúng | Bằng chứng [05](05-testing-strategy.md); 0 đặt trùng |
-| INF-01 | P0 khi chuyển cloud | Provider/migration/raw SQL/Auth/Storage | Phụ thuộc DEC-06; suite PostgreSQL test, restore |
-| OPS-01 | P1 | Jobs đa instance; rate-limit/lockout/cache/token khóa | Không xử lý trùng; tài khoản khóa không mutation |
-| UI-01 | P1 | QR thực, lifecycle/redeem, payment/refresh | Browser theo role; mã xác thực server |
-| OPS-02 | P1 | Backup/restore, correlation, readiness/cảnh báo | Restore evidence, owner, ngưỡng |
-| DESIGN-01 | P2 | UI Kit/token/coverage Figma | File key/node mapping, kiểm tra mobile/desktop |
-| OFF-01 | P2 | Offline/retry queue | Chỉ server xác nhận đơn; idempotency đúng |
+Ngày 21/10/2026, người dùng chốt voucher: mỗi tài khoản dùng **mỗi mã một lần**, vẫn dùng được mã khác. Bỏ cap toàn tài khoản cũ. Đồng thời yêu cầu tải trước trang theo quyền, review ngay trong chi tiết đơn (kể cả Admin là owner), bỏ nhãn ngày lặp và slot 02:00, thêm dữ liệu mẫu reviews/membership/vouchers trên Supabase. Các thay đổi này được triển khai theo URL live người dùng chỉ định; không phải quyền suy ra từ backlog.
 
-Sửa độ đúng/quyền trước tăng tải hoặc nhiều instance. Không đổi DB/Auth/payment đồng loạt trong một lần release.
+V1 chưa bán subscription; membership Silver/Gold có code là mở rộng, không tự xác nhận gói bán/giá/gia hạn. Retention, RPO/RTO, host/domain/plan và mốc staff no-show so với auto-complete cần quyết định/bằng chứng vận hành. Không lấy chính sách nhân sự Marixa để điền.
 
-## 4. Điều kiện đóng việc
-
-Mỗi việc: ID → source thay đổi → kiểm tra phù hợp → ngày/môi trường/kết quả → worklog. P0 chưa đóng thì chưa nghiệm thu dùng thật. Sửa tài liệu không đóng lỗi code.
-
-Thay chính sách cần quyết định/người xác nhận/tác động dữ liệu/API/UI/test và chuyển dữ liệu cũ. Quyết định chưa chốt giữ PENDING. [worklog](worklog.md) lưu lịch sử và bằng chứng; ngày sửa docs không thay bằng chứng nghiệp vụ.
+Mỗi việc đóng bằng ID/source/lệnh/kết quả/giới hạn trong [worklog](worklog.md); release theo [14](14-release-checklist.md). Chỉ sửa docs không đóng lỗi ứng dụng hoặc xác nhận cloud.

@@ -1,115 +1,90 @@
 # 10 — Thiết lập và chạy local
 
-> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **16/10/2026**.
-> Lệnh theo cấu trúc API/Tests chuẩn hóa 16/10/2026. Kết quả build/test hiện hành ở worklog.
+> Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **21/10/2026**. Đường dẫn theo checkout; kết quả máy kiểm ở worklog.
 
-## 1. Yêu cầu
+## 1. Yêu cầu và build
 
-- Windows + SQL Server Express/LocalDB cho integrated authentication hiện tại.
-- SDK 9.0 theo global.json (baseline 9.0.300, latestFeature); máy kiểm tra dùng 9.0.317. Project vẫn target net8.0, cần runtime ASP.NET Core/.NET 8 khi chạy/test.
-- Node 24 như CI hiện tại; máy kiểm tra dùng 24.21.0. Dùng npm ci theo lockfile.
-- Git; k6/dotnet-ef khi chạy kiểm tra tương ứng.
-
-Không cần Docker/Supabase local cho baseline SQL Server.
-
-## 2. Restore/build từ root repo
-
-```powershell
-Set-Location 'D:\My Project\Badminton'
-dotnet --version
-node --version
-dotnet restore .\Backend\Badminton.slnx
-dotnet build .\Backend\Badminton.slnx -c Debug --no-restore
-```
-
-Từ root có thể chạy .\build.ps1; thêm -Run để chạy API, -StopApi nếu cần dừng API trước build. Script dùng đường dẫn theo PSScriptRoot, không đổi thư mục terminal và không mặc định dừng process. CI đã dùng Backend/API và Backend/Tests, SDK 9 + runtime 8.
-
-## 3. Cấu hình backend
-
-Trong terminal sẽ chạy API:
-
-```powershell
-$env:ConnectionStrings__BadmintonBooking = 'Server=.\SQLEXPRESS;Database=BadmintonBooking;Trusted_Connection=True;TrustServerCertificate=True;'
-$env:JwtSettings__Key = '<local-random-key-at-least-32-characters>'
-$env:ASPNETCORE_ENVIRONMENT = 'Development'
-```
-
-Thay placeholder key; issuer/audience phải nhất quán. LocalDB dùng Server=(localdb)\MSSQLLocalDB. PowerShell dùng một backslash thật; escape đôi trong JSON là quy ước khác.
-
-Startup áp migration/seed trên DB đã chọn; dùng DB riêng dự án. `.env` root không tự được server nạp. Xem [09](09-deploy-detail.md).
-
-## 4. Hai terminal độc lập
-
-Backend từ root repo, sau đặt env:
-
-```powershell
-dotnet run --project .\Backend\API\Badminton.API.csproj --launch-profile http
-```
-
-API http://localhost:5131; Swagger Development http://localhost:5131/swagger. Profile http đặt Development.
-
-Frontend:
-
-```powershell
-Set-Location 'D:\My Project\Badminton\Frontend'
-npm ci
-npm run dev
-```
-
-SPA http://localhost:5173; proxy /api → :5131. Không cần VITE_API_URL khi dùng proxy. Nếu tạo Frontend/.env.local, base phải gồm /api/v1. Restart Vite sau đổi env.
-
-## 5. Tài khoản và smoke test
-
-Tài khoản mẫu xem [SeedData.cs](../Backend/API/SeedData.cs); manager SĐT 0900000002–0900000004, customer bắt đầu 0910000000. DB cũ không tự bảo đảm có seed mới.
-
-1. Đăng nhập khách; đọc availability với ngày yyyy-MM-dd.
-2. Chọn sân/slot active, bắt đầu ít nhất 30 phút trong tương lai; tạo Pending.
-3. Manager đúng cơ sở xác nhận Cash/QR; đọc lại đơn/payment/ledger.
-4. Hủy một đơn Pending test khác để kiểm tra giải phóng slot; hủy đã trả còn PAY-01.
-5. Đọc danh sách/chi tiết browser; QR tile chưa là mã quét hợp lệ.
-
-Mock gateway không thu tiền thật. Chạy và ghi kết quả trước khi kết luận local hoạt động.
-
-## 6. Kiểm tra
-
-Root repo:
-
-```powershell
-$env:BADMINTON_TEST_SQLSERVER = '.\SQLEXPRESS'
-dotnet test .\Backend\Tests\Badminton.Tests.csproj -c Debug
-```
-
-Test tạo/xóa DB BadmintonTest_* trên instance chọn; không chạy server live. Suite service/EF chưa bao phủ middleware/JWT/controller.
-
-Từ Frontend:
-
-```powershell
-npm run lint
-npm run build
-```
-
-Ghi lệnh/phiên bản/môi trường/kết quả vào [worklog](worklog.md). Chi tiết [05](05-testing-strategy.md).
-
-## 7. Lỗi thường gặp
-
-| Lỗi | Kiểm tra |
-| --- | --- |
-| Không thấy project | Backend và tên Badminton.API.csproj |
-| SQL connect fail | Instance/quyền Windows/connection string |
-| DLL khóa | Dừng đúng process API dự án trước build |
-| Engine Vite | Node và engines node_modules/vite/package.json |
-| API 5173 404 | Vite dev/proxy; preview không có dev proxy |
-| Clock test lệch | HanoiTime.NowUtc reset; không test xung đột global clock |
-
-Không import SQL script rồi áp migrations cùng DB khi chưa đối chiếu lịch sử schema.
-
-## 8. EF tool và kiểm tra model
+SDK từ 9.0.300 theo global.json (`rollForward: latestMajor`, chọn SDK stable mới nhất đã cài, hỗ trợ máy chỉ có SDK 10), runtime .NET/ASP.NET Core 8, Node 24, Git, SQL Server local (default/Express/LocalDB). Target ứng dụng vẫn net8.0. Không cần Docker/Supabase local cho baseline.
 
 Từ root repo:
 
 ```powershell
 dotnet tool restore
-dotnet ef migrations has-pending-model-changes --project Backend/Repositories --startup-project Backend/API
+dotnet restore Backend/Badminton.slnx
+.\build.ps1
 ```
 
-Tool manifest pin dotnet-ef 8.0.28 theo EF packages. Design-time factory ưu tiên ConnectionStrings__BadmintonBooking, vẫn hỗ trợ biến legacy BadmintonBooking__ConnectionStrings__BadmintonBooking; kiểm tra model drift không áp migration. Khi thực sự update DB, xác nhận connection đúng môi trường trước chạy.
+Script dùng PSScriptRoot; -Run chạy API, -StopApi mới dừng process API có executable trong Backend/API/bin của checkout này. Khi -Run/-StopApi, script kiểm tra cổng 5131 trước build; nếu process khác còn giữ cổng thì báo PID và dừng, không tự kill process khác. Cấu trúc API/Tests hiện hành thay đường dẫn cũ.
+
+## 2. Cấu hình local
+
+Đặt ConnectionStrings:BadmintonBooking và JwtSettings:Key trong User Secrets của Backend/API/Badminton.API.csproj hoặc process env. Key phải riêng và ≥32 byte UTF-8; không paste vào chat/log. Connection local ví dụ Server=.;Database=BadmintonBooking;Trusted_Connection=True;TrustServerCertificate=True; (đổi instance theo máy).
+
+Backend không tự nạp .env. Development JSON có LocalDB mẫu và cờ init local; base JSON không có connection/key. Env/User Secrets ghi đè theo máy. [13](13-configuration.md) quản lý key.
+
+```powershell
+dotnet run --project Backend/API/Badminton.API.csproj --launch-profile http -- --check-config
+```
+
+Dry-run không DB/migration/seed/jobs/HTTP ngoài.
+
+## 3. Hai terminal
+
+Backend từ root sau cấu hình:
+
+```powershell
+dotnet run --project Backend/API/Badminton.API.csproj --launch-profile http
+```
+
+API :5131; Swagger Development /swagger; /health liveness; /ready DB/jobs. Development mặc định migrate/seed local theo DatabaseInitialization flags. Nếu schema đã chuẩn bị, đặt MigrateOnStartup/SeedDemoData=false; tắt worker bằng BackgroundJobs:Enabled=false khi cần test chỉ API.
+
+Frontend từ Frontend:
+
+```powershell
+npm ci
+npm run dev
+```
+
+SPA :5173 proxy /api → :5131. API_PROXY_TARGET đổi dev origin; VITE_API_URL rỗng dùng /api/v1, base riêng phải đúng suffix. Vite preview không có dev proxy: cần reverse proxy/API host riêng hoặc mocked test.
+
+## 4. Flow và tài khoản
+
+SeedData.cs chứa tài khoản dev, không dùng production. Login → availability → chọn slot ≥30 phút tới → Pending → on-site đúng staff/branch hoặc mock → đọc lại → hủy đơn test. Mock không chứng minh thu tiền thật.
+
+Manager mobile vào vận hành bằng Mở menu. Check-in nhận code/server token; tile chưa là QR chuẩn camera. Nhóm/review/waitlist/membership nằm trong modules tương ứng.
+
+## 5. Kiểm tra
+
+Root:
+
+```powershell
+$env:BADMINTON_TEST_SQLSERVER = '.'
+dotnet test Backend/Tests/Badminton.Tests.csproj -c Release
+dotnet ef migrations has-pending-model-changes --context BadmintonBookingDbContext --project Backend/Repositories --startup-project Backend/API --configuration Release --no-build
+dotnet ef migrations has-pending-model-changes --context PostgresBookingDbContext --project Backend/Repositories --startup-project Backend/API --configuration Release --no-build
+```
+
+Fixture tạo/xóa BadmintonTest_*, chỉ local/test. Frontend: npm test, npm run lint, npm run build, npx --no-install playwright install chromium, npm run test:e2e. [05](05-testing-strategy.md) giải thích phạm vi.
+
+## 6. Lỗi thường gặp
+
+| Lỗi | Cách kiểm tra |
+| --- | --- |
+| Unable to resolve SDK theo global.json | Chạy dotnet --list-sdks và dotnet --version trong Backend; cần SDK stable từ 9.0.300, global.json dùng latestMajor để nhận SDK 10 khi máy không có SDK 9 |
+| Startup fail | Check-config → instance/schema → /ready |
+| Failed to bind / address already in use / Port 5131 bận | Có API khác đang chạy. Ctrl+C ở terminal cũ hoặc Shift+F5 trong Visual Studio. Từ root chạy `.\build.ps1 -StopApi` để dừng API của checkout này và build, sau đó F5 trong Visual Studio; hoặc `.\build.ps1 -StopApi -Run` nếu chỉ dùng terminal. Không chạy đồng thời cả hai. |
+| Playwright thiếu package | npm ci sau pull, dùng --no-install |
+| Test tiền lệch cuối tuần | Expected phải theo ngày fixture |
+| Import page không tìm thấy | modules/<feature>/pages thay pages cũ |
+
+Không dùng loadtest/start_api.ps1 để start thông thường: helper legacy có reset DB. Dùng dotnet run bên trên; không chạy helper vào dữ liệu cần giữ.
+
+Để xem process đang giữ cổng trước khi xử lý:
+
+```powershell
+Get-NetTCPConnection -LocalPort 5131 -State Listen |
+    Select-Object LocalAddress, LocalPort, OwningProcess
+Get-Process -Id <OwningProcess> | Select-Object Id, ProcessName, Path
+```
+
+Thay `<OwningProcess>` bằng số PID vừa thấy. Kiểm tra tên/đường dẫn trước khi dừng; không dùng lệnh tắt toàn bộ dotnet. Giữ cổng 5131 vì frontend proxy mặc định gọi API tại đây. Lỗi xuất hiện ở `app.RunAsync()` vì đó là lúc API mở cổng HTTP, không phải lỗi đặt sân hay database.

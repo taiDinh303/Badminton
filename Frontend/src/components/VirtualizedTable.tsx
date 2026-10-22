@@ -99,12 +99,16 @@ export function VirtualizedTable<T>({
   return (
     <div
       className={clsx(
-        "flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm shadow-black/[0.03]",
+        "data-table flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm shadow-black/[0.03]",
         className,
       )}
     >
+      <p className="hidden max-md:block border-b border-border px-3 py-2 text-xs text-muted">Vuốt ngang để xem đầy đủ bảng</p>
       <div
         ref={scrollRef}
+        role="region"
+        aria-label="Bảng dữ liệu, cuộn ngang để xem các cột"
+        tabIndex={0}
         className="overflow-auto"
         style={{ maxHeight }}
         onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
@@ -168,7 +172,7 @@ export function VirtualizedTable<T>({
                       <div
                         key={c.key}
                         className={clsx(
-                          "flex items-center px-3",
+                          "flex min-w-0 items-center overflow-hidden px-3",
                           c.align === "right" && "justify-end",
                           c.align === "center" && "justify-center",
                         )}

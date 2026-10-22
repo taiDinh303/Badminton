@@ -1,7 +1,7 @@
 # 00 — Chỉ dẫn tài liệu hệ thống đặt sân cầu lông
 
-> Chủ tài liệu: **Đinh Văn Tài** · Đồng đội: **Phùng Vĩnh Luân**. Cập nhật: **16/10/2026**.
-> Phạm vi: đối chiếu Markdown, mã nguồn và cấu hình checkout. Chưa nghiệm thu runtime hoặc hạ tầng live trong lần chuẩn hóa này.
+> Chủ tài liệu: **Đinh Văn Tài** · Đồng đội: **Phùng Vĩnh Luân**. Cập nhật: **20/10/2026**.
+> Phạm vi: chuẩn hóa source/docs/config, kiểm thử local SQL/HTTP và browser mock; bằng chứng ở worklog. Chưa nghiệm thu hạ tầng/gateway live.
 
 ## 1. Bắt đầu ở đây
 
@@ -22,6 +22,8 @@
 | Chuẩn bị cloud và bàn giao | [11-setup-cloud.md](11-setup-cloud.md) |
 | Đồng bộ thiết kế và code | [12-figma-sync.md](12-figma-sync.md) |
 | Thuật ngữ chuẩn | [glossary.md](glossary.md) |
+| Chuẩn cấu hình, dry-run và khởi tạo | [13-configuration.md](13-configuration.md) |
+| Gate phát hành và bàn giao | [14-release-checklist.md](14-release-checklist.md) |
 | Ma trận chức năng, bằng chứng, lịch sử | [worklog.md](worklog.md) |
 
 ## 2. Nguồn chuẩn và trạng thái
@@ -43,14 +45,14 @@ Nguồn nghiệp vụ là [01](01-business-analysis.md), quyết định/backlog
 | --- | --- | --- |
 | Backend | ASP.NET Core .NET 8, EF Core, service/repository, REST `/api/v1` | Hoàn thiện quyền và nhất quán trước dùng thật |
 | Frontend | React 19, Vite 8, TypeScript, Tailwind 4, Router 7, React Query, zustand | Kiểm thử browser, hoàn thiện trải nghiệm |
-| DB | SQL Server `UseSqlServer`, 15 bảng, đa số PK int | PostgreSQL/Supabase; cần đổi provider/migration/raw SQL |
+| DB | SQL Server local và PostgreSQL/Supabase, 17 bảng, đa số PK int | Giữ bộ migration riêng theo provider; bằng chứng cutover ở worklog |
 | Danh tính | SĐT + BCrypt + JWT .NET | Phone OTP qua Supabase Auth là hướng cũ, chưa tích hợp |
-| Thanh toán | Mock online + Cash/QR tại quầy | Gateway thật, chữ ký và đối soát |
-| Jobs | 4 BackgroundService trong API | Scheduler an toàn nhiều instance |
-| Ảnh/QR | Trường URL/metadata; QR-like tile minh họa | Upload Storage, QR quét/xác thực thực sự |
-| Hosting | Có `Frontend/vercel.json`; chưa có Dockerfile/blueprint API | SPA Vercel; host API/project DB cần xác nhận |
+| Thanh toán | Mock/real adapter + Cash/QR tại quầy | Sandbox thật và đối soát, chưa nghiệm thu live |
+| Jobs | 5 BackgroundService, SQL applock/heartbeat | Nghiệm thu tải/restart nhiều instance |
+| Ảnh/QR | URL/metadata, server QrToken/check-in; QR mã hóa token | Upload Storage; nghiệm thu quét thiết bị thật |
+| Hosting | SPA Vercel/Render Static; Dockerfile API và render.yaml; Supabase đã nhập dữ liệu | Trạng thái API/frontend live mới nhất ở worklog |
 
-Không sao chép URL, project ID, plan, tài khoản hoặc quyết định riêng của Marixa. Chưa có snapshot hosting Badminton được xác nhận trong nhiệm vụ này.
+Không sao chép URL, project ID, plan, tài khoản hoặc quyết định riêng của Marixa. Hạ tầng Badminton được người dùng chỉ định ngày 21/10/2026; chi tiết ở [15](15-cloud-runtime.md).
 
 ## 4. Quy tắc bảo trì
 
@@ -78,3 +80,9 @@ Báo kiểm tra đã chạy, kết quả, giới hạn và phần chưa hoàn t�
 Backend/API chứa Badminton.API.csproj (namespace Badminton.API); Backend/Tests chứa Badminton.Tests.csproj; Core dùng namespace Badminton.Core. Giữ tên các tầng Services, Contract.Services, Repositories, Contract.Repositories, ModelViews, Core. File BadmintonBookingDbContext.cs khớp tên lớp; migration/table/API URL không đổi.
 
 Solution ở Backend/Badminton.slnx. SDK theo [global.json](../global.json), target ứng dụng vẫn net8.0; EF tool theo [.config/dotnet-tools.json](../.config/dotnet-tools.json). Build script và CI đã cập nhật path; kết quả kiểm tra mới ở [worklog](worklog.md).
+
+## 7. Chuẩn kỹ thuật 20/10/2026
+
+Mượn từ Marixa cách phân tầng/validation/onboarding/theme, giữ riêng SQL Server/JWT BCrypt/routes và nghiệp vụ đặt sân. API có Configuration/Bootstrap/Security; contracts không phụ thuộc implementation; Services dùng ICurrentUser và lỗi persistence trung lập. React có app/modules/services/utils/theme. --check-config không side effect; Production không auto migrate/seed. [13](13-configuration.md) là contract cấu hình duy nhất.
+
+Waitlist, check-in token, notify, membership, signed adapter và trang nhóm/review đã có source từ lần pull mới; không được ghi là chưa có toàn bộ như snapshot 16/10. Bằng chứng phân biệt unit/service/HTTP/browser mock; phần live giữ NOT VERIFIED.

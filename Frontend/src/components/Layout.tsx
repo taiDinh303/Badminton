@@ -1,23 +1,8 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
-import {
-  Home,
-  CalendarDays,
-  ListChecks,
-  User,
-  LayoutDashboard,
-  Dumbbell,
-  Ticket,
-  Clock,
-  Users,
-  ScrollText,
-  LogOut,
-  Feather,
-  Crown,
-  Hourglass,
-  Star,
-  ScanLine,
-} from "lucide-react";
+import { Feather, LogOut, Menu, X } from "lucide-react";
+import { useState, useRef } from "react";
+import { customerItems, mobileItems, adminItems } from "../app/navigation";
 import { useAuth, isStaff, isAdmin } from "../store/auth";
 
 /**
@@ -26,44 +11,6 @@ import { useAuth, isStaff, isAdmin } from "../store/auth";
  *  - desktop: left sidebar. Customers see customer items (incl. Nhóm/Đánh giá);
  *    Manager/Admin additionally get the admin section items (incl. Check-in).
  */
-const customerItems = [
-  { to: "/", label: "Trang chủ", icon: Home, end: true },
-  { to: "/book", label: "Đặt sân", icon: CalendarDays },
-  { to: "/bookings", label: "Đơn của tôi", icon: ListChecks },
-  { to: "/waitlist", label: "Chờ", icon: Hourglass },
-  { to: "/groups", label: "Nhóm", icon: Users },
-  { to: "/reviews", label: "Đánh giá", icon: Star },
-  { to: "/account", label: "Tài khoản", icon: User },
-];
-
-// Mobile bottom nav keeps only the essentials so 5 items fit (docs 07 §3).
-const mobileItems = [
-  { to: "/", label: "Trang chủ", icon: Home, end: true },
-  { to: "/book", label: "Đặt sân", icon: CalendarDays },
-  { to: "/bookings", label: "Đơn của tôi", icon: ListChecks },
-  { to: "/waitlist", label: "Chờ", icon: Hourglass },
-  { to: "/account", label: "Tài khoản", icon: User },
-];
-
-type NavItem = { to: string; label: string; icon: typeof Home; end?: boolean; adminOnly?: boolean };
-
-// Docs 03 role matrix: a Manager handles day-to-day ops (check-in, bookings,
-// maintenance on own branch, slots, vouchers, dashboard-summary). Admin adds
-// the back-office: staff, audit log, membership, court CRUD.
-const adminItems: NavItem[] = [
-  { to: "/admin", label: "Tổng quan", icon: LayoutDashboard, end: true },
-  { to: "/admin/bookings", label: "Đặt chỗ", icon: ListChecks },
-  { to: "/admin/courts", label: "Sân & giá", icon: Dumbbell },
-  { to: "/admin/vouchers", label: "Voucher", icon: Ticket },
-  { to: "/admin/slots", label: "Khung giờ", icon: Clock },
-  { to: "/checkin", label: "Check-in", icon: ScanLine },
-  { to: "/admin/staff", label: "Nhân viên", icon: Users, adminOnly: true },
-  { to: "/admin/audit", label: "Nhật ký", icon: ScrollText, adminOnly: true },
-  { to: "/admin/membership", label: "Membership", icon: Crown, adminOnly: true },
-];
-
-
-
 function navClass({ isActive }: { isActive: boolean }) {
   return clsx(
     "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors cursor-pointer",
@@ -81,6 +28,10 @@ function mobileClass({ isActive }: { isActive: boolean }) {
 }
 
 export default function Layout() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const location = useLocation();
+  const title = [...adminItems, ...customerItems].find(item => item.to === location.pathname)?.label ?? "Chi tiết đặt sân";
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
   const nav = useNavigate();
@@ -94,15 +45,16 @@ export default function Layout() {
   }
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="app-shell flex min-h-dvh">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:p-3">Bỏ qua điều hướng</a>
       {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card md:flex">
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-y-auto border-r border-border bg-card md:flex">
         <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white shadow-sm shadow-primary/30">
             <Feather className="h-5 w-5" />
           </span>
           <div>
-            <p className="text-sm leading-tight font-bold">Cầu Long</p>
+            <p className="text-sm leading-tight font-bold">Cầu Lông</p>
             <p className="text-[11px] leading-tight text-muted">Booking</p>
           </div>
         </div>
@@ -168,7 +120,28 @@ export default function Layout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <main className="flex-1 px-4 py-5 pb-24 md:px-6 md:pb-6">
+        <header className="app-header sticky top-0 z-30 border-b border-border bg-card/95 px-4 py-3 backdrop-blur md:px-6">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <button ref={menuButton} type="button" aria-label="Mở menu" aria-expanded={menuOpen} aria-controls="mobile-menu"
+                onClick={() => setMenuOpen(!menuOpen)} className="flex h-11 w-11 items-center justify-center rounded-lg border border-border md:hidden">
+                {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+              <div><p className="text-sm font-semibold">{title}</p><p className="text-xs text-muted">Đặt sân cầu lông · {staff ? "Vận hành cơ sở" : "Sẵn sàng cho trận đấu"}</p></div>
+            </div>
+            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{admin ? "Quản trị viên" : staff ? "Quản lý" : "Khách hàng"}</span>
+          </div>
+          {menuOpen && <nav id="mobile-menu" aria-label="Menu di động" className="mt-3 max-h-[65dvh] overflow-y-auto border-t border-border pt-3 md:hidden"
+            onKeyDown={event => { if (event.key === "Escape") { setMenuOpen(false); menuButton.current?.focus(); } }}>
+            {[...(staff ? items : []), ...customerItems].map(item => (
+              <NavLink key={item.to} to={item.to} end={item.end} className={navClass} onClick={() => setMenuOpen(false)}>
+                <item.icon className="h-4 w-4" /><span>{item.label}</span>
+              </NavLink>
+            ))}
+            <button type="button" onClick={doLogout} className="mt-2 flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-muted"><LogOut className="h-4 w-4" />Đăng xuất</button>
+          </nav>}
+        </header>
+        <main id="main-content" tabIndex={-1} className="app-content flex-1 px-4 py-5 pb-24 md:px-6 md:pb-6">
           <Outlet />
         </main>
 

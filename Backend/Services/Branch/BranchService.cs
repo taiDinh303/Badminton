@@ -3,7 +3,7 @@ using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using Contract.Services.Branch;
 using Badminton.Core.Base;
-using Microsoft.AspNetCore.Http;
+using Badminton.Core.Security;
 using ModelViews.Branch;
 
 namespace Services
@@ -11,8 +11,8 @@ namespace Services
     public sealed class BranchService : BaseService, IBranchService
     {
         private readonly IAuditService _audit;
-        public BranchService(IUnitOfWork uow, IHttpContextAccessor http, IAuditService audit)
-            : base(uow, http) { _audit = audit; }
+        public BranchService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit)
+            : base(uow, currentUser) { _audit = audit; }
 
         private IGenericRepository<Branch> Repo => Repository<Branch>();
 
@@ -29,7 +29,7 @@ namespace Services
             return branches
                 .Select(b => new BranchView(
                     b.Id, b.Name, b.Address, b.IsActive,
-                    b.OpenTime.ToString("hh\\:mm"), b.CloseTime.ToString("hh\\:mm"),
+                    b.OpenTime.ToString("HH\\:mm"), b.CloseTime.ToString("HH\\:mm"),
                     counts.TryGetValue(b.Id, out var n) ? n : 0))
                 .ToList();
         }
@@ -40,7 +40,7 @@ namespace Services
             var courtCount = await Repository<Court>()
                 .CountByConditionAsync(c => c.BranchId == id && c.IsActive && c.DeletedAt == null);
             return new BranchView(b.Id, b.Name, b.Address, b.IsActive,
-                b.OpenTime.ToString("hh\\:mm"), b.CloseTime.ToString("hh\\:mm"), courtCount);
+                b.OpenTime.ToString("HH\\:mm"), b.CloseTime.ToString("HH\\:mm"), courtCount);
         }
 
         public async Task<int> CreateAsync(CreateBranchRequest request, int actorId)

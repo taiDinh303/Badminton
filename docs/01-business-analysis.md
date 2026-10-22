@@ -1,6 +1,6 @@
 # 01 — Phân tích nghiệp vụ hệ thống đặt sân cầu lông
 
-> **Chủ tài liệu: Đinh Văn Tài.** Cập nhật: 16/10/2026.
+> **Chủ tài liệu: Đinh Văn Tài.** Cập nhật: 20/10/2026.
 > Tài liệu này là **nguồn duy nhất định nghĩa quy tắc nghiệp vụ**. Các file khác tham chiếu, không tự phát sinh quy tắc mới. Đây là TARGET nghiệp vụ; sai khác CURRENT được ghi tại §9 và kế hoạch. EN note: business rules are the single source of truth; other docs link here.
 
 ## 1. Mục tiêu và phạm vi
@@ -35,7 +35,7 @@ Ba role: `customer`, `manager`, `admin`. Khách tự đăng ký bằng số đi�
 - **Manager gắn với MỘT cơ sở** (branch-scope): `PaymentService.AuthorizeStaffScope` và `MaintenanceService` có kiểm tra một số thao tác; chưa đủ chứng minh scope trên mọi endpoint (xem §9). (Quyết định Q3=A.)
 - **Đúng 1 admin active** được enforce bởi unique filtered index `ux_active_admin` (`[Status]='Active' AND [Role]='Admin'`). Tạo admin thứ hai hoặc khóa admin cuối cùng → bị từ chối.
 
-> **Dev note (code):** TimeSlotController hiện cho Manager tạo/sửa slot, khác quyền chỉ Admin cấu hình; SEC-03 vẫn mở. Role lưu trong enum `Role { Customer, Manager, Admin }` ở `Core/Enums/Enums.cs`; quyền API enforce qua JWT claims `[Authorize(Roles=...)]`. Frontend guard `isStaff`/`isAdmin` ở `src/store/auth.ts`.
+> **Dev note (code):** TimeSlotController hiện cho Manager tạo/sửa slot, khác mục tiêu chỉ Admin cấu hình; cần quyết định quyền riêng. Role lưu trong enum `Role { Customer, Manager, Admin }` ở `Core/Enums/Enums.cs`; quyền API enforce qua JWT claims `[Authorize(Roles=...)]`. Frontend guard `isStaff`/`isAdmin` ở `src/store/auth.ts`.
 
 ## 3. Quy tắc sân và khung giờ chuẩn
 
@@ -69,7 +69,7 @@ TARGET không tính lại ở UI; refund đọc PayableAmount snapshot. CURRENT 
   | < 1 giờ | 0% (no-show nếu sau giờ bắt đầu) |
 - Đơn **chưa thanh toán** hủy chỉ giải phóng slot, không phát sinh hoàn tiền.
 - **No-show:** sau giờ bắt đầu mà khách vắng → yêu cầu xử lý no-show theo mốc được chốt, hoàn 0%; mỗi khách **3 lần no-show trong tháng** → gắn cờ `NoShowLimited` chặn đặt **tháng kế tiếp** (`NoShowResetJob` tự mở lại khi qua tháng). Kiểm tra trong `BookingService.CreateAsync`.
-- Hủy hợp lệ cập nhật trạng thái Booking, giữ bản ghi và giá trị lịch sử; hoàn tiền tạo Payment riêng, ghi ledger/audit. CURRENT hủy đã trả chưa liên kết hoàn tiền, xem §9.
+- Hủy hợp lệ cập nhật trạng thái Booking, giữ bản ghi và giá trị lịch sử; hoàn tiền tạo Payment riêng, ghi ledger/audit. CURRENT hủy đã trả đã gọi CancelRefundAsync; sandbox/crash vẫn cần đối soát, xem §9.
 
 > **Code (dev baseline):** refund tiers = hàm thuần `RefundPolicy.Tier`; pending TTL 10 phút = `PendingBookingExpiryJob` (poll 1 phút). Hoàn tiền tạo **payment record mới** (`status=Refunded/PartialRefund`), không sửa payment gốc.
 
@@ -77,7 +77,7 @@ TARGET không tính lại ở UI; refund đọc PayableAmount snapshot. CURRENT 
 
 **Voucher**
 - Loại `percent` (giảm %, có trần `max_value`) hoặc `fixed` (giảm tiền cố định, VND); kèm `min_spend`, `max_per_user`, tổng số `total_qty` và thời hạn `valid_from..valid_until`.
-- Một voucher **một lần mỗi khách** (unique `voucher_redemptions(voucher_id, user_id)`); phải thỏa `min_spend` tính trên giá gốc trước giảm. Không phát hành voucher âm; voucher + điểm không cộng dồn vượt giá trị đơn.
+- Một voucher **một lần mỗi khách** (unique `voucher_redemptions(voucher_id, user_id)`); dùng mã A không chặn dùng mã B (người dùng xác nhận ngày 21/10/2026). Preview và reserve cùng kiểm mã đã dùng; reservation khóa theo khách trong transaction để chống hai yêu cầu đồng thời. Pending bị hủy vẫn trả reservation theo luồng hiện có. Phải thỏa `min_spend` tính trên giá gốc trước giảm. Không phát hành voucher âm; voucher + điểm không cộng dồn vượt giá trị đơn.
 - `VoucherExpiryJob` (mỗi giờ) vô hiệu voucher qua hạn.
 
 **Điểm tích lũy**
@@ -93,7 +93,7 @@ TARGET không tính lại ở UI; refund đọc PayableAmount snapshot. CURRENT 
 
 ## 6. Điều kiện nghiệm thu nghiệp vụ (acceptance)
 
-1. Khách đặt một slot trống, thanh toán (mock gateway) thành công → đặt chỗ `Confirmed`, slot khóa, mục tiêu QR quét/xác thực hợp lệ (CURRENT mới có tile minh họa).
+1. Khách đặt một slot trống, thanh toán (mock gateway) thành công → đặt chỗ `Confirmed`, slot khóa, mục tiêu QR quét/xác thực hợp lệ (CURRENT có server token và tile minh họa, chưa QR scan chuẩn).
 2. Hai khách đặt cùng slot cùng lúc → chỉ một được giữ, khách kia nhận `SLOT_CONFLICT` (409); slot không trùng (unique index).
 3. `Pending` quá 10 phút không trả → tự hủy, slot mở lại; voucher slot + điểm redeem (nếu có) được trả về.
 4. Hủy theo 3 mốc (≥2h/1–2h/<1h) hoàn đúng tỷ lệ; đơn chưa trả hủy chỉ giải phóng slot; no-show hoàn 0% và tích lũy cờ.
@@ -109,19 +109,13 @@ Xem định nghĩa chuẩn tại `glossary.md` (peak/low-peak, pending TTL, no-s
 
 Backlog/ưu tiên/phụ thuộc/chính sách cần chốt quản lý tại [08-plan.md](08-plan.md); ma trận có code và lịch sử tại [worklog.md](worklog.md). Không dùng checkbox kế hoạch như quyền triển khai toàn bộ tính năng.
 
-## 9. Sai khác CURRENT đã xác minh trong source
+## 9. Hiện trạng và giới hạn 20/10/2026
 
-| Chủ đề | Yêu cầu cần đạt | CURRENT / ảnh hưởng |
-| --- | --- | --- |
-| Hủy | Chỉ chủ đơn/staff đúng cơ sở; đã trả phải xử lý refund | AuthorizeCancel không throw actor khác; CancelAsync không gọi refund (SEC-01/PAY-01) |
-| Manager | Mọi dữ liệu/thao tác giới hạn cơ sở | List/summary/payment read/lifecycle còn thiếu scope; manager null branch chưa fail closed (SEC-02) |
-| Điểm | Mục §5 quy định earn khi Completed, restore khi full | PaymentService earn khi Confirmed và restore mọi tỷ lệ; DEC-01/02 chưa chốt |
-| No-show | Mốc rõ, không đánh dấu trước giờ; đủ ba lần chặn tháng kế | Lifecycle chỉ guard Confirmed, chưa thời gian/scope; cạnh tranh auto-complete (DEC-03) |
-| Giá lịch sử | Tiền đã xác nhận không đổi theo giá sân mới | Tổng có snapshot, breakdown dựng lại từ sân hiện hành; DATA-01 |
-| QR | Mã quét và server xác thực | QrTile là hình minh họa display-only; UI-01 |
-| Báo cáo | Tiền thu thành công trừ hoàn, peak đúng slot | ReportService tổng Booking, refunds=0, peak tử số chưa lọc IsPeak; REP-01 |
+Source mới đã bank điểm Completed, full-refund restore, cancel-refund và guard no-show trước giờ bắt đầu. Shared staff scope bảo vệ list/summary/detail/payment read/lifecycle/check-in; HTTP regressions kiểm actor khác và manager chéo branch. Slot API vẫn cho Manager POST/PATCH, khác mục tiêu chỉ Admin cấu hình; cần chốt hoặc sửa riêng trước release.
 
-Sửa docs không sửa các lỗi ứng dụng này. Xem source [BookingService](../Backend/Services/Booking/BookingService.cs), [PaymentService](../Backend/Services/Payment/PaymentService.cs), [ReportService](../Backend/Services/Report/ReportService.cs).
+Server đã có QrToken/check-in, waitlist/notify/membership và real gateway adapters, nhưng QR tile chưa chuẩn scan, adapter chưa nghiệm thu sandbox thật. Membership Silver/Gold có code là phần mở rộng ngoài phạm vi V1 bán gói; không tự thêm giá/gia hạn thương mại.
+
+Idempotency kiểm actor và các trường đặt sân chính, chưa hash cả payload. Giá lịch sử dùng tổng snapshot gồm phụ thu; không suy ra split cũ. Báo cáo/đối soát, worker crash và provider migration còn cần nghiệm thu riêng theo [08](08-plan.md).
 
 ## 10. Danh mục yêu cầu và nghiệm thu V1
 

@@ -4,7 +4,7 @@ using Contract.Services.Audit;
 using Contract.Services.Membership;
 using Contract.Services.Points;
 using Badminton.Core.Base;
-using Microsoft.AspNetCore.Http;
+using Badminton.Core.Security;
 
 namespace Services
 {
@@ -15,9 +15,9 @@ namespace Services
 
         private readonly IMembershipService _membership;
 
-        public PointService(IUnitOfWork uow, IHttpContextAccessor http,
+        public PointService(IUnitOfWork uow, ICurrentUser currentUser,
             IMembershipService membership)
-            : base(uow, http)
+            : base(uow, currentUser)
         {
             _membership = membership;
         }

@@ -1,4 +1,4 @@
-using Contract.Repositories.UnitOfWork;
+using Contract.Services.Account;
 using Contract.Services.Audit;
 using Contract.Services.Auth;
 using Contract.Services.Booking;
@@ -22,7 +22,6 @@ using Badminton.Core.Enums;
 using Badminton.Core.Store;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Repositories.UnitOfWork;
 using Services;
 
 namespace Services.DI
@@ -32,7 +31,6 @@ namespace Services.DI
         public static IServiceCollection AddBookingServices(
             this IServiceCollection services, IConfiguration? configuration = null)
         {
-            services.AddScoped<IUnitOfWork, UnitOfWork>();
 
             // On-site gateways never move real money — always registered.
             services.AddScoped<IPaymentGateway>(sp =>
@@ -100,7 +98,7 @@ namespace Services.DI
                         sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ZalopaySettings>>().Value,
                         sp.GetRequiredService<IZalopayClient>()));
             }
-            else
+            else if (string.Equals(provider, "mock", System.StringComparison.OrdinalIgnoreCase))
             {
                 // P0-3: mock online gateways only in mock/dev mode.
                 services.AddScoped<IPaymentGateway>(sp =>
@@ -173,6 +171,7 @@ namespace Services.DI
 
             // FEAT 2 — Waitlist (join/leave/promote + promotion job).
             services.AddScoped<IWaitlistService, WaitlistService>();
+            services.AddScoped<IAccountService, AccountService>();
 
             return services;
         }

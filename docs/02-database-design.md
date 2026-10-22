@@ -1,7 +1,7 @@
 # 02 — Thiết kế dữ liệu hệ thống đặt sân cầu lông
 
-> **Chủ tài liệu: Đinh Văn Tài.** Cập nhật: 16/10/2026.
-> **EN/AI:** This doc describes the **source EF Core model** (`Repositories/Context/BadmintonBookingDbContext.cs`, 15 tables).
+> **Chủ tài liệu: Đinh Văn Tài.** Cập nhật: 20/10/2026.
+> **EN/AI:** This doc describes the **source EF Core model** (`Repositories/Context/BadmintonBookingDbContext.cs`, 17 tables).
 > **Dev baseline = SQL Server, `int` PKs, enums as `nvarchar`.** Production target = Supabase Postgres (target only; provider, migration and raw SQL must be reviewed).
 
 ## 1. Nguyên tắc dữ liệu
@@ -33,6 +33,10 @@ erDiagram
   TIME_SLOTS ||--o{ BOOKINGS : schedules
   USERS ||--o{ POINT_LEDGER : earns
   USERS ||--o{ AUDIT_LOGS : acts
+  USERS ||--o{ NOTIFICATIONS : receives
+  BOOKINGS |o--o{ NOTIFICATIONS : triggers
+  USERS ||--o{ WAITLIST_ENTRIES : queues
+  COURTS ||--o{ WAITLIST_ENTRIES : waits_for
 ```
 
 > Bảng entity (C#) nằm ở `Contract.Repositories/Entity/*.cs`; mapping + index ở `Repositories/Context/BadmintonBookingDbContext.cs`. Các bảng dưới dùng **tên bảng DB** (singular/plural theo mapping).
@@ -44,18 +48,23 @@ erDiagram
 | `Branches` | `Branch` | `Name`,`Address`,`OpenTime`,`CloseTime`,`Status` | Unique `Name`; `Status` = `Active/Closed`. Manager có thể gắn `BranchId` (1 manager = 1 cơ sở). |
 | `Courts` | `Court` | `BranchId`,`Code`,`Name`,`Surface`,`PriceLowPeak`,`PricePeak`,`WeekendSurcharge`,`Capacity`,`Amenities`,`ImageUrl`,`RatingAvg`,`RatingCount`,`IsActive` | Unique `(BranchId,Code)`; `Surface` = `Sindalo/Carpet/Wood`; giá là **int** VND/giờ; `Amenities` = JSON array string. |
 | `TimeSlots` | `TimeSlot` | `Label`,`StartTime`,`EndTime`,`IsPeak`,`IsActive` | Unique `(StartTime,EndTime)`. Seed = 17 slot 06:00–22:00; `IsPeak` = bắt đầu ≥18:00. Có API quản trị; V1 yêu cầu slot 60 phút. |
-| `CourtDateStatus` | `CourtDateStatusEntry` | `CourtId`,`Date`,`Status`,`Note` | PK `(CourtId,Date)`; `Status` = `Open/Maintenance/Closed`, default `Open`. Khác `Open` → không cho đặt. |
+| `CourtDateStatus` | `CourtDateStatusEntry` | `CourtId`,`Date`,`Status`,`Note`,`StartTime?`,`EndTime?` | PK `(CourtId,Date)`; `Status` = `Open/Maintenance/Closed`, default `Open`. Khóa khung giao nhau với khoảng giờ; null giờ là cả ngày. |
 | `PlayGroups` | `PlayGroup` | `Name`,`OwnerId`,`MaxMembers` | `OwnerId` = customer tạo nhóm; `MaxMembers` tối đa 10. |
 | `GroupMembers` | `GroupMember` | `GroupId`,`UserId` | PK `(GroupId,UserId)`; khách thuộc nhiều nhóm; nhóm không trùng khách. |
-| `Bookings` | `Booking` | `BookingCode`,`IdempotencyKey`,`UserId`,`GroupId`,`CourtId`,`SlotId`,`BranchId`,`Date`,`PlayerCount`,`Status`,`TotalAmount`,`DiscountAmount`,`PayableAmount`,`PointsEarned`,`PointsRedeemed`,`PendingExpiresAt`,`CancelReason`,`CancelledAt`,`VoucherRedemptionId` | Unique `BookingCode`; filtered unique `IdempotencyKey` (chống double-create); **filtered unique `ux_court_slot_active`** chống overbooking; `Status` = `Pending/Confirmed/Completed/Cancelled/NoShow/Refunded`. |
+| `Bookings` | `Booking` | `BookingCode`,`IdempotencyKey`,`UserId`,`GroupId`,`CourtId`,`SlotId`,`BranchId`,`Date`,`PlayerCount`,`Status`,`TotalAmount`,`DiscountAmount`,`PayableAmount`,`PointsEarned`,`PointsRedeemed`,`PendingExpiresAt`,`CancelReason`,`CancelledAt`,`VoucherRedemptionId`,`QrToken`,`CheckedInAt` | Unique `BookingCode`; filtered unique `IdempotencyKey` (chống double-create); **filtered unique `ux_court_slot_active`** chống overbooking; `Status` = `Pending/Confirmed/Completed/Cancelled/NoShow/Refunded`. |
 | `BookingPlayers` | `BookingPlayer` | `BookingId`,`UserId` | PK `(BookingId,UserId)`; có IsCreator; quyền hủy phải kiểm tra service, không suy ra từ cột. |
 | `Payments` | `Payment` | `BookingId`,`UserId`,`Amount`,`Method`,`GatewayRef`,`Status`,`RefundAmount`,`RefundedAt`,`RawResponse`,`PaidAt` | `Method` = `VnPay/MoMo/Zalopay/Cash/QR`; `Status` = `Pending/Success/Failed/Refunded/PartialRefund`; filtered unique `GatewayRef` (idempotent webhook). **Hoàn tiền = record mới, không sửa record gốc.** |
 | `Vouchers` | `Voucher` | `Code`,`Type`,`Value`,`MaxValue`,`MinSpend`,`MaxPerUser`,`TotalQty`,`UsedQty`,`ValidFrom`,`ValidUntil`,`IsActive` | Unique `Code`; `Type` = `Percent/Fixed`. `Percent` có trần (`MaxValue`); `Fixed` là VND. |
 | `VoucherRedemptions` | `VoucherRedemption` | `Id`,`VoucherId`,`UserId`,`BookingId?`,`DiscountAmount`,`RedeemedAt` | **Unique `(VoucherId,UserId)`** — 1 khách dùng 1 voucher 1 lần. |
 | `PointLedger` | `PointLedger` | `UserId`,`Delta`,`Reason`,`BookingId`,`LedgerKey`,`CreatedAt` | Append-only; `Delta` +/−; filtered unique `LedgerKey` (idempotent redeem/restore); số dư = tổng delta theo user. |
 | `Reviews` | `Review` | `BookingId`,`CourtId`,`UserId`,`Rating`,`Comment`,`Images`,`CreatedAt` | **Unique `BookingId`** (1 đánh giá/đặt chỗ); `Rating` 1–5; chỉ tạo khi `Completed`. |
-| `Users` | `User` | `FullName`,`PhoneNumber`,`Email`,`PasswordHash`,`Role`,`BranchId`,`Status`,`IsVerified`,`NoShowCount`,`NoShowPeriod`,`NoShowLimited`,`NoShowLimitedPeriod` | Unique `PhoneNumber`; **filtered unique `ux_active_admin`** (`Status='Active' AND Role='Admin'`). Cờ no-show: 3 lần/tháng → chặn đặt tháng kế. |
+| `Users` | `User` | `FullName`,`PhoneNumber`,`Email`,`PasswordHash`,`Role`,`BranchId`,`Status`,`IsVerified`,`NoShowCount`,`NoShowPeriod`,`NoShowLimited`,`NoShowLimitedPeriod`,`Tier`,`MembershipExpiresAt` | Unique `PhoneNumber`; **filtered unique `ux_active_admin`** (`Status='Active' AND Role='Admin'`). Cờ no-show: 3 lần/tháng → chặn đặt tháng kế. |
 | `AuditLogs` | `AuditLog` | `ActorId`,`Action`,`EntityType`,`EntityId`,`BeforeJson`,`AfterJson`,`Reason`,`CreatedAt` | Append-only; snapshot before/after; index `(EntityType,EntityId,CreatedAt)`. Chỉ admin xem toàn bộ. |
+
+| Bảng | Entity | Trường | Ràng buộc |
+| --- | --- | --- | --- |
+| Notifications | Notification | UserId, BookingId, Event, Channel, LedgerKey, Status, SentAt | Nhật ký gửi notify, key idempotent; payload/log cần lọc dữ liệu |
+| WaitlistEntries | WaitlistEntry | UserId, CourtId, SlotId, BranchId, Date, Status, PromotedBookingId, ResolvedAt | Waiting/promoted/leave; job promotion phải giữ unique slot |
 
 > **Dev note:** `Users.PasswordHash` hiện là danh tính ứng dụng; chuyển OTP là TARGET cần mapping identity và migration, chưa xóa cột hoặc hash. Cột no-show (`NoShowCount/NoShowPeriod/NoShowLimited/NoShowLimitedPeriod`) + `Bookings.PointsRedeemed` thêm bằng migration `20261014063758_AddNoShowTrackingAndPointsRedeemed`.
 
@@ -77,13 +86,13 @@ e.HasIndex(x => new { x.CourtId, x.Date, x.SlotId })
 ## 5. Ràng buộc toàn vẹn và yêu cầu nhất quán
 
 - **Tối đa 1 admin active** do index `ux_active_admin`; yêu cầu đúng 1 cần bootstrap và service; giao dịch khóa/xóa tài khoản từ chối nếu sẽ mất admin cuối.
-- TARGET chỉ user Active/IsVerified được tạo đặt chỗ, khóa user giữ lịch sử. CURRENT CreateAsync kiểm no-show nhưng chưa guard Active/IsVerified đầy đủ; cần kiểm token sau khóa.
+- TARGET chỉ user Active/IsVerified được tạo đặt chỗ, khóa user giữ lịch sử. CURRENT CreateAsync kiểm Active/IsVerified/no-show; cần giữ test token đã khóa trên toàn mutation khác.
 - `Pending` không trả tự hủy sau 10 phút bởi job (không phụ thuộc request cycle); job giải phóng voucher slot + trả điểm redeem (xem `03`/`04`).
 - **Webhook là source of truth** cho `Confirmed`; khách đóng tab giữa chừng vẫn xác nhận nếu gateway đã trả. Webhook **idempotent** theo `GatewayRef` (filtered unique index).
 - **Hoàn tiền** không sửa payment gốc; tạo record mới `status=Refunded/PartialRefund`.
 - **Voucher** 1 khách 1 lần (unique redemption); job expire vô hiệu khi qua `ValidUntil`.
 - **Điểm** append-only; hoàn tiền đơn có cộng điểm → giao dịch âm cùng `booking_id` (truy vết).
-- Khi `CourtDateStatus` ≠ `Open`: **lock slot mới, KHÔNG tự hủy** booking `Confirmed` đã có; manager quyết định hủy/hoàn qua API (audit + refund).
+- Theo yêu cầu 21/10: `CourtDateStatus` khác `Open` khóa slot giao khoảng giờ; Pending bị hủy/trả điểm/voucher, Confirmed được hoàn toàn phần. Lỗi hoàn giữ lịch khóa, staff lưu lại cùng lịch để thử lại. Lịch sử migration không sửa; AddCourtMaintenanceHours thêm hai cột time nullable, giữ lịch cả ngày cũ.
 
 ## 6. Quyền dữ liệu (RLS) & ảnh
 
@@ -137,12 +146,16 @@ Các mốc cũ 90 ngày raw response/ảnh, 12 tháng audit là **đề xuất c
 | Rủi ro | CURRENT | TARGET/test |
 | --- | --- | --- |
 | Admin | Unique filter chỉ tối đa một | Không mất admin cuối, bootstrap một |
-| Idempotency | Unique key toàn hệ thống | Binding actor/payload, không trả booking khác người |
+| Idempotency | Unique key toàn hệ thống, kiểm actor/các trường slot chính | Bổ sung hash toàn payload |
 | Điểm đồng thời | LedgerKey chống trùng theo booking | Hai booking cùng tiêu balance không được âm do race |
 | Voucher | Unique một lần/khách; release có xóa redemption | Không coi redemption append-only; release/use đồng thời không vượt UsedQty |
 | Slot không chuẩn | Unique chỉ court/date/slotId | Không tự cho slot thời gian chồng lấn khác ID |
-| Giá lịch sử | Tổng tiền snapshot; breakdown tính từ sân hiện hành | Snapshot đủ chi tiết, đổi giá không đổi lịch sử |
+| Giá lịch sử | Tổng tiền/breakdown đọc snapshot gồm phụ thu, split lịch sử không được lưu | Snapshot đủ chi tiết, đổi giá không đổi lịch sử |
 | Delete cascade | Payments liên kết Booking có cascade | Không xóa booking gốc làm mất payment; kiểm tra quyền vận hành |
 | Jobs/refund | Nhiều thao tác cập nhật trạng thái và ledger | Crash/retry/nhiều instance không dở dang hoặc ghi trùng |
 
 Liên quan: [01 nghiệp vụ](01-business-analysis.md), [03 luồng](03-workflow.md), [05 kiểm thử](05-testing-strategy.md), [09 cấu hình](09-deploy-detail.md).
+
+## 11. Extension migration hiện tại
+
+Migration 20261018074522_AddNotifyWaitlistQrMembership bổ sung Notifications/WaitlistEntries, QR/check-in trên Booking và tier/expiry trên User. Tổng mapping hiện là 17 bảng. Lượt chuẩn hóa 20/10 không thay schema hoặc migration history; test model drift xác minh riêng. Bootstrap production chuyển sang explicit theo [13](13-configuration.md).

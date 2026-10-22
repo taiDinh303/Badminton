@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate documentation and project references
+        run: python scripts/Validate-Repository.py
       - name: Run static guard (seed + secrets + migration presence)
         shell: pwsh
         run: ./scripts/CiGuard.ps1
@@ -36,9 +38,31 @@ jobs:
         run: dotnet restore Backend/Badminton.slnx
       - name: Build
         run: dotnet build Backend/Badminton.slnx -c Release --no-restore
-      - name: Verify EF migration model
+      - name: Verify production configuration without external services
+        shell: pwsh
+        run: ./scripts/Test-ProductionConfiguration.ps1
+      - name: Verify SQL Server migration model
         working-directory: Backend
-        run: dotnet ef migrations has-pending-model-changes --project Repositories --startup-project API
+        env:
+          DOTNET_ENVIRONMENT: Testing
+          Database__Provider: SqlServer
+          JwtSettings__Key: 'badminton-ci-design-time-only-signing-key'
+          DatabaseInitialization__MigrateOnStartup: 'false'
+          DatabaseInitialization__SeedDemoData: 'false'
+          BackgroundJobs__Enabled: 'false'
+          ConnectionStrings__BadmintonBooking: 'Server=127.0.0.1;Database=BadmintonDesignTime;User Id=design_time;Password=design-time-only;TrustServerCertificate=True;Connect Timeout=1'
+        run: dotnet ef migrations has-pending-model-changes --context BadmintonBookingDbContext --project Repositories --startup-project API --configuration Release --no-build
+      - name: Verify PostgreSQL migration model
+        working-directory: Backend
+        env:
+          DOTNET_ENVIRONMENT: Testing
+          Database__Provider: PostgreSQL
+          JwtSettings__Key: 'badminton-ci-design-time-only-signing-key'
+          DatabaseInitialization__MigrateOnStartup: 'false'
+          DatabaseInitialization__SeedDemoData: 'false'
+          BackgroundJobs__Enabled: 'false'
+          ConnectionStrings__BadmintonBooking: 'Host=127.0.0.1;Database=BadmintonDesignTime;Username=design_time;Password=design-time-only;Timeout=1'
+        run: dotnet ef migrations has-pending-model-changes --context PostgresBookingDbContext --project Repositories --startup-project API --configuration Release --no-build
 
   test:
     needs: build-and-verify
@@ -71,6 +95,7 @@ jobs:
           cache: npm
           cache-dependency-path: Frontend/package-lock.json
       - run: npm ci
+      - run: npm test
       - run: npm run lint
       - run: npm run build
 

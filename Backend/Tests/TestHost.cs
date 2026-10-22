@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Badminton.Core.Security;
 using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
@@ -52,18 +53,31 @@ namespace Badminton.Tests
                 ?? ".\\SQLEXPRESS";
             ConnectionString =
                 $"Server={server};Database={DbName};Trusted_Connection=True;TrustServerCertificate=True;";
+            var postgres = Environment.GetEnvironmentVariable("BADMINTON_TEST_POSTGRES");
+            if (!string.IsNullOrEmpty(postgres))
+            {
+                var pg = new Npgsql.NpgsqlConnectionStringBuilder(postgres) { Database = DbName };
+                if (pg.Host is not ("127.0.0.1" or "localhost"))
+                    throw new InvalidOperationException("PostgreSQL tests require an isolated loopback server.");
+                ConnectionString = pg.ConnectionString;
+            }
 
             // Deterministic Hanoi wall clock for the whole suite.
             HanoiTime.NowUtc = () => HanoiNowUtc;
 
             var services = new ServiceCollection();
-            services.AddDbContext<BadmintonBookingDbContext>(o => o.UseSqlServer(ConnectionString));
+            if (postgres is not null)
+            {
+                services.AddDbContext<PostgresBookingDbContext>(o => o.UseNpgsql(ConnectionString));
+                services.AddScoped<BadmintonBookingDbContext>(sp => sp.GetRequiredService<PostgresBookingDbContext>());
+            }
+            else services.AddDbContext<BadmintonBookingDbContext>(o => o.UseSqlServer(ConnectionString));
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddSingleton<IPricingService, PricingService>();
 
             // A mutable HttpContextAccessor the tests can pin a principal to.
             services.AddSingleton<TestHttpContextAccessor>();
-            services.AddScoped<IHttpContextAccessor>(sp => sp.GetRequiredService<TestHttpContextAccessor>());
+            services.AddScoped<ICurrentUser>(sp => sp.GetRequiredService<TestHttpContextAccessor>());
 
             services.AddScoped<IPaymentGateway>(sp => new MockOnlineGateway(PaymentMethod.VnPay));
             services.AddScoped<IPaymentGateway>(sp => new MockOnlineGateway(PaymentMethod.MoMo));
@@ -76,6 +90,7 @@ namespace Badminton.Tests
             services.AddScoped<IGroupService, GroupService>();
             services.AddScoped<IPointService, PointService>();
             services.AddScoped<IVoucherService, VoucherService>();
+            services.AddScoped<Contract.Services.Account.IAccountService, AccountService>();
             services.AddScoped<IBookingService, BookingService>();
             services.AddScoped<IPaymentService, PaymentService>();
 
@@ -99,6 +114,7 @@ namespace Badminton.Tests
             services.AddScoped<Contract.Services.Notify.INotifyService, NotifyService>();
             services.AddScoped<Contract.Services.Membership.IMembershipService, MembershipService>();
             services.AddScoped<Contract.Services.Booking.ICheckinService, CheckinService>();
+            services.AddScoped<Contract.Services.Maintenance.IMaintenanceService, MaintenanceService>();
             services.AddScoped<Contract.Services.Waitlist.IWaitlistService, WaitlistService>();
 
             _services = services.BuildServiceProvider();
@@ -110,7 +126,8 @@ namespace Badminton.Tests
             using var scope = _services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<BadmintonBookingDbContext>();
             db.Database.EnsureDeleted();
-            db.Database.EnsureCreated();
+            if (db.Database.IsNpgsql()) db.Database.Migrate();
+            else db.Database.EnsureCreated();
 
             var now = DateTime.UtcNow;
 
@@ -361,8 +378,9 @@ namespace Badminton.Tests
         }
     }
 
-    public sealed class TestHttpContextAccessor : IHttpContextAccessor
+    public sealed class TestHttpContextAccessor : IHttpContextAccessor, ICurrentUser
     {
         public HttpContext? HttpContext { get; set; }
+        public ClaimsPrincipal Principal => HttpContext?.User ?? new ClaimsPrincipal(new ClaimsIdentity());
     }
 }

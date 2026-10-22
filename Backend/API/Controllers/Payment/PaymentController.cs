@@ -20,6 +20,13 @@ namespace Badminton.API.Controllers
             _metrics = metrics;
         }
 
+        [HttpGet("methods")]
+        [AllowAnonymous]
+        public IActionResult Methods([FromServices] IConfiguration configuration) => Resp(
+            string.Equals(configuration["Payment:Provider"], "onsite", StringComparison.OrdinalIgnoreCase)
+                ? new[] { "Cash", "QR" }
+                : new[] { "Cash", "QR", "VnPay", "MoMo", "Zalopay" });
+
         [HttpPost("init")]
         [Authorize]
         public async Task<IActionResult> Init(InitPaymentRequest request) =>

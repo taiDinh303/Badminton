@@ -72,6 +72,8 @@ test.describe("auth", () => {
     await expect(page.getByRole("heading", { name: "Alice Nguyễn" })).toBeVisible();
     await expect(page.getByText("Sân Minh Long (Hà Đông)")).toBeVisible();
 
+    await page.screenshot({ path: "test-results/desktop-customer-home.png", fullPage: true });
+
     // The JWT was persisted under the app's token key.
     const token = await page.evaluate(
       () => localStorage.getItem("bb_token"),

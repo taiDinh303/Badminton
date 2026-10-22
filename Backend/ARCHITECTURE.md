@@ -1,24 +1,24 @@
-# Backend architecture and naming
+# Badminton backend architecture
 
-The maintained specification is [docs/04-system-architecture.md](../docs/04-system-architecture.md). Start with [docs/00-README.md](../docs/00-README.md) for current requirements, limitations and evidence.
+[Source of maintained specification](../docs/04-system-architecture.md) · [Configuration](../docs/13-configuration.md) · [Local setup](../docs/10-setup-local.md)
 
 ```text
-Backend/
-  API/                    Badminton.API.csproj — HTTP, middleware, jobs, startup
-  Services/               Business service implementations
-  Contract.Services/      Service interfaces
-  Repositories/           EF context, migrations, persistence
-  Contract.Repositories/  Entities and repository interfaces
-  ModelViews/             Request/response DTOs
-  Core/                   Shared types and domain abstractions
-  Tests/                  Badminton.Tests.csproj — service/database integration
-  Badminton.slnx          Solution
+API/Configuration/       Composition, pure startup validation, health endpoints
+API/Bootstrap/           Guarded database initialization
+API/Security/            HTTP adapter for Core ICurrentUser
+API/Controllers/         Feature HTTP boundary and role attributes
+API/Jobs/                Five in-process workers and SQL application locks
+Services/                Booking/payment/points/etc. business services and adapters
+Contract.Services/       Business interfaces; no persistence dependency
+Repositories/            EF context/migrations/UnitOfWork/provider error mapping/DI
+Contract.Repositories/   Entity and repository contracts; no EF
+Core/                    Shared domain, errors, settings and ICurrentUser
+ModelViews/              Request/response DTOs
+Tests/                   Config/architecture, service/SQL and real HTTP tests
 ```
 
-API namespace: Badminton.API. Core namespace: Badminton.Core. Test namespace: Badminton.Tests. Folders name the layer; executable/test projects retain the product prefix. The EF context file is Context/BadmintonBookingDbContext.cs, matching its class.
+API → Services + Repositories; Services → contracts/Core/ModelViews; Repositories → repository contracts/Core. Contract.Services must not reference Repositories. UniqueConstraintException crosses the persistence boundary instead of DbUpdateException/SqlException. SQL Server remains the only implemented provider; raw SQL in business operations is a documented migration limitation.
 
-The solution needs the SDK selected in [global.json](../global.json), while projects target .NET 8. Restore EF tools with dotnet tool restore; the local manifest pins the tool to the EF package version.
+ICurrentUser exposes a framework-neutral ClaimsPrincipal. API provides HttpCurrentUser; tests use a mutable identity fixture. Shared staff guards verify the active database account and assigned branch for manager reads/lifecycle/check-in. Existing service constructors are composed in DI, not controllers.
 
-From the repository root, run build.ps1 or follow [local setup](../docs/10-setup-local.md). The script does not stop a running API unless -StopApi is supplied. -Run starts the API using its Development http profile.
-
-PostgreSQL/OTP/Storage and real online payment adapters remain planned; renaming projects does not implement them. Database table names, migration history and HTTP endpoints are unchanged.
+Projects target net8.0; global.json selects an installed-compatible SDK for .slnx. dotnet tool restore restores pinned EF tooling. Production migration/demo seed is forbidden at startup; Development/isolated Testing uses explicit flags. --check-config validates without building a host or contacting services.

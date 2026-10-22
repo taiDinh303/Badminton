@@ -4,7 +4,7 @@ using Contract.Services.Audit;
 using Contract.Services.Court;
 using Badminton.Core.Base;
 using Badminton.Core.Enums;
-using Microsoft.AspNetCore.Http;
+using Badminton.Core.Security;
 using ModelViews.Court;
 
 namespace Services
@@ -12,8 +12,8 @@ namespace Services
     public sealed class CourtService : BaseService, ICourtService
     {
         private readonly IAuditService _audit;
-        public CourtService(IUnitOfWork uow, IHttpContextAccessor http, IAuditService audit)
-            : base(uow, http) { _audit = audit; }
+        public CourtService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit)
+            : base(uow, currentUser) { _audit = audit; }
 
         private IGenericRepository<Court> Repo => Repository<Court>();
 

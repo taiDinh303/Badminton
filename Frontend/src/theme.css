@@ -1,0 +1,23 @@
+/* Badminton semantic theme: shared by customer and operations modules. */
+:root {
+  /* Docs 07 §2 — Design tokens V1 */
+  --bg: #f5f6f8; /* surface.page */
+  --fg: #0f172a; /* text.primary */
+  --muted: #475569; /* text.secondary */
+  --card: #ffffff; /* surface.card */
+  --border: #e2e8f0; /* border.default */
+
+  --primary: #15803d; /* brand.primary */
+  --accent: #facc15; /* brand.accent */
+
+  --slot-free-bg: #dcfce7;
+  --slot-free-fg: #15803d;
+  --slot-booked-bg: #fee2e2;
+  --slot-booked-fg: #991b1b;
+  --slot-maint-bg: #fef3c7;
+  --slot-maint-fg: #92400e;
+
+  --state-success: #16a34a;
+  --state-warning: #f59e0b;
+  --state-error: #ef4444;
+}

@@ -3,13 +3,13 @@ using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using Badminton.Core.Base;
 using Badminton.Core.Utils;
-using Microsoft.AspNetCore.Http;
+using Badminton.Core.Security;
 
 namespace Services
 {
     public sealed class AuditService : BaseService, IAuditService
     {
-        public AuditService(IUnitOfWork uow, IHttpContextAccessor http) : base(uow, http) { }
+        public AuditService(IUnitOfWork uow, ICurrentUser currentUser) : base(uow, currentUser) { }
 
         public async Task LogAsync(int actorId, string action, string entityType,
             string? entityId, object? before, object? after, string? reason = null)
@@ -33,10 +33,10 @@ namespace Services
         {
             var hOffset = HanoiTime.FixedOffset;
             DateTime? fromUtc = from is { } f
-                ? f.ToDateTime(TimeOnly.MinValue).Add(-hOffset)
+                ? DateTime.SpecifyKind(f.ToDateTime(TimeOnly.MinValue).Add(-hOffset), DateTimeKind.Utc)
                 : null;
             DateTime? toUtc = to is { } t
-                ? t.AddDays(1).ToDateTime(TimeOnly.MinValue).Add(-hOffset)
+                ? DateTime.SpecifyKind(t.AddDays(1).ToDateTime(TimeOnly.MinValue).Add(-hOffset), DateTimeKind.Utc)
                 : null;
             var et = entityType; var eid = entityId;
             System.Linq.Expressions.Expression<Func<AuditLog, bool>> predicate =

@@ -1,0 +1,25 @@
+{
+  "name": "BadmintonBooking",
+  "api": {
+    "project": "Backend/API/Badminton.API.csproj",
+    "solution": "Backend/Badminton.slnx",
+    "provider": "SqlServer",
+    "basePath": "/api/v1",
+    "health": "/health",
+    "readiness": "/ready"
+  },
+  "frontend": {
+    "root": "Frontend",
+    "build": "npm run build",
+    "output": "dist",
+    "apiVariable": "VITE_API_URL"
+  },
+  "cloud": {
+    "apiUrl": null,
+    "frontendUrl": null,
+    "serviceId": null,
+    "databaseProject": null,
+    "status": "not-verified"
+  },
+  "configurationCheck": "dotnet run --project Backend/API/Badminton.API.csproj --no-launch-profile -- --check-config"
+}

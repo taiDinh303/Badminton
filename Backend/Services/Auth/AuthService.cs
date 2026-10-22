@@ -4,8 +4,7 @@ using Contract.Repositories.UnitOfWork;
 using Contract.Services.Auth;
 using Badminton.Core.Base;
 using Badminton.Core.Enums;
-using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
+using Badminton.Core.Security;
 using ModelViews.Auth;
 using System.Collections.Concurrent;
 
@@ -15,8 +14,8 @@ namespace Services
     {
         private readonly JwtGenerator _jwt;
 
-        public AuthService(IUnitOfWork uow, IHttpContextAccessor http, JwtGenerator jwt)
-            : base(uow, http)
+        public AuthService(IUnitOfWork uow, ICurrentUser currentUser, JwtGenerator jwt)
+            : base(uow, currentUser)
         {
             _jwt = jwt;
         }
@@ -74,11 +73,9 @@ namespace Services
 
             _ = users.AddAsync(user);
             try { await SaveAsync(); }
-            catch (DbUpdateException ex)
+            catch (UniqueConstraintException)
             {
-                if (IsUniqueViolation(ex))
-                    throw new ConflictException("Dùng số điện thoại đã tồn tại (vi phạm unique).");
-                throw;
+                throw new ConflictException("Số điện thoại đã được đăng ký.");
             }
 
             var (access, _, _) = _jwt.Generate(user.Id, user.FullName, user.PhoneNumber,
@@ -126,8 +123,6 @@ namespace Services
                 found.Role.ToString(), access, _jwt.ExpireMinutes());
         }
 
-        private static bool IsUniqueViolation(DbUpdateException ex) =>
-            ex.InnerException is Microsoft.Data.SqlClient.SqlException sql
-            && sql.Number is 2601 or 2627;
+
     }
 }

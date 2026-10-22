@@ -2,7 +2,6 @@ using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Badminton.Core.Enums;
 using Badminton.Core.Store;
-using Microsoft.Extensions.Options;
 
 namespace Contract.Services.Membership
 {
@@ -11,7 +10,7 @@ namespace Contract.Services.Membership
         decimal EffectiveMultiplier(User user);
         Task<decimal> EffectiveMultiplierAsync(int userId);
         Task<User> AssignTierAsync(int userId, MembershipTier tier, int actorId);
-        Task<IReadOnlyList<MembershipView>> GetMembersAsync();
+        Task<IReadOnlyList<MembershipView>> GetMembersAsync(bool includeCustomers = false);
     }
 
     public sealed record MembershipView(
