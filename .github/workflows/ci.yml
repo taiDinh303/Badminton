@@ -41,9 +41,28 @@ jobs:
       - name: Verify production configuration without external services
         shell: pwsh
         run: ./scripts/Test-ProductionConfiguration.ps1
-      - name: Verify EF migration model
+      - name: Verify SQL Server migration model
         working-directory: Backend
-        run: dotnet ef migrations has-pending-model-changes --project Repositories --startup-project API
+        env:
+          DOTNET_ENVIRONMENT: Testing
+          Database__Provider: SqlServer
+          JwtSettings__Key: 'badminton-ci-design-time-only-signing-key'
+          DatabaseInitialization__MigrateOnStartup: 'false'
+          DatabaseInitialization__SeedDemoData: 'false'
+          BackgroundJobs__Enabled: 'false'
+          ConnectionStrings__BadmintonBooking: 'Server=127.0.0.1;Database=BadmintonDesignTime;User Id=design_time;Password=design-time-only;TrustServerCertificate=True;Connect Timeout=1'
+        run: dotnet ef migrations has-pending-model-changes --context BadmintonBookingDbContext --project Repositories --startup-project API --configuration Release --no-build
+      - name: Verify PostgreSQL migration model
+        working-directory: Backend
+        env:
+          DOTNET_ENVIRONMENT: Testing
+          Database__Provider: PostgreSQL
+          JwtSettings__Key: 'badminton-ci-design-time-only-signing-key'
+          DatabaseInitialization__MigrateOnStartup: 'false'
+          DatabaseInitialization__SeedDemoData: 'false'
+          BackgroundJobs__Enabled: 'false'
+          ConnectionStrings__BadmintonBooking: 'Host=127.0.0.1;Database=BadmintonDesignTime;Username=design_time;Password=design-time-only;Timeout=1'
+        run: dotnet ef migrations has-pending-model-changes --context PostgresBookingDbContext --project Repositories --startup-project API --configuration Release --no-build
 
   test:
     needs: build-and-verify

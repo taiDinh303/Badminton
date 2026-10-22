@@ -60,7 +60,8 @@ Root:
 ```powershell
 $env:BADMINTON_TEST_SQLSERVER = '.'
 dotnet test Backend/Tests/Badminton.Tests.csproj -c Release
-dotnet ef migrations has-pending-model-changes --project Backend/Repositories --startup-project Backend/API --configuration Release --no-build
+dotnet ef migrations has-pending-model-changes --context BadmintonBookingDbContext --project Backend/Repositories --startup-project Backend/API --configuration Release --no-build
+dotnet ef migrations has-pending-model-changes --context PostgresBookingDbContext --project Backend/Repositories --startup-project Backend/API --configuration Release --no-build
 ```
 
 Fixture tạo/xóa BadmintonTest_*, chỉ local/test. Frontend: npm test, npm run lint, npm run build, npx --no-install playwright install chromium, npm run test:e2e. [05](05-testing-strategy.md) giải thích phạm vi.

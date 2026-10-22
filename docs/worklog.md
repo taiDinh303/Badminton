@@ -81,6 +81,14 @@ Ngày 14/10 ghi build 0 warning/error, 23 test pass với SQL Express; chưa có
 [08-plan.md](08-plan.md) là backlog/tiêu chí chuẩn; [14-release-checklist.md](14-release-checklist.md) là gate. Ưu tiên sandbox payment/đối soát, full idempotency/balance race, báo cáo theo tiền/kỳ, migration/restore, worker đa instance và QR chuẩn. Không dùng cấu trúc sạch/build xanh như xác nhận production.
 
 ## 6. Log sự kiện (mới trên cùng)
+### 22/10/2026 — Sửa EF model check trong CI Ubuntu/Windows
+
+- Nguyên nhân CURRENT: cùng bước `has-pending-model-changes` của matrix Ubuntu/Windows không chỉ định context, trong khi repo đã có `BadmintonBookingDbContext` (SQL Server) và `PostgresBookingDbContext` (PostgreSQL), gây lỗi “More than one DbContext was found”.
+- Sửa `.github/workflows/ci.yml`: hai bước EF riêng, chỉ định `--context` tương ứng, dùng `--configuration Release --no-build` sau build có sẵn. Mỗi bước đặt provider đúng, môi trường Testing/JWT synthetic/connection loopback; migrate/seed/jobs=false. Giữ lịch sử migration/model/schema/API/UI; cập nhật hai lệnh hướng dẫn trong docs05/10. Giữ thay đổi người dùng `TaiKhoan.txt`/`build.ps1` ngoài commit.
+- Xác minh root: `dotnet tool restore`8.0.28 đạt; `dotnet build Backend/Badminton.slnx -c Release --no-restore`0warning/0error. Tại `Backend`, chạy đúng hai lệnh EF mới với env giống workflow: cả hai exit0, “No changes have been made to the model since the last migration.” Không áp migration/kết nối DB live. Lượt PostgreSQL đầu thiếu env provider làm host validation báo sai cú pháp rồi factory vẫn kiểm đạt; bổ sung provider và cấu hình synthetic cho cả hai bước, lượt cuối sạch.
+- `dotnet test Tests/Badminton.Tests.csproj -c Release --no-build --no-restore --filter FullyQualifiedName~ConfigurationAndArchitectureTests`23/23pass. `./scripts/CiGuard.ps1`5checks đạt; bundled Python `scripts/Validate-Repository.py`22Markdown/131links/33tables/0lỗi; `git diff --check` đạt.
+- NOT VERIFIED: CI GitHub Ubuntu/Windows của commit mới sau push; local kiểm trên Windows/SDK10.0.401 theo global.json, CI giữ SDK9/runtime8. Không chạy SQL/HTTP/browser vì không đổi các boundary runtime; không deploy hoặc sửa dữ liệu.
+
 ### 22/10/2026 — Bổ sung giao diện điện thoại, bảo toàn giao diện PC
 
 - Phạm vi người dùng: tối ưu toàn bộ giao diện điện thoại, không thay đổi giao diện PC. Giữ nguyên thay đổi local `TaiKhoan.txt` và `build.ps1`; không deploy/push, không chạm DB hay API contract.
