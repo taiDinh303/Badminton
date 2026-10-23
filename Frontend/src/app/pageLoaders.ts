@@ -1,4 +1,5 @@
 export const pageLoaders = {
+  Contacts: () => import("../modules/admin/pages/ContactsPage"),
   Auth: () => import("../modules/auth/pages/AuthPage"),
   Landing: () => import("../modules/customer/pages/LandingPage"),
   Home: () => import("../modules/customer/pages/HomePage"),

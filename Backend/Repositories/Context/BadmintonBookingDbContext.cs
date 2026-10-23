@@ -31,6 +31,16 @@ namespace Repositories.Context
 
         protected override void OnModelCreating(ModelBuilder mb)
         {
+            mb.Entity<ContactInquiry>(e =>
+            {
+                e.ToTable("ContactInquiries");
+                e.HasKey(x => x.Id);
+                e.Property(x => x.FullName).HasMaxLength(100).IsRequired();
+                e.Property(x => x.Phone).HasMaxLength(15).IsRequired();
+                e.Property(x => x.Email).HasMaxLength(150);
+                e.Property(x => x.Message).HasMaxLength(1000).IsRequired();
+                e.HasIndex(x => x.CreatedAt);
+            });
             // ---- Enums as strings (applied per property below) ----
 
             mb.Entity<User>(e =>

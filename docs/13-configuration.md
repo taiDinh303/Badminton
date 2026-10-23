@@ -55,3 +55,9 @@ PostgreSQL dùng connection string Npgsql dạng `Host=<session-host>;Port=5432;
 ConfigurationAndArchitectureTests dùng dữ liệu synthetic và kiểm không lộ secret. HTTP tests dùng DB local riêng và jobs=false. scripts/Test-ProductionConfiguration.ps1 publish và kiểm synthetic Production hợp lệ/không hợp lệ, không DB/external request. Publish phải xác minh không có Development JSON; config check với server synthetic chỉ xác nhận validation, không DB.
 
 CI dùng SDK theo global.json + runtime net8.0; Node 24/lockfile; unit/frontend/HTTP/provider tests có phạm vi riêng. Xem [14 release](14-release-checklist.md), [05 test](05-testing-strategy.md).
+
+## 6. Lưu liên hệ công khai — 23/10/2026
+
+CURRENT source: POST /api/v1/contacts cho khách chưa đăng nhập, 3 lần/phút/IP; server kiểm họ tên, SĐT Việt Nam, email, độ dài lời nhắn và consent. Honeypot loại submission bot; không ghi thông tin liên hệ vào log. GET /api/v1/contacts?page=1 và PATCH /api/v1/contacts/{id}/handled chỉ cho JWT role Admin.
+
+Có migration AddContactInquiries riêng trong hai thư mục provider, không sửa migration lịch sử. Trước khi phát hành API có form liên hệ, cần backup/review/apply migration tương ứng bằng quy trình triển khai hiện hành; PostgreSQL mới nhất là 20261023155315_AddContactInquiries, SQL Server là 20261023155259_AddContactInquiries. PostgreSQL bật RLS và thu hồi quyền PUBLIC/anon/authenticated; .NET tiếp tục là cổng ghi/đọc qua connection server. Production không auto-migrate hoặc seed. Chưa áp dụng migration lên database live trong nhiệm vụ giao diện này; chưa nghiệm thu lưu/đọc thực trên live. Không có email/SMS tự động cho form này; đội ngũ Admin xem và liên hệ từ hộp thư.

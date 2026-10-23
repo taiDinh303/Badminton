@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
 import { Feather, LogOut, Menu, X } from "lucide-react";
 import { useState, useRef } from "react";
@@ -50,7 +50,7 @@ export default function Layout() {
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:p-3">Bỏ qua điều hướng</a>
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-y-auto border-r border-border bg-card md:flex">
-        <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
+        <Link to="/home" aria-label="Về trang chủ" className="flex items-center gap-2.5 px-5 pt-5 pb-4">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white shadow-sm shadow-primary/30">
             <Feather className="h-5 w-5" />
           </span>
@@ -58,7 +58,7 @@ export default function Layout() {
             <p className="text-sm leading-tight font-bold">Cầu Lông</p>
             <p className="text-[11px] leading-tight text-muted">Booking</p>
           </div>
-        </div>
+        </Link>
 
         <div className="px-5">
           {staff && (

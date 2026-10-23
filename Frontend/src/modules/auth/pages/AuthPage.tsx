@@ -6,6 +6,8 @@ import {
   Zap,
   ShieldCheck,
   ArrowRight,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useAuth } from "../../../store/auth";
 import { ApiError } from "../../../services/api";
@@ -21,6 +23,7 @@ export default function AuthPage() {
   const [mode, setMode] = useState<"login" | "register">(params.get("mode") === "register" ? "register" : "login");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -48,7 +51,7 @@ export default function AuthPage() {
     "h-11 w-full rounded-lg border border-border bg-bg/60 px-3 text-sm text-fg outline-none transition-colors focus:border-primary";
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-bg p-4">
+    <div className="auth-screen flex min-h-dvh items-center justify-center bg-bg p-4">
       <div className="grid w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card shadow-sm shadow-black/[0.04] md:grid-cols-2">
         {/* Brand panel (desktop) */}
         <div className="relative hidden bg-primary p-8 text-white md:flex md:flex-col md:justify-between">
@@ -58,7 +61,7 @@ export default function AuthPage() {
                 <Feather className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-base font-bold leading-tight">Cầu Long</p>
+                <p className="text-base font-bold leading-tight">Cầu Lông</p>
                 <p className="text-[11px] text-white/70">Booking</p>
               </div>
             </div>
@@ -101,7 +104,7 @@ export default function AuthPage() {
               <Feather className="h-4.5 w-4.5" />
             </span>
             <div>
-              <h1 className="text-lg font-bold leading-tight">Cầu Long Booking</h1>
+              <h1 className="text-lg font-bold leading-tight">Cầu Lông Booking</h1>
               <p className="text-xs text-muted">Đặt sân cầu lông nhanh chóng</p>
             </div>
           </div>
@@ -112,7 +115,7 @@ export default function AuthPage() {
           <div className="mt-4 grid grid-cols-2 gap-1 rounded-lg bg-bg p-1 md:mt-0">
             <button
               type="button"
-              onClick={() => setMode("login")}
+              onClick={() => { setMode("login"); setShowPassword(false); }}
               className={
                 "h-9 rounded-md text-sm font-semibold transition-colors " +
                 (mode === "login"
@@ -124,7 +127,7 @@ export default function AuthPage() {
             </button>
             <button
               type="button"
-              onClick={() => setMode("register")}
+              onClick={() => { setMode("register"); setShowPassword(false); }}
               className={
                 "h-9 rounded-md text-sm font-semibold transition-colors " +
                 (mode === "register"
@@ -168,16 +171,30 @@ export default function AuthPage() {
                 required
               />
             </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-muted">Mật khẩu</span>
+            <div>
+              <label htmlFor="auth-password" className="mb-1.5 block text-sm font-medium text-muted">Mật khẩu</label>
+              <div className="relative">
               <input
-                className={inputCls}
-                type="password"
+                id="auth-password"
+                className={`${inputCls} pr-12`}
+                type={showPassword ? "text" : "password"}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
-            </label>
+                <button
+                  type="button"
+                  aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                  aria-pressed={showPassword}
+                  aria-controls="auth-password"
+                  onClick={() => setShowPassword(value => !value)}
+                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-lg text-muted transition-colors hover:text-primary"
+                >
+                  {showPassword ? <EyeOff aria-hidden="true" size={19} /> : <Eye aria-hidden="true" size={19} />}
+                </button>
+              </div>
+            </div>
 
             {error && <Callout tone="error">{error}</Callout>}
 
@@ -193,7 +210,7 @@ export default function AuthPage() {
 
           <button
             type="button"
-            onClick={() => setMode(mode === "login" ? "register" : "login")}
+            onClick={() => { setMode(mode === "login" ? "register" : "login"); setShowPassword(false); }}
             className="mt-4 w-full text-center text-sm text-muted transition-colors hover:text-fg"
           >
             {mode === "login"

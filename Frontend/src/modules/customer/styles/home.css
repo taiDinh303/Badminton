@@ -1,3 +1,4 @@
+@layer home-base {
 .public-home { background: #f8faf7; color: #18362c; min-height: 100dvh; }
 .public-home a, .account-menu a, .account-menu button { cursor: pointer; }
 .public-header { background: #f8faf7ed; border-bottom: 1px solid #dae4dc; position: sticky; top: 0; z-index: 40; backdrop-filter: blur(14px); }
@@ -77,3 +78,5 @@
 @media (max-width: 359px) { .hero-secondary { display: none; } }
 
 @media (max-width: 767px) { .avatar-name { display: none; } }
+
+}

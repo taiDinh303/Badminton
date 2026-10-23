@@ -60,3 +60,9 @@ Kiểm 375/768/1024/1440px; desktop/mobile staff; deep link/Back/refresh; logout
 CURRENT: /home ở ngoài Gate/Layout, khách chưa đăng nhập truy cập trực tiếp hoặc reload được; trang giới thiệu không gọi API riêng tư. /auth?mode=register mở form đăng ký, /auth có liên kết về /home. Đặt sân khi chưa đăng nhập chuyển qua auth và giữ đường dẫn nội bộ cần quay lại; đăng nhập trực tiếp mặc định /dashboard. Các trang đơn/tài khoản/vận hành vẫn có guard, server giữ quyền hiện hành.
 
 Header ứng dụng có avatar với cursor pointer, dropdown tài khoản/đơn/trang chính/trang giới thiệu/đăng xuất, hỗ trợ Escape, Tab và click ngoài. Đăng xuất về /home và xóa session/cache. Đồng hồ cập nhật mỗi giây theo Asia/Ho_Chi_Minh, không dùng aria-live để tránh đọc liên tục. Dashboard có ô icon thao tác nhanh; chọn cơ sở truyền branchId sang màn đặt sân. Không dùng minh họa trên landing làm bằng chứng sân trống, giá hay số lượng cơ sở thực.
+
+## 7. Giao diện rộng và form liên hệ — 23/10/2026
+
+CURRENT: `redesign.css` thống nhất palette xanh đậm/lime, nền sáng, sidebar tối, mục đang chọn tương phản, header gọn, card/bảng/form và bottom navigation. Style landing nền đặt trong layer `home-base`; thiết kế chung có thể điều chỉnh riêng qua redesign. Giữ nhãn ngắn cạnh icon, focus ring, skip link, reduced motion và responsive 320–1440px. Logo trong sidebar đưa về /home.
+
+Home có form họ tên/SĐT bắt buộc, email/lời nhắn tùy chọn, đồng ý liên hệ; không cần đăng nhập. Không lưu PII trong localStorage. Chỉ báo thành công sau POST /api/v1/contacts thành công; lỗi mạng giữ nguyên form. Hộp thư /admin/contacts chỉ dành Admin, phân trang 20 yêu cầu, gọi điện/email và đánh dấu xử lý; Manager không có quyền đọc danh sách toàn hệ thống. Đây là yêu cầu tư vấn, không giữ chỗ hoặc xác nhận đặt sân.

@@ -6,6 +6,7 @@ import { Busy } from "../components/ui";
 import { useAuth } from "../store/auth";
 
 const Auth = lazy(pageLoaders.Auth);
+const Contacts = lazy(pageLoaders.Contacts);
 const Landing = lazy(pageLoaders.Landing);
 const Home = lazy(pageLoaders.Home);
 const Book = lazy(pageLoaders.Book);
@@ -62,6 +63,7 @@ export const router = createBrowserRouter([
       { path: "admin/slots", element: <Slots /> },
       { path: "checkin", element: <Checkin /> },
       { element: <Gate roles={["Admin"]} />, children: [
+        { path: "admin/contacts", element: <Contacts /> },
         { path: "admin/staff", element: <Staff /> },
         { path: "admin/audit", element: <Audit /> },
         { path: "admin/membership", element: <Membership /> },

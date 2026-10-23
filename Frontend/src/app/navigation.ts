@@ -1,4 +1,4 @@
-import { Home, CalendarDays, ListChecks, User, LayoutDashboard, Dumbbell, Ticket, Clock, Users, ScrollText, Crown, Hourglass, Star, ScanLine } from "lucide-react";
+import { Home, CalendarDays, ListChecks, User, LayoutDashboard, Dumbbell, Ticket, Clock, Users, ScrollText, Crown, Hourglass, Star, ScanLine, Inbox } from "lucide-react";
 
 export const customerItems = [
   { to: "/dashboard", label: "Trang chính", icon: Home, end: true },
@@ -25,6 +25,7 @@ export type NavItem = { to: string; label: string; icon: typeof Home; end?: bool
 // maintenance on own branch, slots, vouchers, dashboard-summary). Admin adds
 // the back-office: staff, audit log, membership, court CRUD.
 export const adminItems: NavItem[] = [
+  { to: "/admin/contacts", label: "Liên hệ", icon: Inbox, adminOnly: true },
   { to: "/admin", label: "Tổng quan", icon: LayoutDashboard, end: true },
   { to: "/admin/bookings", label: "Đặt chỗ", icon: ListChecks },
   { to: "/admin/courts", label: "Sân & giá", icon: Dumbbell },
