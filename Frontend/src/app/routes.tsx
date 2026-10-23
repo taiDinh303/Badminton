@@ -28,7 +28,7 @@ function Gate({ roles }: { roles?: string[] }) {
   const user = useAuth(state => state.user);
   const location = useLocation();
   if (!user) return <Navigate to="/auth" replace state={{ from: location.pathname }} />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to="/home" replace />;
   return <Outlet />;
 }
 
@@ -43,7 +43,8 @@ function RouteError() {
 export const router = createBrowserRouter([
   { path: "/auth", element: <Auth />, errorElement: <RouteError /> },
   { element: <Gate />, errorElement: <RouteError />, children: [{ element: <Layout />, children: [
-    { index: true, element: <Home /> },
+    { index: true, element: <Navigate to="/home" replace /> },
+    { path: "home", element: <Home /> },
     { path: "book", element: <Book /> },
     { path: "bookings", element: <Bookings /> },
     { path: "bookings/:id", element: <Detail /> },
@@ -65,7 +66,7 @@ export const router = createBrowserRouter([
       ] },
     ] },
   ] }] },
-  { path: "*", element: <Navigate to="/" replace /> },
+  { path: "*", element: <Navigate to="/home" replace /> },
 ]);
 
 export function PageLoading() {

@@ -268,3 +268,11 @@ Giới hạn / cần chốt:
 | Operations | RPO/RTO/retention/host/plan/metrics ingress chưa chốt; không xác nhận cloud |
 
 Chi tiết ở [08](08-plan.md), [13](13-configuration.md), [14](14-release-checklist.md). Giữ lịch sử §2/§4/§6 theo ngày, không đọc bản ghi 16/10 như hiện trạng 20/10.
+
+## 9. 23/10/2026 — Trang chủ /home
+
+- Pull fast-forward main từ b49d39e lên 554184b; working tree sạch trước pull.
+- CURRENT: HomePage có route riêng /home trong layout hiện tại, vẫn yêu cầu đăng nhập. / chuyển hướng /home; menu desktop/mobile, đăng nhập/đăng ký, fallback và redirect thiếu quyền cùng trỏ về /home.
+- Kiểm tra tại Frontend: npm ci thành công; npm run build và npm run lint đạt; npm test 11 pass; npx playwright test e2e/auth.spec.ts e2e/navigation.spec.ts 8 pass. Browser dùng API mock, gồm mở trực tiếp/reload /home, chuyển hướng từ /, login, hết phiên và quyền Manager.
+- python scripts/Validate-Repository.py: 22 Markdown, 131 links, 33 tables/project references, 0 lỗi. git diff --check đạt.
+- Phạm vi frontend/docs; chưa deploy hoặc kiểm nghiệm API live. Người dùng yêu cầu commit và push các thay đổi /home lên origin/main.

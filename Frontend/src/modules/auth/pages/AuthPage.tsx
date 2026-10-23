@@ -32,7 +32,7 @@ export default function AuthPage() {
     try {
       if (mode === "login") await login(phone.trim(), password);
       else await register({ fullName: fullName.trim(), phone: phone.trim(), password });
-      nav("/");
+      nav("/home", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Có lỗi, thử lại sau.");
     } finally {

@@ -29,7 +29,7 @@ app/navigation.ts quản lý sidebar/customer/mobile/staff items, app/routes.tsx
 | Route | Module | Nội dung |
 | --- | --- | --- |
 | /auth | auth | Login/register SĐT/password |
-| / | customer | Cơ sở, lời chào, hành động đặt sân |
+| /home | customer | Cơ sở, lời chào, hành động đặt sân; / chuyển hướng về /home |
 | /book, /bookings, /bookings/:id | booking | Availability, xác nhận, trạng thái/payment/hủy |
 | /account, /groups, /reviews, /waitlist | Theo feature | Hồ sơ, nhóm, đánh giá, hàng chờ |
 | /checkin | checkin | Nhân viên nhập code/token, đúng branch |
