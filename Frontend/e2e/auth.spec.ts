@@ -10,7 +10,7 @@ test.describe("auth", () => {
   test("unauthenticated visitors are redirected to /auth", async ({ page }) => {
     // No mocks: the Protected route's guard runs before any API call, so the
     // redirect happens client-side without touching the network.
-    await page.goto("/home");
+    await page.goto("/dashboard");
     await expect(page).toHaveURL(/\/auth/);
     // Default login-mode heading (visible at desktop 1280px, unlike the
     // mobile-only "Cầu Long Booking" brand heading which is md:hidden).
@@ -66,7 +66,7 @@ test.describe("auth", () => {
     await page.locator("form").getByRole("button", { name: /Đăng nhập/i }).click();
 
     // After a successful login the store navigates to the home page.
-    await expect(page).toHaveURL(/\/home$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
     // HomePage renders "Xin chào," and the name in separate nodes; the name
     // also appears in the desktop sidebar, so target the hero <h1> specifically.
     await expect(page.getByRole("heading", { name: "Alice Nguyễn" })).toBeVisible();

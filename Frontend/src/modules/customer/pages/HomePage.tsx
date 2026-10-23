@@ -1,3 +1,4 @@
+import "../styles/home.css";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -6,10 +7,14 @@ import {
   Dumbbell,
   Clock,
   CalendarDays,
+  ListChecks,
+  Users,
+  Hourglass,
 } from "lucide-react";
 import { api } from "../../../services/api";
-import { formatDay, formatVnd } from "../../../utils/format";
-import { Card, Button, Callout, KpiCard } from "../../../components/ui";
+import LiveClock from "../../../components/LiveClock";
+import { formatVnd } from "../../../utils/format";
+import { Card, Callout, KpiCard } from "../../../components/ui";
 import { useAuth } from "../../../store/auth";
 
 /**
@@ -34,25 +39,28 @@ export default function HomePage() {
     : 0;
 
   return (
-    <div className="mx-auto max-w-3xl p-4 md:p-6">
+    <div className="mx-auto max-w-4xl">
+      <div className="customer-welcome"><div><p>Xin chào, sẵn sàng ra sân?</p><h1>{user?.fullName ?? "Chào bạn"}</h1></div><LiveClock /></div>
       {/* Hero */}
       <Card className="overflow-hidden">
         <div className="bg-primary p-5 text-white">
-          <p className="text-sm text-white/80">Xin chào,</p>
-          <h1 className="mt-0.5 text-2xl font-bold">
-            {user?.fullName ?? "Chào bạn"}
-          </h1>
+          <p className="text-xs tracking-widest text-white/80">LÊN LỊCH. RA SÂN.</p>
+          <h2 className="mt-2 text-2xl font-bold">Một trận hay đang chờ bạn.</h2>
           <p className="mt-2 text-sm text-white/80">
-            Chọn cơ sở, khung giờ và thanh toán 1 chạm — giữ sân ngay khi đặt.
+            Chọn cơ sở và giờ chơi phù hợp.
           </p>
-          <Link to="/book" className="mt-4 inline-block">
-            <Button variant="accent" size="md">
-              <CalendarDays className="h-4 w-4" /> Đặt sân ngay
-            </Button>
+          <Link to="/book" className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-fg">
+            <CalendarDays className="h-4 w-4" /> Đặt sân ngay
           </Link>
         </div>
       </Card>
 
+      <nav className="quick-actions" aria-label="Thao tác nhanh">
+        <Link to="/book"><CalendarDays size={23} />Lịch sân</Link>
+        <Link to="/bookings"><ListChecks size={23} />Đơn của tôi</Link>
+        <Link to="/groups"><Users size={23} />Nhóm của tôi</Link>
+        <Link to="/waitlist"><Hourglass size={23} />Hàng chờ</Link>
+      </nav>
       {/* Quick stats */}
       <div className="mt-4 grid grid-cols-3 gap-3">
         <KpiCard
@@ -104,22 +112,18 @@ export default function HomePage() {
               )}
             </p>
             <Link
-              to="/book"
+              to={`/book?branchId=${b.id}`}
               className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary"
             >
               Chọn tại đây <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </Card>
         ))}
-        {!isLoading && active.length === 0 && (
+        {!isLoading && !isError && active.length === 0 && (
           <p className="text-sm text-muted">Chưa có cơ sở nào.</p>
         )}
       </div>
 
-      <p className="mt-6 text-xs text-muted">
-        Hôm nay {formatDay(new Date().toISOString())} · Giờ sân theo
-        múi giờ Việt Nam (UTC+7)
-      </p>
     </div>
   );
 }

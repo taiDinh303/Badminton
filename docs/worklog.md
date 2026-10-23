@@ -276,3 +276,14 @@ Chi tiết ở [08](08-plan.md), [13](13-configuration.md), [14](14-release-chec
 - Kiểm tra tại Frontend: npm ci thành công; npm run build và npm run lint đạt; npm test 11 pass; npx playwright test e2e/auth.spec.ts e2e/navigation.spec.ts 8 pass. Browser dùng API mock, gồm mở trực tiếp/reload /home, chuyển hướng từ /, login, hết phiên và quyền Manager.
 - python scripts/Validate-Repository.py: 22 Markdown, 131 links, 33 tables/project references, 0 lỗi. git diff --check đạt.
 - Phạm vi frontend/docs; chưa deploy hoặc kiểm nghiệm API live. Người dùng yêu cầu commit và push các thay đổi /home lên origin/main.
+
+## 10. 23/10/2026 — Trang giới thiệu công khai và Trang chính khách đặt
+
+- Theo yêu cầu mới, thay thế thiết kế /home cần đăng nhập ở mục 9: /home là landing công khai ngoài Gate/Layout, không sidebar, không fetch API riêng tư; / chuyển về /home. Có header đăng nhập/đăng ký, minh họa sân, tiện ích, ba bước đặt sân và CTA. Minh họa không thể hiện tình trạng sân trống thực.
+- /dashboard là Trang chính cần đăng nhập: lời chào, đồng hồ Việt Nam cập nhật mỗi giây, ô icon thao tác nhanh, danh sách cơ sở thực. Link cơ sở truyền branchId và màn đặt sân chọn đúng cơ sở đang hoạt động.
+- /auth?mode=register mở đăng ký; auth có link về /home. Gate giữ đường dẫn nội bộ (kèm query), sau đăng nhập quay lại màn đang cần; auth trực tiếp về /dashboard. Không đổi HTTP contract, dữ liệu, chính sách giá/thanh toán hay quyền server.
+- Header có avatar cursor pointer và dropdown; Escape trả focus, Tab/click ngoài đóng menu. Đăng xuất điều hướng công khai đồng bộ trước khi xóa identity để tránh race với Gate; query cache/session vẫn xóa theo provider hiện hành. Browser test đã phát hiện race và kiểm lại bản sửa.
+- Bằng chứng cuối tại Frontend: npm run build, npm run lint đạt; npm test 11 pass; npx playwright test --workers=2: 40 pass, 0 fail (1.5 phút). Có public home 320/390/768/1440px, dashboard/mobile 320–767px, desktop 768/1024/1440px, login/booking/payment/waitlist/role/expired-session, branch shortcut, avatar và đồng hồ UTC+7.
+- Đã xem ảnh public desktop/320px và dashboard/menu avatar mobile trong test-results; ảnh dữ liệu mock, không đưa artifact vào Git. Checklist React Best Practices: lazy pages, timer cleanup riêng, keyboard/focus, shared components/styles và guard được giữ.
+- python scripts/Validate-Repository.py: 22 Markdown, 131 links, 33 bảng/project references, 0 lỗi; git diff --check đạt.
+- Giới hạn: browser dùng API mock; không chạy backend/SQL vì không sửa boundary server. Công cụ web không đọc được hai URL Render trong lượt này; chưa xác minh phiên bản giao diện mới trên live hoặc thiết bị thật. Push source không là bằng chứng deploy thành công.

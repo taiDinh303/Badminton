@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
 import { Feather, LogOut, Menu, X } from "lucide-react";
 import { useState, useRef } from "react";
+import AccountMenu from "./AccountMenu";
 import { customerItems, mobileItems, adminItems } from "../app/navigation";
 import { useAuth, isStaff, isAdmin } from "../store/auth";
 
@@ -39,9 +40,9 @@ export default function Layout() {
   const admin = isAdmin(user);
   const items = adminItems.filter((it) => !it.adminOnly || admin);
 
-  function doLogout() {
+  async function doLogout() {
+    await nav("/home", { replace: true, flushSync: true });
     logout();
-    nav("/auth");
   }
 
   return (
@@ -129,7 +130,7 @@ export default function Layout() {
               </button>
               <div><p className="text-sm font-semibold">{title}</p><p className="text-xs text-muted">Đặt sân cầu lông · {staff ? "Vận hành cơ sở" : "Sẵn sàng cho trận đấu"}</p></div>
             </div>
-            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{admin ? "Quản trị viên" : staff ? "Quản lý" : "Khách hàng"}</span>
+            <AccountMenu />
           </div>
           {menuOpen && <nav id="mobile-menu" aria-label="Menu di động" className="mt-3 max-h-[65dvh] overflow-y-auto border-t border-border pt-3 md:hidden"
             onKeyDown={event => { if (event.key === "Escape") { setMenuOpen(false); menuButton.current?.focus(); } }}>

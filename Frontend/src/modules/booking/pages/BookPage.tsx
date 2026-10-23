@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -44,6 +45,8 @@ type Sel = { court: CourtAvailability; slot: Slot };
  *  - chú giải trạng thái (text + màu + icon); drawer không bị che bottom nav.
  */
 export default function BookPage() {
+  const [searchParams] = useSearchParams();
+  const requestedBranch = Number(searchParams.get("branchId"));
   const qc = useQueryClient();
   const today = localDate(new Date());
   const [date, setDate] = useState(today);
@@ -69,8 +72,11 @@ export default function BookPage() {
   });
 
   useEffect(() => {
-    if (branchId == null && branches.length > 0) setBranchId(branches[0].id);
-  }, [branches, branchId]);
+    if (branchId == null && branches.length > 0) {
+      const requested = branches.find(b => b.id === requestedBranch && b.isActive);
+      setBranchId(requested?.id ?? branches[0].id);
+    }
+  }, [branches, branchId, requestedBranch]);
 
   const { data: courts, isLoading, refetch } = useQuery({
     queryKey: ["availability", branchId, date],

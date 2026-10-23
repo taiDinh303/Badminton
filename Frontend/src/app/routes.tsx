@@ -6,6 +6,7 @@ import { Busy } from "../components/ui";
 import { useAuth } from "../store/auth";
 
 const Auth = lazy(pageLoaders.Auth);
+const Landing = lazy(pageLoaders.Landing);
 const Home = lazy(pageLoaders.Home);
 const Book = lazy(pageLoaders.Book);
 const Bookings = lazy(pageLoaders.Bookings);
@@ -27,8 +28,8 @@ const Membership = lazy(pageLoaders.Membership);
 function Gate({ roles }: { roles?: string[] }) {
   const user = useAuth(state => state.user);
   const location = useLocation();
-  if (!user) return <Navigate to="/auth" replace state={{ from: location.pathname }} />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/home" replace />;
+  if (!user) return <Navigate to="/auth" replace state={{ from: location.pathname + location.search }} />;
+  if (roles && !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
   return <Outlet />;
 }
 
@@ -41,10 +42,11 @@ function RouteError() {
 }
 
 export const router = createBrowserRouter([
+  { path: "/", element: <Navigate to="/home" replace /> },
+  { path: "/home", element: <Landing />, errorElement: <RouteError /> },
   { path: "/auth", element: <Auth />, errorElement: <RouteError /> },
   { element: <Gate />, errorElement: <RouteError />, children: [{ element: <Layout />, children: [
-    { index: true, element: <Navigate to="/home" replace /> },
-    { path: "home", element: <Home /> },
+    { path: "dashboard", element: <Home /> },
     { path: "book", element: <Book /> },
     { path: "bookings", element: <Bookings /> },
     { path: "bookings/:id", element: <Detail /> },

@@ -1,7 +1,7 @@
 import { Home, CalendarDays, ListChecks, User, LayoutDashboard, Dumbbell, Ticket, Clock, Users, ScrollText, Crown, Hourglass, Star, ScanLine } from "lucide-react";
 
 export const customerItems = [
-  { to: "/home", label: "Trang chủ", icon: Home, end: true },
+  { to: "/dashboard", label: "Trang chính", icon: Home, end: true },
   { to: "/book", label: "Đặt sân", icon: CalendarDays },
   { to: "/bookings", label: "Đơn của tôi", icon: ListChecks },
   { to: "/waitlist", label: "Chờ", icon: Hourglass },
@@ -12,7 +12,7 @@ export const customerItems = [
 
 // Mobile bottom nav keeps only the essentials so 5 items fit (docs 07 §3).
 export const mobileItems = [
-  { to: "/home", label: "Trang chủ", icon: Home, end: true },
+  { to: "/dashboard", label: "Trang chính", icon: Home, end: true },
   { to: "/book", label: "Đặt sân", icon: CalendarDays },
   { to: "/bookings", label: "Đơn của tôi", icon: ListChecks },
   { to: "/waitlist", label: "Chờ", icon: Hourglass },

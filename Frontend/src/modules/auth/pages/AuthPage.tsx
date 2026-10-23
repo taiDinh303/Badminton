@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Feather,
   CalendarDays,
@@ -16,7 +16,9 @@ import { Button, Callout } from "../../../components/ui";
  * (trên desktop), form (luôn 1 cột trên mobile). Không dùng emoji.
  */
 export default function AuthPage() {
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [params] = useSearchParams();
+  const location = useLocation();
+  const [mode, setMode] = useState<"login" | "register">(params.get("mode") === "register" ? "register" : "login");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -32,7 +34,9 @@ export default function AuthPage() {
     try {
       if (mode === "login") await login(phone.trim(), password);
       else await register({ fullName: fullName.trim(), phone: phone.trim(), password });
-      nav("/home", { replace: true });
+      const from: unknown = location.state?.from;
+      const target = typeof from === "string" && /^\/(book(?:ings)?(?:\/\d+)?|dashboard|account|groups|reviews|waitlist|checkin|admin(?:\/[a-z]+)?)(?:\?.*)?$/.test(from) ? from : "/dashboard";
+      nav(target, { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Có lỗi, thử lại sau.");
     } finally {
@@ -101,6 +105,8 @@ export default function AuthPage() {
               <p className="text-xs text-muted">Đặt sân cầu lông nhanh chóng</p>
             </div>
           </div>
+
+          <Link to="/home" className="mb-5 inline-flex min-h-11 items-center text-sm font-medium text-primary">← Về trang chủ</Link>
 
           {/* Tab toggle */}
           <div className="mt-4 grid grid-cols-2 gap-1 rounded-lg bg-bg p-1 md:mt-0">
