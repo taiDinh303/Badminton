@@ -38,7 +38,7 @@ export default function StaffPage() {
     queryKey: ["branches"],
     queryFn: api.branches.list,
   });
-  const { data: staff = [], isLoading, refetch } = useQuery({
+  const { data: staff = [], isLoading, refetch, error: loadError } = useQuery({
     queryKey: ["staff"],
     queryFn: api.admin.staff.list,
   });
@@ -72,8 +72,10 @@ export default function StaffPage() {
   });
 
   const err =
+    loadError?.message ??
     (create.error as Error | undefined)?.message ??
     (lock.error as Error | undefined)?.message ??
+    (unlock.error as Error | undefined)?.message ??
     (changeRole.error as Error | undefined)?.message ??
     (assignBranch.error as Error | undefined)?.message ?? null;
 
@@ -136,6 +138,7 @@ export default function StaffPage() {
         <div className="flex items-center justify-end gap-2">
           <select
             aria-label={`Cơ sở của ${s.fullName}`}
+            disabled={s.role === "Admin" || assignBranch.isPending}
             value={s.branchId ?? ""}
             onChange={(e) => e.target.value && assignBranch.mutate({ id: s.id, branchId: Number(e.target.value) })}
             className="h-8 max-w-[120px] rounded-lg border border-border bg-card px-2 text-xs text-muted outline-none focus:border-primary"
@@ -147,15 +150,17 @@ export default function StaffPage() {
           </select>
           <select
             aria-label={`Vai trò của ${s.fullName}`}
+            disabled={s.role === "Admin" || changeRole.isPending}
             value={s.role}
             onChange={(e) => changeRole.mutate({ id: s.id, role: e.target.value })}
             className="h-8 rounded-lg border border-border bg-card px-2 text-xs text-muted outline-none focus:border-primary"
           >
             <option value="Manager">Manager</option>
-            <option value="Admin">Admin</option>
+            {s.role === "Admin" && <option value="Admin">Admin</option>}
           </select>
           <button
             type="button"
+            disabled={s.role === "Admin" || lock.isPending || unlock.isPending}
             aria-label={s.status === "Active" ? "Khóa tài khoản" : "Mở khóa"}
             onClick={() => (s.status === "Active" ? lock.mutate(s.id) : unlock.mutate(s.id))}
             className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:bg-bg hover:text-fg"
@@ -206,7 +211,7 @@ export default function StaffPage() {
               <Button variant="ghost" size="sm" onClick={() => setForm(null)}>
                 Hủy
               </Button>
-              <Button variant="accent" size="sm" disabled={create.isPending} onClick={() => create.mutate(form)}>
+              <Button variant="accent" size="sm" disabled={create.isPending || !form.branchId || !/^0[0-9]{9}$/.test(form.phoneNumber) || form.password.length < 8 || form.fullName.trim().length < 2} onClick={() => create.mutate(form)}>
                 {create.isPending ? "Đang tạo…" : "Tạo nhân viên"}
               </Button>
             </>
@@ -228,14 +233,13 @@ export default function StaffPage() {
               onChange={(e) => setForm({ ...form, role: e.target.value as "Manager" | "Admin" })}
             >
               <option value="Manager">Manager</option>
-              <option value="Admin">Admin</option>
             </SelectField>
             <SelectField
-              label="Cơ sở (tuỳ chọn)"
+              label="Cơ sở (bắt buộc)"
               value={form.branchId ?? ""}
               onChange={(e) => setForm({ ...form, branchId: e.target.value ? Number(e.target.value) : null })}
             >
-              <option value="">Không gán</option>
+              <option value="">Chọn cơ sở</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}

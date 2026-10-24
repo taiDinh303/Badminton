@@ -21,8 +21,8 @@ namespace Services
         {
             if (string.IsNullOrWhiteSpace(request.PhoneNumber))
                 throw new BadRequestException("Số điện thoại là bắt buộc.");
-            if (request.Password.Length < 8)
-                throw new BadRequestException("Mật khẩu tối thiểu 8 ký tự.");
+            AuthInput.Password(request.Password);
+            request = request with { FullName = AuthInput.Name(request.FullName), PhoneNumber = AuthInput.Phone(request.PhoneNumber) };
 
             if (request.Role is not Role.Manager)
                 throw new BadRequestException(
@@ -58,7 +58,7 @@ namespace Services
                 IsVerified = true,
                 BranchId = request.Role == Role.Manager ? request.BranchId : null
             };
-            _ = Repo.AddAsync(user);
+            await Repo.AddAsync(user);
             try { await SaveAsync(); }
             catch (UniqueConstraintException)
             {
@@ -70,11 +70,18 @@ namespace Services
             return user.Id;
         }
 
-        public async Task SetStatusAsync(int userId, UserStatus status, int actorId)
+        public Task SetStatusAsync(int userId, UserStatus status, int actorId) => Uow.RunInTransactionAsync(async () =>
+        {
+            await Uow.LockPointsUserAsync(userId);
+            await SetStatusCoreAsync(userId, status, actorId);
+        });
+
+        private async Task SetStatusCoreAsync(int userId, UserStatus status, int actorId)
         {
             var u = await MustGetStaff(userId);
             var before = new { u.Status, u.Role };
             u.Status = status;
+            u.SecurityStamp = Guid.NewGuid().ToString("N");
             u.UpdatedAt = DateTime.UtcNow;
             Repo.Update(u);
             await SaveAsync();
@@ -83,7 +90,13 @@ namespace Services
                 status == UserStatus.Locked ? "Khóa tài khoản" : "Mở khóa tài khoản");
         }
 
-        public async Task SetRoleAsync(int userId, Role role, int actorId)
+        public Task SetRoleAsync(int userId, Role role, int actorId) => Uow.RunInTransactionAsync(async () =>
+        {
+            await Uow.LockPointsUserAsync(userId);
+            await SetRoleCoreAsync(userId, role, actorId);
+        });
+
+        private async Task SetRoleCoreAsync(int userId, Role role, int actorId)
         {
             var u = await MustGetStaff(userId);
 
@@ -102,6 +115,7 @@ namespace Services
             }
             var before = new { u.Role, u.BranchId };
             u.Role = role;
+            u.SecurityStamp = Guid.NewGuid().ToString("N");
             u.UpdatedAt = DateTime.UtcNow;
             Repo.Update(u);
             await SaveAsync();
@@ -109,7 +123,13 @@ namespace Services
                 before, new { u.Role, u.BranchId }, $"Đổi role thành {role}");
         }
 
-        public async Task AssignBranchAsync(int userId, int branchId, int actorId)
+        public Task AssignBranchAsync(int userId, int branchId, int actorId) => Uow.RunInTransactionAsync(async () =>
+        {
+            await Uow.LockPointsUserAsync(userId);
+            await AssignBranchCoreAsync(userId, branchId, actorId);
+        });
+
+        private async Task AssignBranchCoreAsync(int userId, int branchId, int actorId)
         {
             var u = await MustGetStaff(userId);
             if (u.Role != Role.Manager)
@@ -122,6 +142,7 @@ namespace Services
 
             var branchSnapshot = branch.Id;
             u.BranchId = branchId;
+            u.SecurityStamp = Guid.NewGuid().ToString("N");
             u.UpdatedAt = DateTime.UtcNow;
             Repo.Update(u);
             await SaveAsync();

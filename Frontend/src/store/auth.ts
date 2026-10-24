@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { api, type LoginResponse, TOKEN_KEY } from "../services/api";
+import { startSession, endSession, sessionMatchesStorage } from "../services/session";
 
 export interface AuthUser {
   id: number;
@@ -10,15 +11,19 @@ export interface AuthUser {
 
 interface AuthState {
   user: AuthUser | null;
+  notice: string | null;
   login: (phone: string, password: string) => Promise<void>;
   register: (b: { fullName: string; phone: string; password: string }) => Promise<void>;
   updateProfile: (fullName: string) => void;
-  logout: () => void;
+  logout: (notice?: string) => void;
 }
 
 function hydrate(): AuthUser | null {
   try {
-    if (!localStorage.getItem(TOKEN_KEY)) return null;
+    if (!localStorage.getItem(TOKEN_KEY) || !sessionMatchesStorage()) {
+      endSession(false);
+      return null;
+    }
     const raw = sessionStorage.getItem("bb_user");
     const user = raw ? JSON.parse(raw) as AuthUser : null;
     return user && Number.isInteger(user.id) && typeof user.fullName === "string"
@@ -34,28 +39,28 @@ function persist(user: AuthUser) {
 
 export const useAuth = create<AuthState>((set) => ({
   user: hydrate(),
+  notice: null,
   login: async (phone, password) => {
     const r: LoginResponse = await api.auth.login({ phoneNumber: phone, password });
-    localStorage.setItem(TOKEN_KEY, r.accessToken);
     const u: AuthUser = { id: r.userId, fullName: r.fullName, role: r.role, phone: r.phoneNumber };
     persist(u);
-    set({ user: u });
+    startSession(r.accessToken);
+    set({ user: u, notice: null });
   },
   register: async ({ fullName, phone, password }) => {
     const r: LoginResponse = await api.auth.register({ fullName, phoneNumber: phone, password });
-    localStorage.setItem(TOKEN_KEY, r.accessToken);
     const u: AuthUser = { id: r.userId, fullName: r.fullName, role: r.role, phone: r.phoneNumber };
     persist(u);
-    set({ user: u });
+    startSession(r.accessToken);
+    set({ user: u, notice: null });
   },
   updateProfile: (fullName) => set((state) => {
     if (!state.user) return state;
     const user = { ...state.user, fullName }; persist(user); return { user };
   }),
-  logout: () => {
-    localStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem("bb_user");
-    set({ user: null });
+  logout: (notice) => {
+    endSession();
+    set({ user: null, notice: notice ?? null });
   },
 }));
 

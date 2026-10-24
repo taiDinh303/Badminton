@@ -56,7 +56,43 @@ ConfigurationAndArchitectureTests dùng dữ liệu synthetic và kiểm không 
 
 CI dùng SDK theo global.json + runtime net8.0; Node 24/lockfile; unit/frontend/HTTP/provider tests có phạm vi riêng. Xem [14 release](14-release-checklist.md), [05 test](05-testing-strategy.md).
 
-## 6. Lưu liên hệ công khai — 23/10/2026
+## 6. Migration fingerprint — CURRENT 24/10/2026
+
+Hai provider có migration AddBookingRequestFingerprint riêng, chỉ thêm Bookings.RequestFingerprint nullable dài 64; giữ nguyên dữ liệu và migrations lịch sử. Migration được tạo/kiểm model offline, không tự áp lên DB ứng dụng. Production cần review/backup và thao tác phát hành riêng theo quyền owner.
+
+Fingerprint dùng intent ban đầu gồm actor, sân/ngày/slot, số người, nhóm, voucher, điểm yêu cầu và note. Key cũ có fingerprint null không thể tái dựng intent chính xác nên từ chối replay, không tự hash số điểm thực đã cap hoặc dữ liệu voucher có thể đã được giải phóng. Lock request và account là transaction-owned; services tham gia cùng scoped UnitOfWork. Cơ chế này không thay thế đối soát gateway khi timeout/crash.
+
+## 7. Readiness, retry và kiểm thử phát hành — CURRENT 24/10/2026
+
+`/ready` chỉ trả 200 khi kết nối DB, không có migration còn thiếu và heartbeat các job bật còn hợp lệ. Schema lỗi chỉ trả nhãn sanitized; health không áp migration. Đây là kiểm lịch sử migration, không kiểm toàn vẹn mọi bảng nếu schema bị sửa thủ công.
+
+Notification Pending/Failed đã lưu được worker WaitlistPromotionJob thử lại tối đa 5 bản ghi/tick, cách lần thử trước ít nhất 2 phút; HTTP relay timeout 10 giây. Khóa ledger tránh gửi đồng thời khi replay. Đây là retry ít nhất một lần: crash sau relay thành công trước commit vẫn có thể gửi lại; chưa có transactional outbox gắn tất cả business transitions hay provider reconciliation.
+
+CI có guards, build/model/config hai OS, SQL Server LocalDB tests, PostgreSQL16 service tests, frontend unit/lint/build/typecheck E2E, Chromium mock và browser gọi API/DB thật, Docker build không publish. Có timeout, concurrency và upload kết quả lỗi. GitHub run và Docker build phải xác nhận trên runner sau commit; không có job deploy.
+
+Chạy tích hợp browser từ `Frontend/`, sau `npm run build`: `npx playwright test --config playwright.integration.config.ts`. Cần BADMINTON_TEST_SQLSERVER hoặc BADMINTON_TEST_POSTGRES trỏ server loopback riêng. Host nằm ở Backend/BrowserTests, chỉ dùng fixture BadmintonTest_* với password synthetic; không nằm trong image API. Không dùng credential ứng dụng/live. Host shutdown sau suite để dọn fixture database.
+
+
+## 8. Callback và hoàn tiền — CURRENT 24/10/2026 sau security fixes
+
+Native callback: VNPAY GET `/api/v1/payments/callback/vnpay` (response giữ nguyên `RspCode`/`Message`); MoMo POST `/api/v1/payments/callback/momo`; ZaloPay POST `/api/v1/payments/callback/zalopay`. Wrapper POST `/webhook/{provider}` vẫn còn nhưng reference, merchant, amount và trạng thái phải được chứng minh bởi payload ký; status/amount bên ngoài chữ ký không có thẩm quyền. VNPAY chỉ thành công khi cả response và transaction status là 00. Duplicate fields, legacy MoMo responseKey và legacy Zalo appSignature bị từ chối.
+
+Production real cần thêm `Payment:Momo:AccessKey` (khóa do merchant được cấp, không phải khóa suy ra từ requestId) và `Payment:Zalopay:CallbackKey` (key2/callback key). Không ghi giá trị vào repo. MoMo HMAC-SHA256 ký toàn bộ IPN theo thứ tự tài liệu; ZaloPay HMAC-SHA256 ký nguyên chuỗi data. Tham khảo [VNPAY IPN](https://sandbox.vnpayment.vn/apis/docs/thanh-toan-pay/pay.html), [MoMo notification](https://developers.momo.vn/v3/docs/payment/api/result-handling/notification/), [ZaloPay callback](https://docs.zalopay.vn/docs/specs/callback-api/).
+
+CURRENT: `OnlineRefundService` lưu intent trước IO vào `OnlineRefundOperations`, `HttpOnlineRefundClient` có transport refund/query VNPAY/MoMo/ZaloPay. `Payment:OnlineRefunds:Enabled=false` mặc định; chỉ bật sau nghiệm thu merchant sandbox. API legacy `IPaymentGateway.RefundAsync` vẫn từ chối `ONLINE_REFUND_UNAVAILABLE` vì thiếu metadata/idempotency bền vững; payment service đi qua coordinator mới cho online thật. Chỉ khi provider xác nhận hoàn xong mới đổi booking/ghi refund ledger/trả điểm-voucher trong transaction. Timeout/crash giữ `refund_uncertain`; lần gọi sau chỉ query cùng intent, không gửi lại lệnh refund. Cash/QR tại quầy giữ nghiệp vụ xác nhận của nhân viên. NOT VERIFIED: provider sandbox/tiền thật/callback ingress; người dùng xác nhận chưa có merchant sandbox trong lượt này. Test synthetic không thay chứng nhận gateway.
+
+JWT kiểm lại user active, verified, chưa xóa, role và SecurityStamp khớp DB mỗi request có xác thực. Đổi mật khẩu/thu hồi phiên đổi stamp, token cũ bị từ chối. TARGET còn lại: refresh/reset/OTP và nghiệm thu vận hành.
+
+## 9. Hoàn tiền bền vững và diễn tập vận hành — CURRENT local 24/10/2026
+
+- Migration mới: SQL Server `20261024120154_AddDurableOnlineRefunds`, PostgreSQL `20261024120256_AddDurableOnlineRefunds`; thêm metadata provider trên Payments và bảng thứ18 `OnlineRefundOperations`. Không tự áp vào DB ứng dụng/live. PostgreSQL bật RLS và revoke quyền PUBLIC/anon/authenticated trên bảng/sequence mới; chỉ backend truy cập.
+- `Payment__OnlineRefunds__Enabled=true` yêu cầu `Payment:Provider=real`, đủ credential adapter và `Payment__Vnpay__ApiEndpoint` HTTPS đúng môi trường. Không bật flag để bỏ qua sandbox. Refund sử dụng provider transaction ID từ callback đã ký; VNPAY lưu chính xác vnp_CreateDate của checkout. Đơn lịch sử thiếu metadata bị từ chối, không suy diễn từ BookingCode.
+- Staff đúng branch gọi `POST /api/v1/payments/reconciliation/{paymentId}/refund`: intent cũ chỉ query; khoản thu late/additional/conflict chưa có intent có thể yêu cầu hoàn toàn phần. Client không gửi amount. Pending initialization chưa rõ kết quả không thể tùy ý đánh dấu đã xử lý. UI Đối soát hiển thị lỗi/chờ xác minh, chỉ báo thành công khi API hoàn tất.
+- Rehearsal: [OperationsRehearsal](../tools/OperationsRehearsal/README.md) chỉ nhận BadmintonTest_* loopback, native BACKUP/RESTORE hoặc pg_dump/pg_restore, đối chiếu dữ liệu/migration/index và kiểm unique slot sau restore. Tám process complete, tám process expiry, một process giữ khóa bị kill và process mới phục hồi khóa. CI có bước tương ứng; remote runner vẫn NOT VERIFIED.
+- TARGET: merchant sandbox/certification, production restore rehearsal theo quyền riêng, endurance và quyết định RPO/RTO. Diễn tập local không tự đóng các gate này.
+
+Nguồn protocol: [MoMo refund/query](https://developers.momo.vn/v3/docs/payment/api/payment-api/refund/), [ZaloPay refund/query](https://developer.zalopay.vn/v2/general/overview.html), [VNPAY refund/query](https://sandbox.vnpayment.vn/apis/docs/truy-van-hoan-tien/querydr%26refund.html). Credential và dữ liệu mẫu của tài liệu nhà cung cấp không đưa vào cấu hình dự án.
+$110. Lưu liên hệ công khai — 23/10/2026
 
 CURRENT source: POST /api/v1/contacts cho khách chưa đăng nhập, 3 lần/phút/IP; server kiểm họ tên, SĐT Việt Nam, email, độ dài lời nhắn và consent. Honeypot loại submission bot; không ghi thông tin liên hệ vào log. GET /api/v1/contacts?page=1 và PATCH /api/v1/contacts/{id}/handled chỉ cho JWT role Admin.
 

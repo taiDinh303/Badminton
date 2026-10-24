@@ -6,7 +6,6 @@ using Badminton.Core.Store;
 
 namespace Services
 {
-    /// <summary>Minimal VNPAY transport so tests can stub it out.</summary>
     public interface IVnPayClient
     {
         Task<VnPayCreateResult> CreatePayUrlAsync(
@@ -26,23 +25,16 @@ namespace Services
             _http = http; _s = settings;
         }
 
-        public async Task<VnPayCreateResult> CreatePayUrlAsync(
+        public Task<VnPayCreateResult> CreatePayUrlAsync(
             IReadOnlyDictionary<string, string> fields, CancellationToken ct)
         {
+            ct.ThrowIfCancellationRequested();
+            // VNPAY checkout is a signed browser redirect; the backend must not fetch it.
             var query = VnPaySigner.BuildQuery(_s.SecretKey, fields);
-            var url = _s.Endpoint + "/CreatePay?";
-            var resp = await _http.GetAsync(url + query, ct);
-            if (!resp.IsSuccessStatusCode)
-                return new VnPayCreateResult(false, null, null,
-                    $"VnPay HTTP {(int)resp.StatusCode}.");
-            var html = await resp.Content.ReadAsStringAsync(ct);
-            var loc = resp.Headers.Location?.ToString();
-            var redirect = !string.IsNullOrWhiteSpace(loc) ? loc : url + query;
-            var payId = fields.TryGetValue("vnp_TxCode", out var tx) ? tx : null;
-            _ = html; // body intentionally unused — VNPAY create-pay-url is a
-                      // browser-redirect endpoint, not a JSON API.
-            return new VnPayCreateResult(true, redirect, payId, null);
+            return Task.FromResult(new VnPayCreateResult(true,
+                _s.Endpoint + "?" + query, fields["vnp_TxnRef"], null));
         }
+
     }
 
     public sealed class VnPayGateway : IPaymentGateway
@@ -69,24 +61,25 @@ namespace Services
                 return PaymentInitResult.Fail(
                     "VnPay chua duoc cau hinh (thieu MerchantCode/SecretKey), khong the thanh toan.");
 
-            var txCode = "BADMINTON" + DateTime.Now.ToString("yyyyMMddHHmmssfff");
-            var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+            if (amount <= 0 || amount != decimal.Truncate(amount) || amount > int.MaxValue)
+                return PaymentInitResult.Fail("Số tiền VNPAY không hợp lệ.");
+            var txCode = bookingId;
+            var timestamp = Badminton.Core.Utils.HanoiTime.HanoiNow().ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture);
             var fields = new Dictionary<string, string>
             {
                 ["vnp_Version"] = _s.Version,
                 ["vnp_Command"] = "pay",
                 ["vnp_TmnCode"] = _s.MerchantCode,
-                ["vnp_Referer"] = string.Empty,
+                ["vnp_IpAddr"] = "127.0.0.1",
                 ["vnp_TxnRef"] = txCode,
-                ["vnp_Amount"] = ((long)(amount * 100)).ToString(), // VND dong → "0" decimal
-                ["vnp_CurrType"] = _s.CurrType,
+                ["vnp_Amount"] = checked((long)(amount * 100)).ToString(System.Globalization.CultureInfo.InvariantCulture), // VND dong → "0" decimal
+                ["vnp_CurrCode"] = _s.CurrType,
                 ["vnp_BankCode"] = _s.BankCode,
                 ["vnp_Locale"] = _s.Locale,
-                ["vnp_CreateTime"] = timestamp,
+                ["vnp_CreateDate"] = timestamp,
                 ["vnp_OrderInfo"] = "Badminton Booking " + bookingId,
-                ["vnp_OrderType"] = "Booking",
-                ["vnp_ReturnUrl"] = returnUrl,
-                ["vnp_IpnUrl"] = _s.CallbackUrl ?? string.Empty
+                ["vnp_OrderType"] = "other",
+                ["vnp_ReturnUrl"] = returnUrl
             };
 
             var init = await _client.CreatePayUrlAsync(fields, ct);
@@ -113,30 +106,23 @@ namespace Services
                 .ToDictionary(key => key!, key => parsed[key!] ?? "",
                     System.StringComparer.OrdinalIgnoreCase);
 
-            if (q.Count == 0)
-                return Task.FromResult(new WebhookOutcome(false, false, raw.GatewayRef,
-                    "webhook VnPay body rong (khong co tham so)."));
-
-            if (!q.TryGetValue("vnp_ResponseCode", out var respCode))
-                return Task.FromResult(new WebhookOutcome(false, false, raw.GatewayRef,
-                    "webhook VnPay thieu vnp_ResponseCode."));
-
-            if (!q.TryGetValue("vnp_SecureHash", out var expectedHash) ||
-                string.IsNullOrWhiteSpace(expectedHash))
-                return Task.FromResult(new WebhookOutcome(false, false, raw.GatewayRef,
-                    "webhook VnPay thieu vnp_SecureHash."));
-
-            if (!VnPaySigner.Verify(_s.SecretKey, expectedHash, q))
-                return Task.FromResult(new WebhookOutcome(false, false, raw.GatewayRef,
-                    "chu ky vnp_SecureHash cua VnPay thieu hoac sai."));
-
-            var success = respCode is "00" or "02";
-            return Task.FromResult(new WebhookOutcome(
-                Verified: true, Success: success, raw.GatewayRef, null));
+            if (parsed.AllKeys.Any(k => k is null || parsed.GetValues(k)?.Length != 1))
+                return Task.FromResult(new WebhookOutcome(false, false, null, "Duplicate webhook fields."));
+            if (!q.TryGetValue("vnp_SecureHash", out var hash) || !VnPaySigner.Verify(_s.SecretKey, hash, q))
+                return Task.FromResult(new WebhookOutcome(false, false, null, "Chữ ký VNPAY không hợp lệ."));
+            if (!q.TryGetValue("vnp_TxnRef", out var reference) || !string.Equals(reference, raw.GatewayRef, StringComparison.Ordinal)
+                || !q.TryGetValue("vnp_TmnCode", out var merchant) || merchant != _s.MerchantCode
+                || !q.TryGetValue("vnp_Amount", out var value) || !long.TryParse(value, System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var cents) || cents < 0 || cents % 100 != 0
+                || !q.TryGetValue("vnp_ResponseCode", out var response) || !q.TryGetValue("vnp_TransactionStatus", out var status)
+                || (q.TryGetValue("vnp_CurrCode", out var currency) && currency != "VND"))
+                return Task.FromResult(new WebhookOutcome(false, false, null, "Webhook VNPAY không khớp đơn/merchant/số tiền hoặc thiếu trạng thái."));
+            return Task.FromResult(new WebhookOutcome(true, response == "00" && status == "00", reference, null, cents / 100m, "VND",
+                q.GetValueOrDefault("vnp_TransactionNo")));
         }
 
         public Task<RefundResult> RefundAsync(string bookingId, decimal amount,
             string reason, CancellationToken ct = default) =>
-            Task.FromResult(new RefundResult(true, amount, null));
+            Task.FromResult(RefundResult.Fail("ONLINE_REFUND_UNAVAILABLE: Chưa có kết nối hoàn tiền online. Giao dịch chưa được hoàn; cần xử lý và đối soát với nhà cung cấp."));
     }
 }

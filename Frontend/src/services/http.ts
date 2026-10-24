@@ -1,4 +1,6 @@
 import { apiBase } from "../../config/environment.mjs";
+import { beginRequest, expireLocalSession } from "./session";
+export { TOKEN_KEY } from "./session";
 const BASE = apiBase(import.meta.env.VITE_API_URL);
 
 export class ApiError extends Error {
@@ -18,8 +20,6 @@ interface BaseResponse<T> {
   code: string | null;
 }
 
-export const TOKEN_KEY = "bb_token";
-
 function authHeaders(token: string | null): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -37,27 +37,29 @@ export async function request<T>(
           .map(([k, v]) => [k, String(v)]),
       ).toString()}`
     : "";
-  const requestToken = localStorage.getItem(TOKEN_KEY);
-  const res = await fetch(`${BASE}${path}${qs}`, {
-    method,
-    headers: { "Content-Type": "application/json", ...authHeaders(requestToken) },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-
-  let json: BaseResponse<unknown> | null = null;
+  const session = beginRequest(path === "/auth/login" || path === "/auth/register");
   try {
-    json = (await res.json()) as BaseResponse<unknown>;
-  } catch {
-    /* non-JSON (rare) */
-  }
+    const res = await fetch(`${BASE}${path}${qs}`, {
+      method,
+      headers: { "Content-Type": "application/json", ...authHeaders(session.token) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: session.signal,
+    });
 
-  if (!res.ok) {
-    if (res.status === 401 && requestToken && localStorage.getItem(TOKEN_KEY) === requestToken) {
-      localStorage.removeItem(TOKEN_KEY);
-      sessionStorage.removeItem("bb_user");
-      window.dispatchEvent(new Event("badminton:session-expired"));
+    let json: BaseResponse<unknown> | null = null;
+    try {
+      json = (await res.json()) as BaseResponse<unknown>;
+    } catch {
+      /* non-JSON (rare) */
     }
-    throw new ApiError(res.status, json?.message ?? `HTTP ${res.status}`, json?.code ?? null);
+
+    if (!session.isCurrent()) throw new ApiError(409, "Phiên đăng nhập đã thay đổi. Vui lòng đăng nhập lại.", "SESSION_CHANGED");
+    if (!res.ok) {
+      if (res.status === 401 && session.token) expireLocalSession(true);
+      throw new ApiError(res.status, json?.message ?? `HTTP ${res.status}`, json?.code ?? null);
+    }
+    return json?.data as T;
+  } finally {
+    session.release();
   }
-  return json?.data as T;
 }

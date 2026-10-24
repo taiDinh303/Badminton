@@ -5,6 +5,7 @@ namespace Badminton.Core.Domain
     public interface IPaymentGateway
     {
         PaymentMethod Method { get; }
+        bool IsSimulation => false;
 
         Task<PaymentInitResult> InitAsync(
             string bookingId, decimal amount, string returnUrl, CancellationToken ct = default);
@@ -26,7 +27,8 @@ namespace Badminton.Core.Domain
     }
 
     public sealed record WebhookOutcome(bool Verified, bool Success,
-        string? GatewayRef, string? Error);
+        string? GatewayRef, string? Error, decimal? Amount = null, string? Currency = null,
+        string? TransactionId = null, string? TransactionDate = null);
 
     public sealed record RefundResult(bool Ok, decimal Amount, string? Error)
     {

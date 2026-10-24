@@ -31,26 +31,29 @@ namespace Services
 
         public async Task<GroupView> CreateAsync(string name, int ownerId, int maxMembers = 10)
         {
+            await RequireActiveAsync(ownerId);
+            if (name?.Trim().Length > 100) throw new BadRequestException("Tên nhóm tối đa 100 ký tự.");
             if (string.IsNullOrWhiteSpace(name))
                 throw new BadRequestException("Ten nhom khong duoc rong.");
             if (maxMembers < 1 || maxMembers > 10)
-                throw new BadRequestException("Nhom toi da 10 thanh vien (docs 01 §4).");
+                throw new BadRequestException("Nhom toi da 10 thanh vien.");
 
-            var group = new PlayGroup { Name = name, OwnerId = ownerId, MaxMembers = maxMembers };
-            _ = Repo.AddAsync(group);
-            await SaveAsync();
-
-            _ = Repository<GroupMember>().AddAsync(new GroupMember
-            {
-                GroupId = group.Id,
-                UserId = ownerId
-            });
+            var group = new PlayGroup { Name = name.Trim(), OwnerId = ownerId, MaxMembers = maxMembers };
+            group.Members.Add(new GroupMember { UserId = ownerId, Group = group });
+            await Repo.AddAsync(group);
             await SaveAsync();
             return new GroupView(group.Id, group.Name, ownerId, OwnerNamePlaceholder,
                 group.MaxMembers, 1, group.CreatedAt);
         }
 
-        public async Task JoinAsync(int groupId, int userId)
+        public Task JoinAsync(int groupId, int userId) => Uow.RunInTransactionAsync(async () =>
+        {
+            await RequireActiveAsync(userId);
+            await Uow.LockGroupAsync(groupId);
+            await JoinCoreAsync(groupId, userId);
+        });
+
+        private async Task JoinCoreAsync(int groupId, int userId)
         {
             var g = await MustGetAsync(groupId);
             var members = await Repository<GroupMember>().GetByConditionAsync(m => m.GroupId == groupId);
@@ -65,7 +68,10 @@ namespace Services
         public async Task<IReadOnlyList<GroupMemberView>> GetMembersAsync(int groupId)
         {
             var g = await MustGetAsync(groupId);
+            await RequireActiveAsync(_currentUser.Id);
             var members = await Repository<GroupMember>().GetByConditionAsync(m => m.GroupId == groupId);
+            if (g.OwnerId != _currentUser.Id && !members.Any(m => m.UserId == _currentUser.Id))
+                throw new ConflictException("Chỉ thành viên của nhóm được xem danh sách thành viên.");
 
             // ANTI-N+1: bulk-load the user names, then map in memory.
             var userIds = members.Select(m => m.UserId).Distinct().ToList();
@@ -86,6 +92,13 @@ namespace Services
         {
             var g = await MustGetAsync(groupId);
             return g.OwnerId == userId;
+        }
+
+        private async Task RequireActiveAsync(int id)
+        {
+            var user = await Repository<User>().GetByIdAsync(id);
+            if (user is null || user.DeletedAt.HasValue || user.Status != Badminton.Core.Enums.UserStatus.Active || !user.IsVerified)
+                throw new ConflictException("Tài khoản không còn hoạt động.");
         }
 
         private static string OwnerNamePlaceholder => "(owner)";

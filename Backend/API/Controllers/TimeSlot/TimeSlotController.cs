@@ -14,15 +14,19 @@ namespace Badminton.API.Controllers
 
         [HttpGet]
         [AllowAnonymous]
-        public async Task<IActionResult> GetAll() => Resp(await _svc.GetAllAsync());
+        public async Task<IActionResult> GetAll([FromQuery] bool includeInactive = false)
+        {
+            if (includeInactive && !User.IsInRole("Admin")) return Forbid();
+            return Resp(await _svc.GetAllAsync(includeInactive));
+        }
 
         [HttpPost]
-        [Authorize(Roles = "Admin,Manager")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Create(CreateTimeSlotRequest request) =>
             Resp(await _svc.CreateAsync(request, CurrentUserId), "Tạo khung giờ thành công.");
 
         [HttpPatch("{id:int}")]
-        [Authorize(Roles = "Admin,Manager")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Update(int id, UpdateTimeSlotRequest request)
         {
             await _svc.UpdateAsync(id, request, CurrentUserId);

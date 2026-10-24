@@ -47,19 +47,13 @@ namespace Services
                 return b;
 
             var now = DateTime.UtcNow;
-            int claimed = await Uow.ExecuteSqlRawAsync(
-                "UPDATE \"Bookings\" SET \"CheckedInAt\" = @p0, \"UpdatedAt\" = @p0 " +
-                "WHERE \"Id\" = @p1 AND \"CheckedInAt\" IS NULL " +
-                "AND \"Status\" IN ('Confirmed', 'Pending')",
-                now, b.Id);
+            int claimed = await Uow.Bookings.CheckinAsync(b.Id, now);
             if (claimed == 0)
                 throw new ConflictException(
                     $"Đơn {b.BookingCode} vừa được check-in bởi thao tác khác.");
 
             b.CheckedInAt = now;
             b.UpdatedAt = now;
-            Bookings.Update(b);
-            await SaveAsync();
             return b;
         }
 

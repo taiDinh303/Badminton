@@ -1,3 +1,4 @@
+import { useBookingRefresh } from "../hooks/useBookingRefresh";
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 import { useParams, Link } from "react-router-dom";
@@ -83,9 +84,11 @@ export default function BookingDetailPage() {
   });
   const existingReview = reviews.data?.find((r) => r.bookingId === bookingId);
 
+  const refreshBookings = useBookingRefresh();
   const cancel = useMutation({
     mutationFn: () => api.booking.cancel(bookingId),
     onSuccess: () => {
+      refreshBookings();
       refetch();
       qc.invalidateQueries({ queryKey: ["my-bookings"] });
       void qc.invalidateQueries({ queryKey: ["account"] });
@@ -329,7 +332,7 @@ export default function BookingDetailPage() {
       )}
 
       {/* ── Cancel / staff lifecycle ── */}
-      {b.status === "Pending" && !staff && (
+      {["Pending", "Confirmed"].includes(b.status) && b.userId === user?.id && (
         <div className="mt-4">
           <Button
             variant="danger"
@@ -363,7 +366,7 @@ export default function BookingDetailPage() {
                   <StatusBadge status={tx.status} size="sm" />
                   <span className="text-muted tnum">
                     {tx.method} · {formatVnd(tx.amount)}
-                    {tx.status === "Refunded" && tx.refundAmount > 0 && (
+                    {["Refunded", "PartialRefund"].includes(tx.status) && tx.refundAmount > 0 && (
                       <span className="text-state-success"> · hoàn {formatVnd(tx.refundAmount)}</span>
                     )}
                   </span>

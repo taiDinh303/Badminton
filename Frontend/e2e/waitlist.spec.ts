@@ -15,6 +15,7 @@ test.describe("waitlist", () => {
     let left = false;
 
     await mockApi(page, [
+    { pattern: /\/bookings\/quote$/, method: "POST", respond: () => ok({ basePrice: 100000, weekendSurcharge: 0, voucherDiscount: 0, pointsDiscount: 0, total: 100000, payable: 100000 }) },
       {
         pattern: /\/auth\/login$/,
         method: "POST",
@@ -116,7 +117,7 @@ test.describe("waitlist", () => {
     // Log in (mocked) → home.
     await page.goto("/auth");
     await page.getByLabel(/Số điện thoại/i).fill("0900000008");
-    await page.getByLabel(/Mật khẩu/i).fill("Pass@123");
+    await page.getByLabel("Mật khẩu", { exact: true }).fill("Pass@123");
     // Disambiguate the form submit button from the "Đăng nhập" tab toggle.
     await page.locator("form").getByRole("button", { name: /Đăng nhập/i }).click();
     // "Xin chào," and the name are separate nodes; the name also shows in the

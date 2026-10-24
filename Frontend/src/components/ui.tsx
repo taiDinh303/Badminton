@@ -653,7 +653,7 @@ export function BarChart({
   data: { label: string; value: number; valueLabel?: string }[];
   tone?: "primary" | "accent";
 }) {
-  const max = Math.max(1, ...data.map((d) => d.value));
+  const max = Math.max(1, ...data.map((d) => Math.abs(d.value)));
   const bar = tone === "primary" ? "bg-primary" : "bg-accent";
   return (
     <div className="space-y-2.5">
@@ -665,8 +665,8 @@ export function BarChart({
           </div>
           <div className="h-2 rounded-full bg-bg">
             <div
-              className={clsx("h-2 rounded-full transition-all", bar)}
-              style={{ width: `${(d.value / max) * 100}%` }}
+              className={clsx("h-2 rounded-full transition-all", d.value < 0 ? "bg-state-danger" : bar)}
+              style={{ width: `${(Math.abs(d.value) / max) * 100}%` }}
             />
           </div>
         </div>

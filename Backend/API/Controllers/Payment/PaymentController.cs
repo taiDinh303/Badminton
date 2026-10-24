@@ -27,10 +27,54 @@ namespace Badminton.API.Controllers
                 ? new[] { "Cash", "QR" }
                 : new[] { "Cash", "QR", "VnPay", "MoMo", "Zalopay" });
 
+        [HttpGet("reconciliation")]
+        [Authorize(Roles = "Admin,Manager")]
+        public async Task<IActionResult> Reconciliation([FromQuery] int? branchId = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+        {
+            var result = await _svc.GetReconciliationAsync(branchId, new Contract.Repositories.UnitOfWork.Page(Math.Clamp(page, 1, 1000000), Math.Clamp(pageSize, 1, 100)));
+            return Resp(new { items = result.Items, totalCount = result.TotalCount });
+        }
+
         [HttpPost("init")]
         [Authorize]
         public async Task<IActionResult> Init(InitPaymentRequest request) =>
             Resp(await _svc.InitAsync(request, CurrentUserId), "Khởi tạo thanh toán thành công.");
+
+        [HttpGet("callback/vnpay")]
+        [AllowAnonymous]
+        public async Task<IActionResult> VnPayCallback()
+        {
+            var result = await _svc.HandleWebhookAsync("VnPay", new(Request.Query["vnp_TxnRef"].ToString(), "", Request.QueryString.Value));
+            return Ok(new Dictionary<string, string> { ["RspCode"] = result.Accepted ? "00" : "97", ["Message"] = result.Accepted ? "Confirm Success" : "Rejected" });
+        }
+
+        [HttpPost("callback/momo")]
+        [AllowAnonymous]
+        public async Task<IActionResult> MoMoCallback([FromBody] System.Text.Json.JsonElement body)
+        {
+            if (body.ValueKind != System.Text.Json.JsonValueKind.Object || !body.TryGetProperty("orderId", out var id)
+                || id.ValueKind != System.Text.Json.JsonValueKind.String) return BadRequest();
+            var result = await _svc.HandleWebhookAsync("MoMo", new(id.GetString()!, "", body.GetRawText()));
+            return result.Accepted ? NoContent() : BadRequest();
+        }
+
+        [HttpPost("callback/zalopay")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ZaloPayCallback([FromBody] System.Text.Json.JsonElement body)
+        {
+            try
+            {
+                if (body.ValueKind != System.Text.Json.JsonValueKind.Object || !body.TryGetProperty("data", out var data)
+                    || data.ValueKind != System.Text.Json.JsonValueKind.String) return Ok(new { return_code = 2, return_message = "Rejected" });
+                using var decoded = System.Text.Json.JsonDocument.Parse(data.GetString()!);
+                if (decoded.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object
+                    || !decoded.RootElement.TryGetProperty("app_trans_id", out var id) || id.ValueKind != System.Text.Json.JsonValueKind.String)
+                    return Ok(new { return_code = 2, return_message = "Rejected" });
+                var result = await _svc.HandleWebhookAsync("Zalopay", new(id.GetString()!, "", body.GetRawText()));
+                return Ok(new { return_code = result.Accepted ? 1 : 2, return_message = result.Accepted ? "Success" : "Rejected" });
+            }
+            catch (System.Text.Json.JsonException) { return Ok(new { return_code = 2, return_message = "Rejected" }); }
+        }
 
         [HttpPost("webhook/{provider}")]
         [AllowAnonymous]
@@ -59,6 +103,11 @@ namespace Badminton.API.Controllers
             [FromQuery] string method = "cash", [FromQuery] string? note = null)
             => Resp(await _svc.ConfirmOnSiteAsync(bookingId, method, CurrentUserId, note),
                 "Xác nhận thanh toán tại quầy thành công.");
+
+        [HttpPost("reconciliation/{paymentId:int}/refund")]
+        [Authorize(Roles = "Admin,Manager")]
+        public async Task<IActionResult> ReconcileRefund(int paymentId) =>
+            Resp(await _svc.ReconcileRefundAsync(paymentId, CurrentUserId), "Đã xác nhận kết quả hoàn tiền với provider.");
 
         [HttpPost("{bookingId:int}/refund")]
         [Authorize(Roles = "Admin,Manager")]

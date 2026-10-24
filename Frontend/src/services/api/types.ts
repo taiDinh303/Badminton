@@ -43,7 +43,14 @@ export interface Slot {
   lockReason: string;
 }
 
+export interface BookingRequest {
+  courtId: number; date: string; slotId: number; playerCount?: number;
+  groupId?: number | null; voucherCode?: string | null;
+  idempotencyKey?: string | null; note?: string | null; pointsToRedeem?: number | null;
+}
+
 export interface CourtAvailability {
+  capacity?: number;
   courtId: number;
   courtCode: string;
   courtName: string;

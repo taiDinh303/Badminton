@@ -17,6 +17,6 @@ From Frontend: npm ci; npm test; npm run lint; npm run build. npm run dev starts
 
 The white/gray application shell follows the reference style while retaining Badminton's green/yellow sport brand. Desktop sidebar and mobile menu use the same navigation registry; admin-only pages are guarded. Guards aid navigation and never replace API authorization.
 
-npx playwright install chromium then npm run test:e2e exercises the built SPA with mocked API. Backend HTTP tests separately exercise JWT/controllers/SQL on an isolated local DB. Mocked browser tests do not prove payment providers or cloud operation.
+npx playwright install chromium then npm run test:e2e exercises the built SPA with mocked API. Backend HTTP tests exercise JWT/controllers on isolated SQL Server/PostgreSQL databases. npx tsc -p tsconfig.e2e.json --noEmit checks browser test types. npx playwright test --config playwright.integration.config.ts starts the separate Backend/BrowserTests host and exercises real BCrypt login, quote, booking and cancellation against an isolated loopback database (set BADMINTON_TEST_SQLSERVER or BADMINTON_TEST_POSTGRES). Mocked browser tests do not prove payment providers or cloud operation.
 
 See [configuration](../docs/13-configuration.md), [UI](../docs/07-ui-design-system.md) and [worklog](../docs/worklog.md).

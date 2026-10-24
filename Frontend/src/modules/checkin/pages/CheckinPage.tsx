@@ -66,7 +66,7 @@ export default function CheckinPage() {
   });
   const { data: slotList = [] } = useQuery({
     queryKey: ["time-slots"],
-    queryFn: api.timeSlots.list,
+    queryFn: () => api.timeSlots.list(),
   });
 
   const slotOptions = useMemo(

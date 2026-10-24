@@ -9,6 +9,8 @@ namespace ModelViews.Payment
         string Status, string? GatewayRef, DateTime? PaidAt, int RefundAmount,
         DateTime? RefundedAt);
 
+    public record PaymentReconciliationView(PaymentView Payment, string? Reason, DateTime CreatedAt);
+
     public record PaymentInitResponse(string Method, string? GatewayUrl,
         string? GatewayRef, string BookingCode);
 }

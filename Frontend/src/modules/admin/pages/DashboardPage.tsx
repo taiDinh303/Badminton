@@ -27,19 +27,19 @@ export default function DashboardPage() {
     queryFn: () => api.admin.report.summary(),
   });
 
-  const toStr = new Date().toISOString().slice(0, 10);
+  const toStr = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
   const from = new Date();
-  from.setDate(from.getDate() - 6);
+  from.setTime(from.getTime() + 7 * 3600_000 - 6 * 86400_000);
   const fromStr = from.toISOString().slice(0, 10);
 
   // Revenue/occupancy charts are [Admin] on the backend (docs 03 role matrix).
-  const { data: revenue } = useQuery({
+  const { data: revenue, error: revenueError } = useQuery({
     queryKey: ["report", "revenue", fromStr, toStr],
     queryFn: () => api.admin.report.revenue(fromStr, toStr),
     enabled: isAdminUser,
   });
 
-  const { data: occupancy } = useQuery({
+  const { data: occupancy, error: occupancyError } = useQuery({
     queryKey: ["report", "occupancy", fromStr, toStr],
     queryFn: () => api.admin.report.occupancy(fromStr, toStr),
     enabled: isAdminUser,
@@ -52,8 +52,8 @@ export default function DashboardPage() {
     .slice(-7)
     .map((r) => ({
       label: r.date.slice(5).replace("-", "/"),
-      value: r.revenue,
-      valueLabel: formatVnd(r.revenue),
+      value: r.revenue - r.refunds,
+      valueLabel: formatVnd(r.revenue - r.refunds),
     }));
 
   const occ = occupancy ?? [];
@@ -74,6 +74,7 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {(revenueError || occupancyError) && <Callout tone="error" className="mt-4">Không tải được biểu đồ. Vui lòng thử lại.</Callout>}
       {s && (
         <>
           {/* KPI grid */}
@@ -81,7 +82,7 @@ export default function DashboardPage() {
             <KpiCard
               icon={<CircleDollarSign className="h-4 w-4" />}
               label="Doanh thu hôm nay"
-              value={formatVnd(Math.max(0, s.revenueToday))}
+              value={formatVnd(s.revenueToday)}
               sub={`${s.todayBookings} đơn · ${s.usersToday} khách`}
               tone="success"
             />

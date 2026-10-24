@@ -33,8 +33,7 @@ namespace Services
 
         public async Task<int> CreateAsync(CreateCourtRequest request, int actorId)
         {
-            if (request.PricePeak <= 0 || request.PriceLowPeak < 0)
-                throw new BadRequestException("Giá peak phải dương.");
+            Validate(request.Name, request.PriceLowPeak, request.PricePeak, request.WeekendSurcharge, request.Capacity);
             var dupes = await Repo.GetByConditionAsync(
                 c => c.BranchId == request.BranchId && c.Code == request.Code && c.DeletedAt == null);
             if (dupes.Count > 0)
@@ -52,7 +51,7 @@ namespace Services
                 Surface = ParseSurface(request.Surface),
                 Amenities = request.Amenities
             };
-            _ = Repo.AddAsync(c);
+            await Repo.AddAsync(c);
             await SaveAsync();
             await _audit.LogAsync(actorId, "court.create", "Court", c.Id.ToString(), null, c);
             return c.Id;
@@ -61,6 +60,9 @@ namespace Services
         public async Task UpdateAsync(int id, UpdateCourtRequest request, int actorId)
         {
             var c = await MustGetAsync(id);
+            Validate(request.Name ?? c.Name, request.PriceLowPeak ?? c.PriceLowPeak,
+                request.PricePeak ?? c.PricePeak, request.WeekendSurcharge ?? c.WeekendSurcharge,
+                request.Capacity ?? c.Capacity);
             var before = AuditCopy(c);
             if (request.Name is not null) c.Name = request.Name;
             if (request.PriceLowPeak.HasValue) c.PriceLowPeak = request.PriceLowPeak.Value;
@@ -94,6 +96,19 @@ namespace Services
             var c = await Repo.GetByIdAsync(id);
             if (c is null || c.DeletedAt.HasValue) throw new NotFoundException("Court", id);
             return c;
+        }
+
+        private static void Validate(string name, int lowPeak, int peak, decimal surcharge, int capacity)
+        {
+            if (string.IsNullOrWhiteSpace(name) || name.Length > 100)
+                throw new BadRequestException("Tên sân phải có từ 1 đến 100 ký tự.");
+            if (lowPeak < 0 || peak <= 0)
+                throw new BadRequestException("Giá thường không được âm và giá cao điểm phải dương.");
+            if (capacity < 1)
+                throw new BadRequestException("Sức chứa sân phải lớn hơn 0.");
+            if (surcharge < 0 || surcharge > 999999.9999m
+                || Math.Max(lowPeak, peak) * (1m + surcharge) > int.MaxValue)
+                throw new BadRequestException("Phụ thu không được âm và giá sau phụ thu phải nằm trong giới hạn số tiền hợp lệ.");
         }
 
         private static CourtSurface ParseSurface(string s) =>

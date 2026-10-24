@@ -10,7 +10,7 @@ namespace Services
     {
         public static string Hmac(string apiSecret, string message)
         {
-            using var h = new HMACSHA512(Encoding.UTF8.GetBytes(apiSecret));
+            using var h = new HMACSHA256(Encoding.UTF8.GetBytes(apiSecret));
             return ToHexLower(h.ComputeHash(Encoding.UTF8.GetBytes(message)));
         }
 
@@ -36,7 +36,7 @@ namespace Services
 
     public sealed record ZpCreateOrderRequest(
         string RefOrderId, string AppId, string? CallbackUrl,
-        string Embeddable, string Description, int Amount, string? Emv3ds);
+        string Embeddable, string Description, int Amount, string? Emv3ds, string? ReturnUrl = null);
 
     public sealed record ZpOrderCreate(bool Ok, string? orderId,
         string? qrString, string? error, string? msg, string? callbackResult);
@@ -54,48 +54,27 @@ namespace Services
         public async Task<ZpOrderCreate> CreateOrderAsync(
             ZpCreateOrderRequest r, CancellationToken ct)
         {
-            var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var refMd5 = ZpSigner.Sha256Hex(r.RefOrderId);
-            var sigPayload = $"{refMd5}{ts}{r.AppId}{_s.ApiKey}";
-            var signature = ZpSigner.Hmac(_s.ApiSecret, sigPayload);
-
-            var body = new Dictionary<string, object?>
-            {
-                ["appId"] = r.AppId,
-                ["appUser"] = refMd5,
-                ["appTime"] = ts,
-                ["appSignature"] = signature,
-                ["orderId"] = refMd5,
-                ["item"] = r.Description,
-                ["amount"] = r.Amount,
-                ["buyerToken"] = null,
-                ["display"] = "1"
-            };
-            using var content = new StringContent(
-                System.Text.Json.JsonSerializer.Serialize(body),
-                Encoding.UTF8, "application/json");
-            var resp = await _http.PostAsync(
-                _s.Endpoint + "/order/create", content, ct);
-            var text = await resp.Content.ReadAsStringAsync(ct);
-            var doc = System.Text.Json.JsonDocument.Parse(text);
+            var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var embed = System.Text.Json.JsonSerializer.Serialize(new { redirecturl = r.ReturnUrl });
+            const string item = "[]";
+            const string appUser = "BadmintonBooking";
+            var mac = ZpSigner.Hmac(_s.ApiKey, $"{r.AppId}|{r.RefOrderId}|{appUser}|{r.Amount}|{ts}|{embed}|{item}");
+            using var content = new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["app_id"] = r.AppId, ["app_user"] = appUser, ["app_trans_id"] = r.RefOrderId,
+                ["app_time"] = ts.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["amount"] = r.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["embed_data"] = embed, ["item"] = item, ["mac"] = mac,
+                ["description"] = r.Description, ["callback_url"] = r.CallbackUrl ?? "", ["bank_code"] = ""
+            });
+            using var resp = await _http.PostAsync(_s.Endpoint.TrimEnd('/') + "/v2/create", content, ct);
+            if (!resp.IsSuccessStatusCode) return new(false, null, null, "HTTP_ERROR", "ZaloPay không xác nhận khởi tạo giao dịch.", null);
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
             var root = doc.RootElement;
-            int code = root.TryGetProperty("code", out var c) ? c.GetInt32() : -1;
-            string? msg = root.TryGetProperty("msg", out var m) ? m.GetString() : null;
-            string? orderId = null;
-            string? qr = null;
-            string? callbackResult = null;
-            if (root.TryGetProperty("data", out var d) &&
-                d.ValueKind == System.Text.Json.JsonValueKind.Object)
-            {
-                orderId = d.TryGetProperty("orderId", out var oid)
-                    ? oid.GetString() : null;
-                qr = d.TryGetProperty("qrString", out var qv) ? qv.GetString() : null;
-                callbackResult = d.TryGetProperty("callback", out var cb)
-                    ? System.Text.Json.JsonSerializer.Serialize(cb) : null;
-            }
-            if (code != 1 && code != 24)
-                return new ZpOrderCreate(false, null, null, msg, msg, null);
-            return new ZpOrderCreate(true, orderId, qr, null, msg, callbackResult);
+            if (!root.TryGetProperty("return_code", out var code) || !code.TryGetInt32(out var result) || result != 1
+                || !root.TryGetProperty("order_url", out var url) || url.ValueKind != System.Text.Json.JsonValueKind.String
+                || !Uri.TryCreate(url.GetString(), UriKind.Absolute, out var checkout) || checkout.Scheme != "https")
+                return new(false, null, null, "PROVIDER_REJECTED", "ZaloPay không trả checkout hợp lệ.", null);
+            return new(true, r.RefOrderId, checkout.AbsoluteUri, null, null, null);
         }
     }
 
@@ -114,7 +93,7 @@ namespace Services
 
         public bool IsConfigured =>
             !string.IsNullOrWhiteSpace(_s.ApiKey) &&
-            !string.IsNullOrWhiteSpace(_s.ApiSecret);
+            !string.IsNullOrWhiteSpace(_s.AppId);
 
         public async Task<PaymentInitResult> InitAsync(string bookingId, decimal amount,
             string returnUrl, CancellationToken ct = default)
@@ -123,26 +102,14 @@ namespace Services
                 return PaymentInitResult.Fail(
                     "Zalopay chua duoc cau hinh (thieu ApiKey/ApiSecret), khong the thanh toan.");
 
-            // Zalopay order/create "amount" is in whole VND (150,000 VND => 150000).
-            var req = new ZpCreateOrderRequest(
-                RefOrderId: bookingId,
-                AppId: _s.AppId,
-                CallbackUrl: _s.CallbackUrl,
-                Embeddable: "0",
-                Description: "Badminton Booking " + bookingId,
-                Amount: (int)amount,
-                Emv3ds: null);
+            if (amount <= 0 || amount != decimal.Truncate(amount) || amount > int.MaxValue)
+                return PaymentInitResult.Fail("Số tiền ZaloPay không hợp lệ.");
+            var req = new ZpCreateOrderRequest(bookingId, _s.AppId, _s.CallbackUrl,
+                "0", "Badminton Booking " + bookingId, (int)amount, null, returnUrl);
             var result = await _client.CreateOrderAsync(req, ct);
-            if (!result.Ok)
-                return PaymentInitResult.Fail(result.msg ?? result.error ??
-                    "Zalopay tra loi loi.");
-            if (string.IsNullOrWhiteSpace(result.orderId))
-                return PaymentInitResult.Fail("Zalopay khong tra ve orderId.");
-
-            var gatewayUrl = string.IsNullOrWhiteSpace(result.qrString)
-                ? "zalopay://order/" + result.orderId
-                : "zalopay://pay?qr=" + result.qrString;
-            return PaymentInitResult.Success(result.orderId, gatewayUrl);
+            if (!result.Ok || result.orderId != bookingId || string.IsNullOrWhiteSpace(result.qrString))
+                return PaymentInitResult.Fail("ZaloPay không xác nhận đúng giao dịch hoặc thiếu checkout.");
+            return PaymentInitResult.Success(bookingId, result.qrString);
         }
 
         public Task<WebhookOutcome> VerifyWebhookAsync(RawWebhook raw,
@@ -158,47 +125,35 @@ namespace Services
 
             try
             {
-                var doc = System.Text.Json.JsonDocument.Parse(raw.Body);
-                var root = doc.RootElement;
-                var cb = root.TryGetProperty("callback", out var cbEl)
-                    ? cbEl
-                    : root; // some deployments POST the callback object directly
-
-                if (!cb.TryGetProperty("orderId", out var oidEl))
-                    return Task.FromResult(new WebhookOutcome(false, false, raw.GatewayRef,
-                        "webhook Zalopay thieu orderId."));
-                string orderId = oidEl.GetString() ?? string.Empty;
-
-                string md5OrderId = cb.TryGetProperty("appUser", out var auEl)
-                    ? auEl.GetString() ?? string.Empty
-                    : ZpSigner.Sha256Hex(orderId);
-                string timestamp = cb.TryGetProperty("timestamp", out var tsEl)
-                    ? tsEl.GetRawText() : "0";
-                string providedSig = cb.TryGetProperty("appSignature", out var sigEl)
-                    ? sigEl.GetString() ?? string.Empty : string.Empty;
-
-                string sigInput = $"{md5OrderId}{timestamp}{_s.AppId}{_s.ApiKey}";
-                string expected = ZpSigner.Hmac(_s.ApiSecret, sigInput);
-                if (!string.Equals(expected, providedSig,
-                        System.StringComparison.OrdinalIgnoreCase))
-                    return Task.FromResult(new WebhookOutcome(false, false, raw.GatewayRef,
-                        "chu ky appSignature cua Zalopay thieu hoac sai."));
-
-                int status = cb.TryGetProperty("callbackStatus", out var stEl)
-                    ? stEl.GetInt32() : -1;
-                bool success = status == 1; // 1 = order paid
-                return Task.FromResult(new WebhookOutcome(true, success,
-                    raw.GatewayRef, null));
+                if (string.IsNullOrWhiteSpace(_s.CallbackKey))
+                    return Task.FromResult(new WebhookOutcome(false, false, null, "ZaloPay thiếu CallbackKey."));
+                using var envelope = System.Text.Json.JsonDocument.Parse(raw.Body);
+                var root = envelope.RootElement;
+                if (root.ValueKind != System.Text.Json.JsonValueKind.Object || root.EnumerateObject().Select(p => p.Name).Distinct().Count() != root.EnumerateObject().Count()
+                    || !root.TryGetProperty("type", out var type) || type.ValueKind != System.Text.Json.JsonValueKind.Number || !type.TryGetInt32(out var kind) || kind != 1
+                    || !root.TryGetProperty("data", out var data) || data.ValueKind != System.Text.Json.JsonValueKind.String
+                    || !root.TryGetProperty("mac", out var mac) || mac.ValueKind != System.Text.Json.JsonValueKind.String)
+                    return Task.FromResult(new WebhookOutcome(false, false, null, "Webhook ZaloPay thiếu data/mac/type."));
+                var signedData = data.GetString()!;
+                var expected = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(_s.CallbackKey), Encoding.UTF8.GetBytes(signedData)));
+                if (!WebhookSecurity.EqualHex(mac.GetString(), expected))
+                    return Task.FromResult(new WebhookOutcome(false, false, null, "Chữ ký ZaloPay không hợp lệ."));
+                var fields = WebhookSecurity.ReadObject(signedData);
+                if (!fields.TryGetValue("app_trans_id", out var reference) || reference != raw.GatewayRef
+                    || !fields.TryGetValue("app_id", out var app) || app != _s.AppId
+                    || !fields.TryGetValue("amount", out var rawAmount) || !long.TryParse(rawAmount, System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture, out var amount) || amount < 0)
+                    return Task.FromResult(new WebhookOutcome(false, false, null, "Giao dịch ZaloPay không khớp ứng dụng/đơn/số tiền."));
+                return Task.FromResult(new WebhookOutcome(true, true, reference, null, amount, "VND", fields.GetValueOrDefault("zp_trans_id")));
             }
             catch (System.Text.Json.JsonException)
             {
-                return Task.FromResult(new WebhookOutcome(false, false, raw.GatewayRef,
-                    "webhook Zalopay body khong phu hop JSON."));
+                return Task.FromResult(new WebhookOutcome(false, false, null, "Webhook ZaloPay không hợp lệ."));
             }
         }
 
         public Task<RefundResult> RefundAsync(string bookingId, decimal amount,
             string reason, CancellationToken ct = default) =>
-            Task.FromResult(new RefundResult(true, amount, null));
+            Task.FromResult(RefundResult.Fail("ONLINE_REFUND_UNAVAILABLE: Chưa có kết nối hoàn tiền online. Giao dịch chưa được hoàn; cần xử lý và đối soát với nhà cung cấp."));
     }
 }

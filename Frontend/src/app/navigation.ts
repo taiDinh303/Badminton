@@ -27,11 +27,13 @@ export type NavItem = { to: string; label: string; icon: typeof Home; end?: bool
 export const adminItems: NavItem[] = [
   { to: "/admin/contacts", label: "Liên hệ", icon: Inbox, adminOnly: true },
   { to: "/admin", label: "Tổng quan", icon: LayoutDashboard, end: true },
+  { to: "/admin/reconciliation", label: "Đối soát", icon: ScrollText },
   { to: "/admin/bookings", label: "Đặt chỗ", icon: ListChecks },
   { to: "/admin/courts", label: "Sân & giá", icon: Dumbbell },
   { to: "/admin/vouchers", label: "Voucher", icon: Ticket },
   { to: "/admin/slots", label: "Khung giờ", icon: Clock },
   { to: "/checkin", label: "Check-in", icon: ScanLine },
+  { to: "/admin/branches", label: "Cơ sở", icon: Home, adminOnly: true },
   { to: "/admin/staff", label: "Nhân viên", icon: Users, adminOnly: true },
   { to: "/admin/audit", label: "Nhật ký", icon: ScrollText, adminOnly: true },
   { to: "/admin/membership", label: "Membership", icon: Crown, adminOnly: true },

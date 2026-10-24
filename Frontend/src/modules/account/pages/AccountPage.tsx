@@ -38,6 +38,12 @@ export default function AccountPage() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ fullName: "", email: "", avatarUrl: "" });
   const [saved, setSaved] = useState(false);
+  const [passwords, setPasswords] = useState({ currentPassword: "", newPassword: "", confirm: "" });
+  const passwordChange = useMutation({
+    mutationFn: () => api.auth.changePassword({ currentPassword: passwords.currentPassword, newPassword: passwords.newPassword }),
+    onSuccess: () => { setPasswords({ currentPassword: "", newPassword: "", confirm: "" }); logout("Đã đổi mật khẩu. Vui lòng đăng nhập lại."); nav("/auth", { replace: true }); },
+  });
+  const revoke = useMutation({ mutationFn: api.auth.revokeSessions, onSuccess: () => { logout(); nav("/auth", { replace: true }); } });
   const profile = useQuery({ queryKey: ["account", "profile", user?.id], queryFn: api.account.profile, enabled: !!user });
   const update = useMutation({
     mutationFn: () => api.account.update({ fullName: form.fullName.trim(), email: form.email.trim() || null, avatarUrl: form.avatarUrl.trim() || null }),
@@ -200,6 +206,25 @@ export default function AccountPage() {
           ))}
         </div>
       </div>
+
+      <Card className="mt-6 p-5">
+        <h2 className="font-semibold">Đổi mật khẩu</h2>
+        <p className="mt-1 text-sm text-muted">Đổi mật khẩu sẽ đăng xuất mọi phiên trên các thiết bị.</p>
+        <form className="mt-3 space-y-3" onSubmit={e => { e.preventDefault(); passwordChange.mutate(); }}>
+          <Field label="Mật khẩu hiện tại" type="password" autoComplete="current-password" required value={passwords.currentPassword} onChange={e => setPasswords({ ...passwords, currentPassword: e.target.value })} />
+          <Field label="Mật khẩu mới" type="password" autoComplete="new-password" required minLength={8} maxLength={72} value={passwords.newPassword} onChange={e => setPasswords({ ...passwords, newPassword: e.target.value })} />
+          <Field label="Nhập lại mật khẩu mới" type="password" autoComplete="new-password" required value={passwords.confirm} onChange={e => setPasswords({ ...passwords, confirm: e.target.value })} />
+          {passwords.confirm && passwords.confirm !== passwords.newPassword && <Callout tone="error">Mật khẩu nhập lại chưa khớp.</Callout>}
+          {passwordChange.isError && <Callout tone="error">{passwordChange.error.message}</Callout>}
+          <Button type="submit" disabled={passwordChange.isPending || !passwords.currentPassword || passwords.newPassword.length < 8 || passwords.newPassword !== passwords.confirm}>Đổi mật khẩu và đăng xuất</Button>
+        </form>
+      </Card>
+      <Card className="mt-4 p-5">
+        <h2 className="font-semibold">Phiên đăng nhập</h2>
+        <p className="my-2 text-sm text-muted">Thu hồi quyền truy cập của mọi thiết bị đang đăng nhập tài khoản này.</p>
+        <Button variant="danger" disabled={revoke.isPending} onClick={() => revoke.mutate()}>Đăng xuất mọi thiết bị</Button>
+        {revoke.isError && <Callout tone="error" className="mt-2">{revoke.error.message}</Callout>}
+      </Card>
 
       <div className="mt-6">
         <Button

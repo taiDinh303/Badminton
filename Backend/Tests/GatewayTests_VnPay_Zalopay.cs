@@ -26,6 +26,7 @@ namespace Badminton.Tests
                 ["vnp_TxnRef"] = txCode,
                 ["vnp_Amount"] = "15000000",
                 ["vnp_ResponseCode"] = responseCode,
+                ["vnp_TransactionStatus"] = responseCode,
                 ["vnp_BankCode"] = "VNBC"
             };
             var hash = hashOverride ?? VnPaySigner.Sign(secret, f);
@@ -61,11 +62,11 @@ namespace Badminton.Tests
                 hashOverride: "deadbeef");
             var outcome = await g.VerifyWebhookAsync(webhook);
             Assert.False(outcome.Verified);
-            Assert.Contains("chu ky", outcome.Error!,
+            Assert.Contains("Chữ ký", outcome.Error!,
                 System.StringComparison.OrdinalIgnoreCase);
         }
 
-        [Fact(DisplayName = "Configured VnPay: valid hash verifies; 00/02 are success, 01 is not")]
+        [Fact(DisplayName = "Configured VnPay: valid hash verifies; only 00/00 is success")]
         public async Task ValidHash_Verifies()
         {
             var g = Configured("the-real-secret");
@@ -74,10 +75,10 @@ namespace Badminton.Tests
             Assert.True(ok.Verified);
             Assert.True(ok.Success);
 
-            // 02 = duplicate order → still "success" (idempotent settle).
+            // 02 is not a successful payment result.
             var dup = await g.VerifyWebhookAsync(Ipn("the-real-secret", "BD-77", "02"));
             Assert.True(dup.Verified);
-            Assert.True(dup.Success);
+            Assert.False(dup.Success);
 
             // 01 = payment in progress / not success.
             var pending = await g.VerifyWebhookAsync(Ipn("the-real-secret", "BD-77", "01"));
@@ -153,21 +154,15 @@ namespace Badminton.Tests
         private static ZalopayGateway Configured(string secret = "zp-secret") =>
             new(new ZalopaySettings
             {
-                AppId = "1234", ApiKey = "zp-key", ApiSecret = secret
+                AppId = "1234", ApiKey = "zp-key", ApiSecret = secret, CallbackKey = secret
             }, new OkZalopayClient());
 
         private static RawWebhook Callback(string secret, string orderId,
-            int status, string? sigOverride = null, string md5OrderId = null!)
+            string? sigOverride = null)
         {
-            var ts = "1735689600";
-            string sig = sigOverride
-                ?? ZpSigner.Hmac(secret,
-                    $"{md5OrderId}{ts}1234zp-key");
-            var json = "{\"callback\":{\"orderId\":\"999\",\"orderIdApp\":\"ORD-1\","
-                + "\"appUser\":\"" + md5OrderId + "\",\"timestamp\":" + ts + ","
-                + "\"appSignature\":\"" + sig + "\",\"callbackStatus\":" + status + "}}";
-            return new RawWebhook("zalopay", orderId, json, null,
-                new Dictionary<string, string>());
+            var callback = PaymentCallbackFixtures.Zalo(secret, orderId);
+            if (sigOverride is not null) callback = callback with { Body = callback.Body.Replace("\"mac\":\"", "\"mac\":\"" + sigOverride) };
+            return callback;
         }
 
         [Fact(DisplayName = "Unconfigured Zalopay: InitAsync + webhook fail closed")]
@@ -179,8 +174,7 @@ namespace Badminton.Tests
             var init = await g.InitAsync("BD-1", 150_000, "https://return.local");
             Assert.False(init.Ok);
 
-            var webhook = Callback("zp-secret", "BD-1", 1, sigOverride: "forged",
-                md5OrderId: "abcd");
+            var webhook = Callback("zp-secret", "BD-1", sigOverride: "forged");
             var outcome = await g.VerifyWebhookAsync(webhook);
             Assert.False(outcome.Verified);
             Assert.Contains("chua duoc cau hinh", outcome.Error!,
@@ -191,25 +185,25 @@ namespace Badminton.Tests
         public async Task ForgedSignature_Rejected()
         {
             var g = Configured("the-real-secret");
-            var webhook = Callback("the-real-secret", "BD-9", 1,
-                sigOverride: "deadbeef", md5OrderId: "abcd");
+            var webhook = Callback("the-real-secret", "BD-9",
+                sigOverride: "deadbeef");
             var outcome = await g.VerifyWebhookAsync(webhook);
             Assert.False(outcome.Verified);
         }
 
-        [Fact(DisplayName = "Configured Zalopay: valid HMAC verifies; status 1 success, 103 not")]
+        [Fact(DisplayName = "Configured Zalopay: full data MAC verifies; mismatched order rejected")]
         public async Task ValidSignature_Verifies()
         {
             var g = Configured("the-real-secret");
 
             var ok = await g.VerifyWebhookAsync(
-                Callback("the-real-secret", "BD-77", 1, md5OrderId: "abcd"));
+                Callback("the-real-secret", "BD-77"));
             Assert.True(ok.Verified);
             Assert.True(ok.Success);
 
-            var fail = await g.VerifyWebhookAsync(
-                Callback("the-real-secret", "BD-77", 103, md5OrderId: "abcd"));
-            Assert.True(fail.Verified);
+            var tampered = Callback("the-real-secret", "BD-77") with { GatewayRef = "OTHER" };
+            var fail = await g.VerifyWebhookAsync(tampered);
+            Assert.False(fail.Verified);
             Assert.False(fail.Success);
         }
 
@@ -219,8 +213,8 @@ namespace Badminton.Tests
             var g = Configured();
             var init = await g.InitAsync("BD-1", 150_000, "https://return.local");
             Assert.True(init.Ok);
-            Assert.Equal("zp-order-1", init.GatewayRef);
-            Assert.Contains("zalopay://", init.GatewayUrl);
+            Assert.Equal("BD-1", init.GatewayRef);
+            Assert.StartsWith("https://", init.GatewayUrl);
         }
 
         [Fact(DisplayName = "ZpSigner HMAC/SHA256 are deterministic and distinct per input")]
@@ -228,7 +222,7 @@ namespace Badminton.Tests
         {
             Assert.Equal(ZpSigner.Hmac("k", "m"), ZpSigner.Hmac("k", "m"));
             Assert.NotEqual(ZpSigner.Hmac("k1", "m"), ZpSigner.Hmac("k2", "m"));
-            Assert.Equal(128, ZpSigner.Hmac("k", "m").Length);
+            Assert.Equal(64, ZpSigner.Hmac("k", "m").Length);
             Assert.Equal(64, ZpSigner.Sha256Hex("x").Length);
         }
 
@@ -246,7 +240,7 @@ namespace Badminton.Tests
             public Task<ZpOrderCreate> CreateOrderAsync(
                 ZpCreateOrderRequest r, CancellationToken ct)
                 => Task.FromResult(new ZpOrderCreate(
-                    true, "zp-order-1", "QRSTRING::" + r.RefOrderId, null, "1 success", null));
+                    true, r.RefOrderId, "https://checkout.example.test/" + r.RefOrderId, null, "1 success", null));
         }
     }
 }

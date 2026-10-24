@@ -47,7 +47,7 @@ namespace Services
                     ? JsonSerializer.Serialize(request.Images)
                     : null
             };
-            _ = Repo.AddAsync(review);
+            await Repo.AddAsync(review);
 
             // Rolling average: new_avg = (old_avg * count + new_rating) / (count+1).
             if (court is not null)

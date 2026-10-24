@@ -4,7 +4,7 @@
 
 ## 1. Kiến trúc và ranh giới
 
-React/Vite SPA → HTTP `/api/v1` → ASP.NET Core 8 → business service → repository contract → EF Core/SQL Server. Jobs chạy trong API. API adapter cung cấp JWT identity, logging, health và metrics. PostgreSQL/Supabase/OTP/Storage chưa là đường chạy hiện tại.
+React/Vite SPA → HTTP `/api/v1` → ASP.NET Core 8 → business service → repository contract → EF Core/SQL Server hoặc PostgreSQL theo provider. Jobs chạy trong API. API adapter cung cấp JWT identity, logging, health và metrics. PostgreSQL có context/migration riêng; OTP/Storage chưa tích hợp.
 
 ```mermaid
 flowchart LR
@@ -36,7 +36,7 @@ flowchart LR
 
 Repository DI là [AddBookingPersistence](../Backend/Repositories/DependencyInjection.cs); API gọi qua [AddBookingApi](../Backend/API/Configuration/DependencyInjection.cs). Business registration ở [ServiceRegistration](../Backend/Services/DI/ServiceRegistration.cs) không tạo UnitOfWork implementation.
 
-Services vẫn có raw SQL qua IUnitOfWork cho atomic claim hiện hữu; đây là giới hạn portability được giữ để bảo toàn concurrency, không tuyên bố đã provider-independent hoàn toàn. Không thêm CQRS/MediatR hoặc layer rỗng chỉ để giống mẫu.
+CURRENT 24/10: services và workers dùng IBookingCommands/IPaymentCommands/IVoucherCommands; conditional update và SQL/provider lock nằm trong Repositories. IUnitOfWork không còn nhận SQL string từ bên ngoài. Không thêm CQRS/MediatR hoặc layer rỗng chỉ để giống mẫu.
 
 ## 3. OOP và dependency inversion
 
@@ -64,16 +64,18 @@ Response controller: `{data,message,statusCode,code}`; domain exception cùng en
 ## 5. Quyền và tính nhất quán
 
 - Owner kiểm tại service; JWT role không thay quyền sở hữu. Manager list/summary/detail/payment read/lifecycle/check-in được giới hạn branch phía server, không tin branchId query. Account không active/chưa gán cơ sở fail closed.
-- Unique `(CourtId,Date,SlotId)` trên Pending/Confirmed bảo vệ giữ chỗ. Retry key được kiểm owner và các trường slot/date/group/playerCount; chưa lưu hash toàn payload voucher/points/note.
+- Unique `(CourtId,Date,SlotId)` trên Pending/Confirmed bảo vệ giữ chỗ. Retry key được khóa theo transaction và so fingerprint SHA-256 có version, gồm actor/slot/date/group/playerCount/voucher/points/note. Đơn cũ không có fingerprint từ chối replay vì không thể chứng minh payload ban đầu.
 - Tiền đơn có snapshot. Breakdown lịch sử dùng TotalAmount đã gồm phụ thu; trường WeekendSurcharge=0 vì dữ liệu cũ không lưu riêng. Không tính lại tiền theo giá sân hiện tại.
-- Cancel đơn đã trả đi qua CancelRefundAsync. Full refund trả điểm đã dùng; earn khi Completed. Xem [03](03-workflow.md).
+- Xác nhận thanh toán chỉ claim được Pending chưa xóa và PendingExpiresAt còn hiệu lực; repository kiểm TTL trong conditional update, kể cả thanh toán tại quầy. Cấu hình sân được validate trước khi sửa tracked entity: giá thường không âm, giá peak dương, capacity dương, phụ thu không âm và không làm giá cuối tràn int.
+- Cancel đơn đã trả đi qua CancelRefundAsync. Full refund trả điểm đã dùng; earn khi Completed. Completion/expiry và ledger dùng cùng transaction; point mutation khóa theo tài khoản. Worker và thao tác thủ công dùng chung completion service. Xem [03](03-workflow.md).
 - Transaction/conditional update không thay đối soát gateway khi timeout/crash. Gateway thật phải nghiệm thu sandbox trước dùng tiền thật.
+- Hoàn online dùng OnlineRefundService/HttpOnlineRefundClient: intent commit trước IO, recovery chỉ query cùng request ID, chỉ ghi refund/đổi booking sau khi provider xác nhận. Pending/unknown có ở màn Đối soát; staff đúng branch xử lý khoản thu muộn/thừa. Flag mặc định tắt đến khi có merchant sandbox. Chi tiết migration/role/config ở [13](13-configuration.md).
 
 ## 6. React CURRENT
 
-app/routes.tsx quản lý lazy routes/guards; app/Providers và queryClient quản lý cache/session; app/navigation dùng chung sidebar/mobile. modules/<feature>/pages giữ màn theo nghiệp vụ. services/http.ts quản lý fetch/envelope/401; services/api tách endpoint/types; utils/format và theme.css dùng chung. lib/api.ts chỉ là facade tương thích.
+app/routes.tsx quản lý lazy routes/guards; app/Providers và queryClient quản lý cache/session; app/navigation dùng chung sidebar/mobile. modules/<feature>/pages giữ màn theo nghiệp vụ; booking tách hooks/useBookingForm và components/BookingConfirmationDrawer. services/http.ts quản lý fetch/envelope/401; services/api tách endpoint/types; utils/format và theme.css dùng chung. lib/api.ts chỉ là facade tương thích.
 
-Token và bb_user cùng cần có khi hydrate. 401 xóa session, identity đổi hủy/clear query cache. Route guard không thay server authorization. Mobile menu mở cả vận hành; admin-only link ẩn với Manager. Không đưa logic giá/quyền server xuống component.
+Token và bb_user cùng cần có khi hydrate. services/session.ts gắn token với identity của từng tab bằng bb_session_token; khi token dùng chung thay đổi, tab cũ xóa identity/cache và yêu cầu đăng nhập lại, không xóa token mới của tab khác. Transport dùng token gắn với tab, chặn mismatch trước gửi, hủy request đang chờ và từ chối response thuộc phiên cũ. 401 xóa session hiện tại; identity đổi hủy/clear query cache. Thông báo đổi mật khẩu nằm trong auth state để không mất khi Gate và trang tài khoản cùng chuyển về đăng nhập. Route guard không thay server authorization. Mobile menu mở cả vận hành; admin-only link ẩn với Manager. Không đưa logic giá/quyền server xuống component.
 
 ## 7. Startup và vận hành
 

@@ -140,6 +140,10 @@ namespace Repositories.Migrations.PostgreSql
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("RequestFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<int>("SlotId")
                         .HasColumnType("integer");
 
@@ -521,6 +525,62 @@ namespace Repositories.Migrations.PostgreSql
                     b.ToTable("Notifications", (string)null);
                 });
 
+            modelBuilder.Entity("Contract.Repositories.Entity.OnlineRefundOperation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Amount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("BookingId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("CancelBooking")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsLateReceipt")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("PaymentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("ReleaseVoucher")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("RequestId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<bool>("Succeeded")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentId")
+                        .IsUnique();
+
+                    b.HasIndex("RequestId")
+                        .IsUnique();
+
+                    b.ToTable("OnlineRefundOperations", (string)null);
+                });
+
             modelBuilder.Entity("Contract.Repositories.Entity.Payment", b =>
                 {
                     b.Property<int>("Id")
@@ -542,6 +602,10 @@ namespace Repositories.Migrations.PostgreSql
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
+                    b.Property<string>("GatewayUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
                     b.Property<string>("Method")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -550,15 +614,34 @@ namespace Repositories.Migrations.PostgreSql
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ProviderTransactionDate")
+                        .HasMaxLength(14)
+                        .HasColumnType("character varying(14)");
+
+                    b.Property<string>("ProviderTransactionId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("RawResponse")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("ReconciliationReason")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<bool>("ReconciliationRequired")
+                        .HasColumnType("boolean");
 
                     b.Property<int>("RefundAmount")
                         .HasColumnType("integer");
 
                     b.Property<DateTime?>("RefundedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReturnUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -579,6 +662,8 @@ namespace Repositories.Migrations.PostgreSql
                         .HasFilter("\"GatewayRef\" IS NOT NULL");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("ReconciliationRequired", "CreatedAt");
 
                     b.HasIndex("Status", "PaidAt");
 
@@ -814,6 +899,10 @@ namespace Repositories.Migrations.PostgreSql
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasDefaultValue("Customer");
+
+                    b.Property<string>("SecurityStamp")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1145,6 +1234,15 @@ namespace Repositories.Migrations.PostgreSql
                     b.Navigation("Booking");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Contract.Repositories.Entity.OnlineRefundOperation", b =>
+                {
+                    b.HasOne("Contract.Repositories.Entity.Payment", null)
+                        .WithMany()
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Contract.Repositories.Entity.Payment", b =>

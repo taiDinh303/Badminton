@@ -1,10 +1,12 @@
 import { request } from "../http";
-import type { Branch, Court, TimeSlot, CourtAvailability, Booking, Paged, LoginResponse, Voucher, PaymentView, Staff, AuditEntry, ReportSummary, MembershipTier, MembershipView, WaitlistEntryView, GroupView, GroupMemberView, ReviewView, SlotCheckinView, RevenueByDay, OccupancyByDay, PointSummary, MyVoucher, AccountSummary, ProfileView } from "./types";
+import type { BookingRequest, PriceBreakdown, Branch, Court, TimeSlot, CourtAvailability, Booking, Paged, LoginResponse, Voucher, PaymentView, Staff, AuditEntry, ReportSummary, MembershipTier, MembershipView, WaitlistEntryView, GroupView, GroupMemberView, ReviewView, SlotCheckinView, RevenueByDay, OccupancyByDay, PointSummary, MyVoucher, AccountSummary, ProfileView } from "./types";
 export type * from "./types";
 export { ApiError, TOKEN_KEY } from "../http";
 
 export const api = {
   auth: {
+    changePassword: (b: { currentPassword: string; newPassword: string }) => request<string>("POST", "/auth/change-password", b),
+    revokeSessions: () => request<string>("POST", "/auth/logout"),
     register: (b: {
       fullName: string;
       phoneNumber: string;
@@ -68,7 +70,7 @@ export const api = {
     delete: (id: number) => request<unknown>("DELETE", `/courts/${id}`),
   },
   timeSlots: {
-    list: () => request<TimeSlot[]>("GET", "/time-slots"),
+    list: (includeInactive = false) => request<TimeSlot[]>("GET", "/time-slots", undefined, { includeInactive }),
     create: (b: {
       label: string;
       startTime: string;
@@ -85,17 +87,8 @@ export const api = {
         "GET",
         `/bookings/availability/${branchId}/${date}`,
       ),
-    create: (b: {
-      courtId: number;
-      date: string;
-      slotId: number;
-      playerCount?: number;
-      groupId?: number | null;
-      voucherCode?: string | null;
-      idempotencyKey?: string | null;
-      note?: string | null;
-      pointsToRedeem?: number | null;
-    }) => request<Booking>("POST", "/bookings", b),
+    quote: (b: BookingRequest) => request<PriceBreakdown>("POST", "/bookings/quote", b),
+    create: (b: BookingRequest) => request<Booking>("POST", "/bookings", b),
     mine: (status?: string, page = 1, pageSize = 50) =>
       request<Paged<Booking>>("GET", "/bookings/mine", undefined, {
         status,
@@ -124,6 +117,8 @@ export const api = {
       request<Booking>("POST", `/bookings/${id}/no-show`, undefined, { note }),
   },
   payments: {
+    reconcileRefund: (paymentId: number) => request<PaymentView>("POST", `/payments/reconciliation/${paymentId}/refund`),
+    reconciliation: (page = 1) => request<{ items: { payment: PaymentView; reason: string | null; createdAt: string }[]; totalCount: number }>("GET", "/payments/reconciliation", undefined, { page, pageSize: 50 }),
     methods: () => request<string[]>("GET", "/payments/methods"),
     init: (b: { bookingId: number; method: string; returnUrl?: string }) =>
       request<{ method: string; gatewayUrl: string | null; gatewayRef: string | null; bookingCode: string }>(
@@ -145,7 +140,7 @@ export const api = {
   },
   vouchers: {
     preview: (code: string, baseAmount: number) =>
-      request<{ discount: number; total: number }>(
+      request<number>(
         "GET",
         `/vouchers/${encodeURIComponent(code)}/preview`,
         undefined,

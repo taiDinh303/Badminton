@@ -14,12 +14,12 @@ namespace Badminton.Tests
                 StubMomoClient.Instance);
 
         private static MoMoGateway ConfiguredGateway(string secret) =>
-            new(new MoMoSettings { AppId = "test", SecretKey = secret },
+            new(new MoMoSettings { AppId = "test", SecretKey = secret, AccessKey = "audit-access", IpayUrl = "https://api.example.test/api/v1/payments/callback/momo" },
                 StubMomoClient.Instance);
 
         private static readonly MomoPayInit OkInit = new(
             true, "https://test.tapmomo.vn/wallet/checkout?orderId=12345",
-            "12345", null, null);
+            "BD-1", null, null);
 
         [Fact(DisplayName = "Unconfigured MoMo gateway: InitAsync fails, webhook verification fails closed")]
         public async Task UnconfiguredGateway_FailsClosed()
@@ -54,27 +54,17 @@ namespace Badminton.Tests
             Assert.False(outcome.Verified);
         }
 
-        [Fact(DisplayName = "Configured MoMo gateway: a correct responseKey verifies, failure status is not success")]
-        public async Task CorrectResponseKey_Verifies()
+        [Fact(DisplayName = "Configured MoMo gateway: signed full IPN verifies, signed failure is not success")]
+        public async Task FullIpnSignature_Verifies()
         {
             const string secret = "shared-secret-1234567890";
             var g = ConfiguredGateway(secret);
 
-            // Derive the genuine provider signature for this order id.
-            var goodKey = MoMoSigner.ResponseKey("BD-77", secret);
-
-            var successWebhook = new RawWebhook("momo", "BD-77",
-                $$"""{"orderId":"BD-77","responseStatus":"0","responseKey":"{{goodKey}}"}""",
-                null, new Dictionary<string, string>());
-            var success = await g.VerifyWebhookAsync(successWebhook);
+            var success = await g.VerifyWebhookAsync(PaymentCallbackFixtures.MoMo(secret, "BD-77"));
             Assert.True(success.Verified);
             Assert.True(success.Success);
-
-            // Same valid signature but responseStatus != "0" → verified, not success.
-            var failedPayWebhook = new RawWebhook("momo", "BD-77",
-                $$"""{"orderId":"BD-77","responseStatus":"400","responseKey":"{{goodKey}}"}""",
-                null, new Dictionary<string, string>());
-            var failed = await g.VerifyWebhookAsync(failedPayWebhook);
+            Assert.Equal(150000, success.Amount);
+            var failed = await g.VerifyWebhookAsync(PaymentCallbackFixtures.MoMo(secret, "BD-77", result: 400));
             Assert.True(failed.Verified);
             Assert.False(failed.Success);
         }
@@ -84,7 +74,7 @@ namespace Badminton.Tests
         {
             const string secret = "shared-secret-1234567890";
             var g = new MoMoGateway(
-                new MoMoSettings { AppId = "test", SecretKey = secret },
+                new MoMoSettings { AppId = "test", SecretKey = secret, AccessKey = "audit-access", IpayUrl = "https://api.example.test/api/v1/payments/callback/momo" },
                 new OkMomoClient(OkInit));
 
             var init = await g.InitAsync("BD-1", 150_000, "https://return.local");

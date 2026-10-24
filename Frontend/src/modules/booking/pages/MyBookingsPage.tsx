@@ -1,3 +1,4 @@
+import { useBookingRefresh } from "../hooks/useBookingRefresh";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -23,12 +24,13 @@ const TABS: { key: string; label: string }[] = [
  * các trạng thái rỗng/chờ/hoàn thành/hủy có hoàn tiền; filter trạng thái.
  */
 export default function MyBookingsPage() {
+  const refreshBookings = useBookingRefresh();
   const user = useAuth((s) => s.user);
   const [tab, setTab] = useState("");
   const [page, setPage] = useState(1);
   const staff = isStaff(user);
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, error: loadError } = useQuery({
     queryKey: ["my-bookings", tab, page],
     queryFn: () => api.booking.mine(tab || undefined, page),
     placeholderData: (prev) => prev,
@@ -36,22 +38,23 @@ export default function MyBookingsPage() {
 
   const cancel = useMutation({
     mutationFn: (id: number) => api.booking.cancel(id),
-    onSuccess: () => refetch(),
+    onSuccess: refreshBookings,
   });
   const complete = useMutation({
     mutationFn: (id: number) => api.booking.complete(id),
-    onSuccess: () => refetch(),
+    onSuccess: refreshBookings,
   });
   const noShow = useMutation({
     mutationFn: (id: number) => api.booking.noShow(id),
-    onSuccess: () => refetch(),
+    onSuccess: refreshBookings,
   });
   const refund = useMutation({
     mutationFn: (id: number) => api.payments.refund(id, "Khách yêu cầu hoàn"),
-    onSuccess: () => refetch(),
+    onSuccess: refreshBookings,
   });
 
   const err =
+    loadError?.message ??
     (cancel.error as Error | undefined)?.message ??
     (complete.error as Error | undefined)?.message ??
     (noShow.error as Error | undefined)?.message ??
@@ -115,7 +118,7 @@ export default function MyBookingsPage() {
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              {b.status === "Pending" && !staff && (
+              {["Pending", "Confirmed"].includes(b.status) && (
                 <Button variant="danger" className="text-xs" onClick={() => cancel.mutate(b.id)} disabled={cancel.isPending}>
                   Huỷ đơn
                 </Button>

@@ -14,6 +14,12 @@ public static class HealthEndpoints
             bool dbOk;
             try { dbOk = await db.Database.CanConnectAsync(ct); }
             catch { dbOk = false; }
+            var schema = "unreachable";
+            if (dbOk)
+            {
+                try { schema = (await db.Database.GetPendingMigrationsAsync(ct)).Any() ? "pending_migrations" : "ok"; }
+                catch { schema = "unverified"; }
+            }
             var jobs = new Dictionary<string, string>();
             if (app.Configuration.GetValue("BackgroundJobs:Enabled", true))
                 foreach (var (name, maxAge) in new[]
@@ -26,8 +32,8 @@ public static class HealthEndpoints
                 })
                     jobs[name] = heartbeat.Last(name) is { } last
                         ? DateTime.UtcNow - last <= maxAge ? "ok" : "stale" : "pending";
-            var ready = dbOk && jobs.Values.All(value => value == "ok");
-            return Results.Json(new { status = ready ? "ready" : "not_ready", db = dbOk ? "ok" : "unreachable", jobs },
+            var ready = dbOk && schema == "ok" && jobs.Values.All(value => value == "ok");
+            return Results.Json(new { status = ready ? "ready" : "not_ready", db = dbOk ? "ok" : "unreachable", schema, jobs },
                 statusCode: ready ? 200 : 503);
         });
     }

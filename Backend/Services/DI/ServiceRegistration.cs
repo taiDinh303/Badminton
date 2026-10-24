@@ -41,6 +41,13 @@ namespace Services.DI
                 new OnSiteGateway(PaymentMethod.QR));
 
             var provider = (configuration?["Payment:Provider"] ?? "mock").Trim();
+            services.Configure<OnlineRefundSettings>(configuration is null
+                ? new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build().GetSection("Payment:OnlineRefunds")
+                : configuration.GetSection("Payment:OnlineRefunds"));
+            services.AddHttpClient("online-refund", c => c.Timeout = TimeSpan.FromSeconds(35))
+                .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+            services.AddScoped<IOnlineRefundClient, HttpOnlineRefundClient>();
+            services.AddScoped<OnlineRefundService>();
 
             if (string.Equals(provider, "real", System.StringComparison.OrdinalIgnoreCase))
             {
@@ -50,9 +57,9 @@ namespace Services.DI
                     : new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build().GetSection("Payment:Momo");
                 services.Configure<MoMoSettings>(momoSection);
                 services.AddHttpClient("momo",
-                    c => c.BaseAddress = new Uri(
+                    c => { c.Timeout = TimeSpan.FromSeconds(35); c.BaseAddress = new Uri(
                         configuration?["Payment:Momo:Endpoint"]
-                        ?? "https://app.tapmomo.vn"));
+                        ?? "https://test-payment.momo.vn"); });
                 services.AddSingleton<IMomoApiClient>(sp =>
                     new HttpMoMoApiClient(
                         sp.GetRequiredService<IHttpClientFactory>()
@@ -70,9 +77,9 @@ namespace Services.DI
                     : new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build().GetSection("Payment:Vnpay");
                 services.Configure<VnPaySettings>(vnSection);
                 services.AddHttpClient("vnpay",
-                    c => c.BaseAddress = new Uri(
+                    c => { c.Timeout = TimeSpan.FromSeconds(10); c.BaseAddress = new Uri(
                         configuration?["Payment:Vnpay:Endpoint"]
-                        ?? "https://sandbox.vnpay.io"));
+                        ?? "https://sandbox.vnpayment.vn"); });
                 services.AddSingleton<IVnPayClient>(sp =>
                     new HttpVnPayClient(
                         sp.GetRequiredService<IHttpClientFactory>().CreateClient("vnpay"),
@@ -88,9 +95,9 @@ namespace Services.DI
                     : new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build().GetSection("Payment:Zalopay");
                 services.Configure<ZalopaySettings>(zpSection);
                 services.AddHttpClient("zalopay",
-                    c => c.BaseAddress = new Uri(
+                    c => { c.Timeout = TimeSpan.FromSeconds(10); c.BaseAddress = new Uri(
                         configuration?["Payment:Zalopay:Endpoint"]
-                        ?? "https://external.zalopay.net"));
+                        ?? "https://sb-openapi.zalopay.vn"); });
                 services.AddSingleton<IZalopayClient>(sp =>
                     new HttpZalopayClient(
                         sp.GetRequiredService<IHttpClientFactory>().CreateClient("zalopay"),
@@ -116,6 +123,7 @@ namespace Services.DI
             services.AddSingleton<IPricingService, PricingService>();
 
             services.AddScoped<JwtGenerator>();
+            services.AddSingleton<Badminton.Core.Security.ILoginAttemptTracker, LoginAttemptTracker>();
 
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IBranchService, BranchService>();
@@ -129,6 +137,12 @@ namespace Services.DI
             services.AddScoped<IStaffService, StaffService>();
             services.AddScoped<IReviewService, ReviewService>();
             services.AddScoped<IReportService, ReportService>();
+            services.AddScoped<BookingAvailabilityService>();
+            services.AddScoped<BookingCreationService>();
+            services.AddScoped<BookingQuoteService>();
+            services.AddScoped<BookingLifecycleService>();
+            services.AddScoped<BookingCompletionService>();
+            services.AddScoped<BookingExpiryService>();
             services.AddScoped<IBookingService, BookingService>();
             services.AddScoped<IPaymentService, PaymentService>();
 
@@ -148,9 +162,9 @@ namespace Services.DI
                 : new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()
                     .GetSection("Notify");
             services.Configure<NotifySettings>(notifySection);
-            services.AddHttpClient("notify-email");
-            services.AddHttpClient("notify-sms");
-            services.AddHttpClient("notify-zalo");
+            services.AddHttpClient("notify-email", c => c.Timeout = TimeSpan.FromSeconds(10));
+            services.AddHttpClient("notify-sms", c => c.Timeout = TimeSpan.FromSeconds(10));
+            services.AddHttpClient("notify-zalo", c => c.Timeout = TimeSpan.FromSeconds(10));
             services.AddSingleton<INotifyChannel>(sp =>
                 new LogNotifyChannel(
                     sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LogNotifyChannel>>()));

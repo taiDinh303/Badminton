@@ -1,184 +1,119 @@
+using Badminton.Core.Base;
+using Badminton.Core.Enums;
+using Badminton.Core.Security;
+using Badminton.Core.Utils;
 using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Report;
-using Badminton.Core.Enums;
-using Badminton.Core.Utils;
-using Microsoft.Extensions.Caching.Memory;
 
-namespace Services
+namespace Services;
+
+public sealed class ReportService(IUnitOfWork uow, ICurrentUser currentUser) : BaseService(uow, currentUser), IReportService
 {
-    public sealed class ReportService : BaseService, IReportService
+    private static (DateTime Start, DateTime End) Range(DateOnly from, DateOnly to)
     {
-        private readonly IMemoryCache _cache;
-        private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
-
-        public ReportService(IUnitOfWork uow, Badminton.Core.Security.ICurrentUser currentUser,
-            IMemoryCache cache)
-            : base(uow, currentUser) { _cache = cache; }
-
-        public async Task<DashboardSummary> GetSummaryAsync(int? branchId = null)
-        {
-            branchId = await ResolveStaffBranchAsync(branchId);
-            var key = $"report:summary:{branchId?.ToString() ?? "all"}";
-            if (_cache.TryGetValue(key, out DashboardSummary? hit)) return hit!;
-            var result = await LoadSummaryAsync(branchId);
-            _cache.Set(key, result, CacheTtl);
-            return result;
-        }
-
-        private async Task<DashboardSummary> LoadSummaryAsync(int? branchId)
-        {
-            var today = HanoiTime.HanoiToday();
-            var thirtyAgo = today.AddDays(-30);
-            var bi = branchId;
-
-            var bookings = Repository<Booking>();
-            var users = Repository<User>();
-
-            int todayCount = await bookings.CountByConditionAsync(b =>
-                b.DeletedAt == null && b.Date == today && (bi == null || b.BranchId == bi));
-            int pending = await bookings.CountByConditionAsync(b =>
-                b.DeletedAt == null && b.Status == BookingStatus.Pending && (bi == null || b.BranchId == bi));
-            int noShow30 = await bookings.CountByConditionAsync(b =>
-                b.DeletedAt == null && b.Date >= thirtyAgo && b.Status == BookingStatus.NoShow && (bi == null || b.BranchId == bi));
-
-            int revenueToday = await bookings.SumIntByConditionAsync(
-                b => b.DeletedAt == null && b.Date == today
-                     && b.Status != BookingStatus.Cancelled
-                     && b.Status != BookingStatus.Pending
-                     && (bi == null || b.BranchId == bi),
-                b => b.PayableAmount);
-            var todayUtc = DateTime.SpecifyKind(today.ToDateTime(TimeOnly.MinValue).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc);
-            var tomorrowUtc = todayUtc.AddDays(1);
-            int usersToday = await users.CountByConditionAsync(u =>
-                u.DeletedAt == null
-                && u.CreatedAt >= todayUtc
-                && u.CreatedAt < tomorrowUtc
-                && (bi == null || u.BranchId == null || u.BranchId == bi));
-            int activeCourts = await Repository<Court>().CountByConditionAsync(c =>
-                c.IsActive && c.DeletedAt == null && (bi == null || c.BranchId == bi));
-            int activeBranches = await Repository<Branch>().CountByConditionAsync(b =>
-                b.DeletedAt == null && b.Status == BranchStatus.Active);
-
-            // FEAT 4: active paid members (Silver/Gold, not lapsed).
-            var nowUtc = DateTime.UtcNow;
-            int activeMembers = await users.CountByConditionAsync(u =>
-                u.DeletedAt == null && u.Role == Role.Customer
-                && (u.Tier == MembershipTier.Silver || u.Tier == MembershipTier.Gold)
-                && u.MembershipExpiresAt != null
-                && u.MembershipExpiresAt > nowUtc && (bi == null || u.BranchId == bi));
-
-            // FEAT 2: customers currently waiting on a full slot.
-            int waitingListCount = await Repository<WaitlistEntry>()
-                .CountByConditionAsync(w =>
-                    w.DeletedAt == null && w.Status == WaitlistStatus.Waiting && (bi == null || w.BranchId == bi));
-
-            // Peak fill rate for today: booked PEAK slots / (active courts x peak slots).
-            var peakSlots = await Repository<TimeSlot>().GetByConditionAsync(s => s.IsActive && s.IsPeak && s.DeletedAt == null);
-            int peakTotal = Math.Max(0, peakSlots.Count * activeCourts);
-
-            var peakSlotIds = peakSlots.Select(s => s.Id).ToHashSet();
-            var peakBooked = await bookings.GetByConditionAsync(b =>
-                b.DeletedAt == null && b.Date == today
-                && b.Status != BookingStatus.Cancelled && b.Status != BookingStatus.NoShow
-                && (bi == null || b.BranchId == bi));
-            int peakBookedCount = peakBooked.Count(b => peakSlotIds.Contains(b.SlotId));
-            decimal pct = peakTotal == 0 ? 0m : Math.Round(100m * (decimal)peakBookedCount / peakTotal, 1);
-
-            return new DashboardSummary(todayCount, pending, noShow30, revenueToday,
-                pct, usersToday, activeCourts, activeBranches,
-                activeMembers, waitingListCount);
-        }
-
-        public async Task<IReadOnlyList<RevenueByDay>> GetRevenueAsync(
-            DateOnly from, DateOnly to, int? branchId = null)
-        {
-            var key = $"report:revenue:{from:yyyy-MM-dd}:{to:yyyy-MM-dd}:{branchId?.ToString() ?? "all"}";
-            if (_cache.TryGetValue(key, out IReadOnlyList<RevenueByDay>? revHit)) return revHit!;
-            var bi = branchId;
-
-            var bookings = await Repository<Booking>().GetByConditionAsync(b =>
-                b.DeletedAt == null
-                && b.Date >= from && b.Date <= to
-                && b.Status != BookingStatus.Cancelled
-                && b.Status != BookingStatus.Pending
-                && (bi == null || b.BranchId == bi));
-            var byDay = bookings
-                .GroupBy(b => b.Date)
-                .Select(g => new RevenueByDay(
-                    g.Key,
-                    g.Count(),
-                    g.Sum(x => x.PayableAmount),
-                    0))
-                .OrderBy(g => g.Date)
-                .ToList();
-
-            // Refunds (separate table; no DeletedAt on Payment).
-            var fromDt = DateTime.SpecifyKind(from.ToDateTime(TimeOnly.MinValue).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc);
-            var toEnd = DateTime.SpecifyKind(to.AddDays(1).ToDateTime(TimeOnly.MinValue).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc);
-            var pmts = await Repository<Payment>().GetByConditionAsync(p =>
-                p.RefundedAt.HasValue && p.RefundedAt!.Value >= fromDt && p.RefundedAt.Value < toEnd);
-
-            if (bi is { } bScope)
-            {
-                var bookingIds = pmts.Select(p => p.BookingId).Distinct().ToList();
-                var branchOf = (await Repository<Booking>().GetByConditionAsync(
-                    x => bookingIds.Contains(x.Id) && x.BranchId == bScope))
-                    .Select(x => x.Id).ToHashSet();
-                pmts = pmts.Where(p => branchOf.Contains(p.BookingId)).ToList();
-            }
-
-            var refundByDay = pmts
-                .Where(p => p.RefundedAt.HasValue)
-                .GroupBy(p => HanoiTime.HanoiDateOf(p.RefundedAt!.Value))
-                .ToDictionary(g => g.Key, g => g.Sum(x => x.RefundAmount));
-
-            var result = byDay.Select(r => new RevenueByDay(
-                r.Date, r.Bookings, r.Revenue,
-                refundByDay.TryGetValue(r.Date, out var v) ? v : 0)).ToList();
-            _cache.Set(key, result, CacheTtl);
-            return result;
-        }
-
-        public async Task<IReadOnlyList<OccupancyByDay>> GetOccupancyAsync(
-            DateOnly from, DateOnly to, int? branchId = null)
-        {
-            var key = $"report:occupancy:{from:yyyy-MM-dd}:{to:yyyy-MM-dd}:{branchId?.ToString() ?? "all"}";
-            if (_cache.TryGetValue(key, out IReadOnlyList<OccupancyByDay>? occHit)) return occHit!;
-            var bi = branchId;
-            var courts = await Repository<Court>().GetByConditionAsync(c =>
-                c.IsActive && c.DeletedAt == null && (bi == null || c.BranchId == bi));
-            var slots = await Repository<TimeSlot>().GetByConditionAsync(s => s.IsActive && s.DeletedAt == null);
-            var branches = await Repository<Branch>().GetByConditionAsync(b => b.DeletedAt == null);
-            var booked = await Repository<Booking>().GetByConditionAsync(b =>
-                b.DeletedAt == null && b.Status != BookingStatus.Cancelled
-                && b.Date >= from && b.Date <= to
-                && (bi == null || b.BranchId == bi));
-
-            int totalSlotsDay = Math.Max(1, courts.Count * slots.Count);
-
-            var peakSlotIds = slots.Where(s => s.IsPeak).Select(s => s.Id).ToHashSet();
-            int peakSlotsDay = Math.Max(1, courts.Count * peakSlotIds.Count);
-            string? name = bi == null
-                ? (branches.Count(b => b.Status == BranchStatus.Active) > 0 ? "Tất cả cơ sở" : null)
-                : branches.FirstOrDefault(b => b.Id == bi)?.Name;
-
-            var list = new List<OccupancyByDay>();
-            var d = from;
-            while (d <= to)
-            {
-                var dayBooked = booked.Count(b => b.Date == d);
-                var dayPeak = booked.Count(b => b.Date == d && peakSlotIds.Contains(b.SlotId));
-                list.Add(new OccupancyByDay(
-                    d, bi, name,
-                    dayBooked, totalSlotsDay,
-                    Math.Round(100m * (decimal)dayBooked / totalSlotsDay, 1),
-                    dayPeak, peakSlotsDay,
-                    Math.Round(100m * (decimal)dayPeak / peakSlotsDay, 1)));
-                d = d.AddDays(1);
-            }
-            _cache.Set(key, list, CacheTtl);
-            return list;
-        }
+        if (to < from || to.DayNumber - from.DayNumber > 366)
+            throw new BadRequestException("Khoảng báo cáo phải hợp lệ và không quá 367 ngày.");
+        return (DateTime.SpecifyKind(from.ToDateTime(TimeOnly.MinValue).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc),
+            DateTime.SpecifyKind(to.AddDays(1).ToDateTime(TimeOnly.MinValue).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc));
     }
+
+    public async Task<DashboardSummary> GetSummaryAsync(int? branchId = null)
+    {
+        var branch = await ResolveStaffBranchAsync(branchId);
+        var today = HanoiTime.HanoiToday();
+        var (start, end) = Range(today, today);
+        var revenue = await LoadRevenueAsync(today, today, branch);
+        var occupancy = await LoadOccupancyAsync(today, today, branch);
+        var bookings = Repository<Booking>();
+        var users = Repository<User>();
+        return new DashboardSummary(
+            await bookings.CountByConditionAsync(b => b.DeletedAt == null && b.Date == today && (branch == null || b.BranchId == branch)),
+            await bookings.CountByConditionAsync(b => b.DeletedAt == null && b.Status == BookingStatus.Pending && (branch == null || b.BranchId == branch)),
+            await bookings.CountByConditionAsync(b => b.DeletedAt == null && b.Date >= today.AddDays(-30)
+                && b.Status == BookingStatus.NoShow && (branch == null || b.BranchId == branch)),
+            revenue.Sum(r => r.Revenue - r.Refunds), occupancy[0].PeakFillRatePct,
+            await users.CountByConditionAsync(u => u.DeletedAt == null && u.CreatedAt >= start && u.CreatedAt < end
+                && (branch == null || u.BranchId == branch)),
+            await Repository<Court>().CountByConditionAsync(c => c.IsActive && c.DeletedAt == null && (branch == null || c.BranchId == branch)),
+            await Repository<Branch>().CountByConditionAsync(b => b.IsActive && b.DeletedAt == null && b.Status == BranchStatus.Active
+                && (branch == null || b.Id == branch)),
+            await users.CountByConditionAsync(u => u.DeletedAt == null && u.Role == Role.Customer
+                && (u.Tier == MembershipTier.Gold || u.Tier == MembershipTier.Silver)
+                && u.MembershipExpiresAt > DateTime.UtcNow && (branch == null || u.BranchId == branch)),
+            await Repository<WaitlistEntry>().CountByConditionAsync(w => w.DeletedAt == null && w.Status == WaitlistStatus.Waiting
+                && (branch == null || w.BranchId == branch)));
+    }
+
+    public async Task<IReadOnlyList<RevenueByDay>> GetRevenueAsync(DateOnly from, DateOnly to, int? branchId = null) =>
+        await LoadRevenueAsync(from, to, await ResolveStaffBranchAsync(branchId));
+
+    private async Task<IReadOnlyList<RevenueByDay>> LoadRevenueAsync(DateOnly from, DateOnly to, int? branch)
+    {
+        var (start, end) = Range(from, to);
+        var payments = await Repository<Payment>().GetByConditionAsync(p =>
+            (p.Status == PaymentStatus.Success && p.PaidAt >= start && p.PaidAt < end)
+            || ((p.Status == PaymentStatus.Refunded || p.Status == PaymentStatus.PartialRefund)
+                && p.RefundedAt >= start && p.RefundedAt < end));
+        if (branch.HasValue)
+        {
+            var ids = payments.Select(p => p.BookingId).Distinct().ToList();
+            var allowed = (await Repository<Booking>().GetByConditionAsync(b => ids.Contains(b.Id) && b.BranchId == branch))
+                .Select(b => b.Id).ToHashSet();
+            payments = payments.Where(p => allowed.Contains(p.BookingId)).ToList();
+        }
+        var paid = payments.Where(p => p.Status == PaymentStatus.Success && p.PaidAt.HasValue)
+            .GroupBy(p => HanoiTime.HanoiDateOf(p.PaidAt!.Value)).ToDictionary(g => g.Key, g => g.ToList());
+        var refunded = payments.Where(p => p.RefundedAt.HasValue)
+            .GroupBy(p => HanoiTime.HanoiDateOf(p.RefundedAt!.Value)).ToDictionary(g => g.Key, g => g.Sum(p => p.RefundAmount));
+        // Include zero and refund-only days. Revenue remains gross for HTTP compatibility; net = Revenue - Refunds.
+        var rows = new List<RevenueByDay>();
+        for (var day = from; day <= to; day = day.AddDays(1))
+        {
+            paid.TryGetValue(day, out var receipts);
+            rows.Add(new(day, receipts?.Select(p => p.BookingId).Distinct().Count() ?? 0,
+                receipts?.Sum(p => p.Amount) ?? 0, refunded.GetValueOrDefault(day)));
+        }
+        return rows;
+    }
+
+    public async Task<IReadOnlyList<OccupancyByDay>> GetOccupancyAsync(DateOnly from, DateOnly to, int? branchId = null) =>
+        await LoadOccupancyAsync(from, to, await ResolveStaffBranchAsync(branchId));
+
+    private async Task<IReadOnlyList<OccupancyByDay>> LoadOccupancyAsync(DateOnly from, DateOnly to, int? branch)
+    {
+        Range(from, to);
+        var branches = (await Repository<Branch>().GetByConditionAsync(b => b.IsActive && b.DeletedAt == null
+            && b.Status == BranchStatus.Active && (branch == null || b.Id == branch))).ToDictionary(b => b.Id);
+        var courts = await Repository<Court>().GetByConditionAsync(c => c.IsActive && c.DeletedAt == null && (branch == null || c.BranchId == branch));
+        var slots = await Repository<TimeSlot>().GetByConditionAsync(s => s.IsActive && s.DeletedAt == null);
+        var courtIds = courts.Select(c => c.Id).ToList();
+        var schedules = await Repository<CourtDateStatusEntry>().GetByConditionAsync(s => courtIds.Contains(s.CourtId) && s.Date >= from && s.Date <= to);
+        var bookings = await Repository<Booking>().GetByConditionAsync(b => b.DeletedAt == null && b.Date >= from && b.Date <= to
+            && courtIds.Contains(b.CourtId) && (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Completed));
+        var scheduleMap = schedules.ToDictionary(s => (s.CourtId, s.Date));
+        var peakIds = slots.Where(s => s.IsPeak).Select(s => s.Id).ToHashSet();
+        var rows = new List<OccupancyByDay>();
+        for (var day = from; day <= to; day = day.AddDays(1))
+        {
+            var available = new HashSet<(int Court, int Slot)>();
+            foreach (var court in courts)
+            {
+                if (!branches.TryGetValue(court.BranchId, out var owner)) continue;
+                scheduleMap.TryGetValue((court.Id, day), out var schedule);
+                foreach (var slot in slots)
+                    if (slot.StartTime >= owner.OpenTime && slot.EndTime <= owner.CloseTime
+                        && schedule?.Blocks(slot.StartTime, slot.EndTime) != true) available.Add((court.Id, slot.Id));
+            }
+            var occupied = bookings.Where(b => b.Date == day && available.Contains((b.CourtId, b.SlotId)))
+                .Select(b => (Court: b.CourtId, Slot: b.SlotId)).Distinct().ToList();
+            var peakTotal = available.Count(x => peakIds.Contains(x.Slot));
+            var peakOccupied = occupied.Count(x => peakIds.Contains(x.Slot));
+            rows.Add(new(day, branch, branch is { } id ? branches.GetValueOrDefault(id)?.Name : "Tất cả cơ sở",
+                occupied.Count, available.Count, Percent(occupied.Count, available.Count), peakOccupied, peakTotal, Percent(peakOccupied, peakTotal)));
+        }
+        return rows;
+    }
+
+    private static decimal Percent(int count, int total) => total == 0 ? 0 : Math.Round(100m * count / total, 1);
 }

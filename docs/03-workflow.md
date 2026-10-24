@@ -12,6 +12,7 @@ Ngày sân theo UTC+7, timestamp UTC, tiền nguyên VND. Browser hiển thị k
 | --- | --- | --- |
 | Xem lịch | GET /bookings/availability/{branchId}/{date} | Sân/slot trống hoặc khóa |
 | Chọn | Khách chọn sân/slot/ngày/số người, nhóm/voucher/điểm tùy chọn | UI tóm tắt trước xác nhận |
+| Báo giá | POST /bookings/quote | Read-only; giá sân/slot không nhân người, trừ voucher/điểm; không giữ chỗ hoặc tiêu voucher/điểm |
 | Tạo | POST /bookings | Check user active/verified, cửa sổ/hạn mức/nhóm/bảo trì, giá, transaction/unique |
 | Giữ | Booking Pending, expiry UTC +10 phút | Giữ voucher/trừ điểm nếu có; trả mã đơn |
 | Tiếp tục | Init online hoặc staff xác nhận tại quầy | Đọc lại trạng thái, không kết luận từ returnUrl |

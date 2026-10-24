@@ -70,62 +70,15 @@ namespace Badminton.API.Jobs
                     && b.PendingExpiresAt.Value <= now);
                 if (expired.Count == 0) return;
 
-                // Release vouchers + restore points for each expired booking.
-                var voucherRepo = uow.GetRepository<VoucherRedemption>();
-                var pointRepo = uow.GetRepository<PointLedger>();
-
-                foreach (var b in expired)
-                {
-                    b.Status = BookingStatus.Cancelled;
-                    b.CancelledAt = now;
-                    b.CancelReason = "Hết hạn thanh toán (10 phút)";
-                    b.UpdatedAt = now;
-                    repo.Update(b);
-
-                    // Release voucher slot.
-                    if (b.VoucherRedemptionId is { } rid)
-                    {
-                        var redemption = (await voucherRepo.GetByConditionAsync(x => x.Id == rid))
-                            .FirstOrDefault();
-                        if (redemption is not null)
-                        {
-                            var v = await uow.GetRepository<Voucher>().GetByIdAsync(redemption.VoucherId);
-                            if (v is not null)
-                            {
-                                // Decrement UsedQty (guarded).
-                                await uow.ExecuteSqlRawAsync(
-                                    "UPDATE \"Vouchers\" SET \"UsedQty\" = \"UsedQty\" - 1 " +
-                                    "WHERE \"Id\" = @p0 AND \"UsedQty\" > 0", v.Id);
-                                await voucherRepo.RemoveAsync(redemption);
-                            }
-                        }
-                    }
-
-                    // Restore redeemed points (ledger row with positive delta).
-                    if (b.PointsRedeemed > 0)
-                    {
-                        var alreadyRestored = await pointRepo.CountByConditionAsync(
-                            p => p.BookingId == b.Id && p.LedgerKey == $"restore:{b.Id}");
-                        if (alreadyRestored == 0)
-                        {
-                            _ = pointRepo.AddAsync(new PointLedger
-                            {
-                                UserId = b.UserId,
-                                Delta = b.PointsRedeemed,
-                                BookingId = b.Id,
-                                Reason = $"auto-expire restore of {b.PointsRedeemed} pts ({b.BookingCode})",
-                                LedgerKey = $"restore:{b.Id}"
-                            });
-                        }
-                    }
-                }
-
-                await uow.SaveChangesAsync();
-                _logger.LogInformation("Expired {Count} pending booking(s), released vouchers + restored points.", expired.Count);
+                var expiry = sp.GetRequiredService<Services.BookingExpiryService>();
+                var applied = new List<Booking>();
+                foreach (var booking in expired)
+                    if (await expiry.ExpireAsync(booking.Id, now)) applied.Add(booking);
+                _logger.LogInformation("Expired {Count} pending booking(s), released vouchers + restored points.", applied.Count);
 
                 var notify = sp.GetRequiredService<INotifyService>();
                 var waitlist = sp.GetRequiredService<Contract.Services.Waitlist.IWaitlistService>();
-                foreach (var b in expired)
+                foreach (var b in applied)
                 {
                     try
                     {
@@ -197,54 +150,17 @@ namespace Badminton.API.Jobs
                 _heartbeat.Record(LockKey);
                 using var scope = _scopes.CreateScope();
                 var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-                var hanoiNow = HanoiTime.HanoiNow();
-                var nowUtc = DateTime.UtcNow;
-
                 var bookingRepo = uow.GetRepository<Booking>();
-                var slotRepo = uow.GetRepository<TimeSlot>();
-                var pointRepo = uow.GetRepository<PointLedger>();
-
-                var bookings = await bookingRepo.GetByConditionAsync(
-                    b => b.Status == BookingStatus.Confirmed);
-
-                // ANTI-N+1: batch-fetch the referenced slots in one query.
+                var completion = scope.ServiceProvider.GetRequiredService<Services.BookingCompletionService>();
+                var bookings = await bookingRepo.GetByConditionAsync(b => b.Status == BookingStatus.Confirmed);
                 var slotIds = bookings.Select(b => b.SlotId).Distinct().ToList();
-                var slots = (await slotRepo.GetByConditionAsync(s => slotIds.Contains(s.Id)))
+                var slots = (await uow.GetRepository<TimeSlot>().GetByConditionAsync(s => slotIds.Contains(s.Id)))
                     .ToDictionary(s => s.Id);
-
+                var now = HanoiTime.HanoiNow();
                 int completed = 0;
-                foreach (var b in bookings)
-                {
-                    if (!slots.TryGetValue(b.SlotId, out var slot)) continue;
-                    if (HanoiTime.SlotEnd(b.Date, slot.EndTime) > hanoiNow) continue;
-
-                    int claimed = await uow.ExecuteSqlRawAsync(
-                        "UPDATE \"Bookings\" SET \"Status\" = 'Completed', \"PointsEarned\" = @p0, " +
-                        "  \"UpdatedAt\" = @p1 " +
-                        "WHERE \"Id\" = @p2 AND \"Status\" = 'Confirmed'",
-                        b.PayableAmount, nowUtc, b.Id);
-                    if (claimed == 0) continue;
-
-                    b.Status = BookingStatus.Completed;
-                    b.PointsEarned = b.PayableAmount;
-                    b.UpdatedAt = nowUtc;
-                    bookingRepo.Update(b);
-
-                    if (b.PayableAmount > 0
-                        && await pointRepo.CountByConditionAsync(
-                             p => p.BookingId == b.Id && p.LedgerKey == $"earn:{b.Id}") == 0)
-                    {
-                        await pointRepo.AddAsync(new PointLedger
-                        {
-                            UserId = b.UserId,
-                            Delta = b.PayableAmount,
-                            BookingId = b.Id,
-                            Reason = $"completed booking {b.BookingCode} (auto)",
-                            LedgerKey = $"earn:{b.Id}"
-                        });
-                    }
-                    completed++;
-                }
+                foreach (var booking in bookings.Where(b => slots.TryGetValue(b.SlotId, out var slot)
+                    && HanoiTime.SlotEnd(b.Date, slot.EndTime) <= now))
+                    if (await completion.CompleteAsync(booking.Id, onlyIfDue: true) is not null) completed++;
 
                 if (completed > 0)
                 {

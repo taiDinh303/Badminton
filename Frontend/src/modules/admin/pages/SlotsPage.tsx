@@ -35,12 +35,12 @@ const emptyForm = (): SlotForm => ({
 export default function SlotsPage() {
   const [form, setForm] = useState<SlotForm | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
-  // Slot delete is [Admin] in the backend; create/update are Manager+.
+  // Global slot configuration is owned by Admin.
   const canDelete = isAdmin(useAuth((s) => s.user));
 
-  const { data: rawSlots = [], isLoading, refetch } = useQuery({
-    queryKey: ["time-slots"],
-    queryFn: api.timeSlots.list,
+  const { data: rawSlots = [], isLoading, refetch, error: loadError } = useQuery({
+    queryKey: ["time-slots", canDelete],
+    queryFn: () => api.timeSlots.list(canDelete),
   });
 
   // Docs 07 §4: order slots chronologically so a re-created slot lands in
@@ -74,6 +74,7 @@ export default function SlotsPage() {
   });
 
   const err =
+    loadError?.message ??
     (create.error as Error | undefined)?.message ??
     (update.error as Error | undefined)?.message ??
     (del.error as Error | undefined)?.message ?? null;
@@ -130,7 +131,7 @@ export default function SlotsPage() {
       align: "right",
       render: (s) => (
         <div className="flex gap-2">
-          <Button variant="ghost" size="xs" onClick={() => openEdit(s)}>
+          <Button disabled={!canDelete} variant="ghost" size="xs" onClick={() => openEdit(s)}>
             <Pencil className="h-3 w-3" /> Sửa
           </Button>
           {canDelete ? (
@@ -149,7 +150,7 @@ export default function SlotsPage() {
         title="Khung giờ"
         subtitle="Tạo / chỉnh sửa khung giờ cho cả cơ sở"
         actions={
-          <Button variant="accent" size="sm" onClick={() => { setEditId(null); setForm(emptyForm()); }}>
+          <Button disabled={!canDelete} variant="accent" size="sm" onClick={() => { setEditId(null); setForm(emptyForm()); }}>
             <Plus className="h-4 w-4" /> Thêm khung giờ
           </Button>
         }

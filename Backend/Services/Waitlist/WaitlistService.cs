@@ -46,7 +46,7 @@ namespace Services
             if (court is null || slot is null)
                 throw new Badminton.Core.Base.NotFoundException("Court or Slot", courtId);
 
-            if (playerCount < 1 || playerCount > 10) throw new Badminton.Core.Base.BadRequestException("Số khách phải từ 1 đến 10.");
+            if (playerCount < 1 || playerCount > court.Capacity) throw new Badminton.Core.Base.BadRequestException($"Số khách phải từ 1 đến {court.Capacity} (sức chứa sân).");
             if (!court.IsActive || !slot.IsActive) throw new Badminton.Core.Base.BadRequestException("Sân/khung giờ không hoạt động.");
 
             // The slot must still be in the future (Hanoi business clock).
@@ -75,7 +75,7 @@ namespace Services
                 Status = WaitlistStatus.Waiting,
                 CreatedAt = DateTime.UtcNow
             };
-            _ = WRepo.AddAsync(e);
+            await WRepo.AddAsync(e);
             await SaveAsync();
             return ToView(e, court.Name, slot.Label);
         }
@@ -117,6 +117,16 @@ namespace Services
         public async Task<Booking?> PromoteAsync(int courtId, int slotId,
             DateOnly date, int? freeReason = null)
         {
+            var candidates = await WRepo.GetByConditionAsync(w =>
+                w.CourtId == courtId && w.SlotId == slotId && w.Date == date
+                && w.Status == WaitlistStatus.Waiting);
+            if (candidates.Count == 0) return null;
+
+            var winner = candidates.OrderBy(w => w.CreatedAt).First();
+            // A crash may leave the booking committed before the waitlist row was resolved.
+            var recovered = (await Repository<Booking>().GetByConditionAsync(b => b.IdempotencyKey == $"waitlist:{winner.Id}"
+                && b.UserId == winner.UserId && b.CourtId == courtId && b.SlotId == slotId && b.Date == date)).SingleOrDefault();
+            if (recovered is not null) return await FinishPromotionAsync(winner.Id, recovered.Id);
             var active = await Repository<Booking>()
                 .CountByConditionAsync(b =>
                     b.CourtId == courtId && b.SlotId == slotId && b.Date == date
@@ -124,12 +134,7 @@ namespace Services
                         || b.Status == BookingStatus.Pending));
             if (active > 0) return null; // still occupied — not free
 
-            var candidates = await WRepo.GetByConditionAsync(w =>
-                w.CourtId == courtId && w.SlotId == slotId && w.Date == date
-                && w.Status == WaitlistStatus.Waiting);
-            if (candidates.Count == 0) return null;
 
-            var winner = candidates.OrderBy(w => w.CreatedAt).First();
 
             var request = new CreateBookingRequest(
                 CourtId: courtId,
@@ -145,7 +150,12 @@ namespace Services
             {
                 created = await _booking.CreateAsync(request, winner.UserId);
             }
-            catch (Exception ex)
+            catch (Badminton.Core.Base.ConflictException)
+            {
+                // A concurrent booking or temporary eligibility conflict must not discard the waiter.
+                return null;
+            }
+            catch (Exception ex) when (ex is Badminton.Core.Base.BadRequestException or Badminton.Core.Base.NotFoundException)
             {
                 winner.Status = WaitlistStatus.Expired;
                 winner.DeclineReason = ex.Message;
@@ -155,14 +165,24 @@ namespace Services
                 return null;
             }
 
-            winner.Status = WaitlistStatus.Promoted;
-            winner.PromotedBookingId = created.Id;
-            winner.ResolvedAt = DateTime.UtcNow;
-            WRepo.Update(winner);
-            await SaveAsync();
+            return await FinishPromotionAsync(winner.Id, created.Id);
+        }
 
-            await _notify.NotifyWaitlistPromotedAsync(winner.Id, created.Id);
-            return await Repository<Booking>().GetByIdAsync(created.Id);
+        private async Task<Booking?> FinishPromotionAsync(int entryId, int bookingId)
+        {
+            await Uow.RunInTransactionAsync(async () => {
+                await Uow.LockBookingRequestAsync($"waitlist-finish:{entryId}");
+                var winner = (await WRepo.GetByConditionAsync(w => w.Id == entryId)).Single();
+                if (winner.Status != WaitlistStatus.Waiting) return;
+                winner.Status = WaitlistStatus.Promoted;
+                winner.PromotedBookingId = bookingId;
+                winner.ResolvedAt = DateTime.UtcNow;
+                WRepo.Update(winner);
+                await _notify.QueueWaitlistPromotedAsync(winner.Id, bookingId);
+                await SaveAsync();
+            });
+            await _notify.NotifyWaitlistPromotedAsync(entryId, bookingId);
+            return await Repository<Booking>().GetByIdAsync(bookingId);
         }
     }
 }

@@ -29,6 +29,8 @@ export default function AuthPage() {
   const [busy, setBusy] = useState(false);
   const { login, register } = useAuth();
   const nav = useNavigate();
+  const sessionNotice = useAuth((s) => s.notice);
+  const notice = sessionNotice ?? useLocation().state?.notice;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -148,7 +150,8 @@ export default function AuthPage() {
               : "Điền thông tin để bắt đầu đặt sân."}
           </p>
 
-          <form onSubmit={submit} className="mt-5 space-y-3.5">
+          {typeof notice === "string" && <p role="status" className="mb-3 rounded-lg bg-card p-3 text-sm">{notice}</p>}
+              <form onSubmit={submit} className="mt-5 space-y-3.5">
             {mode === "register" && (
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-muted">Họ và tên</span>

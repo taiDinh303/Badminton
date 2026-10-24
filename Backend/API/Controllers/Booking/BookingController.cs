@@ -23,6 +23,10 @@ namespace Badminton.API.Controllers
         public async Task<IActionResult> GetById(int id) =>
             Resp(await _svc.GetByIdAsync(id, CurrentUserId));
 
+        [HttpPost("quote")]
+        public async Task<IActionResult> Quote([FromBody] CreateBookingRequest request) =>
+            Resp(await _svc.QuoteAsync(request, CurrentUserId));
+
         [HttpGet("mine")]
         public async Task<IActionResult> Mine(
             [FromQuery] string? status,

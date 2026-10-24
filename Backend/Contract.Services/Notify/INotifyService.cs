@@ -15,6 +15,9 @@ namespace Contract.Services.Notify
         Task<IReadOnlyList<Notification>> EnqueueAndSendAsync(NotifyEvent evt,
             int userId, int? bookingId, string body);
 
+        Task QueueBookingEventAsync(NotifyEvent evt, int bookingId);
+        Task QueueWaitlistPromotedAsync(int waitlistEntryId, int bookingId);
+        Task<int> RetryPendingAsync();
         Task NotifyBookingConfirmedAsync(int bookingId);
         Task NotifyBookingExpiredAsync(int bookingId);
         Task NotifyNoShowAsync(int bookingId);

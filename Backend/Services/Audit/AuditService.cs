@@ -14,7 +14,7 @@ namespace Services
         public async Task LogAsync(int actorId, string action, string entityType,
             string? entityId, object? before, object? after, string? reason = null)
         {
-            _ = Repository<AuditLog>().AddAsync(new AuditLog
+            await Repository<AuditLog>().AddAsync(new AuditLog
             {
                 ActorId = actorId,
                 Action = action,
