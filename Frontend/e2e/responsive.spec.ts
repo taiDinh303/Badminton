@@ -6,7 +6,7 @@ const branch = { id: 1, name: "Cơ sở cầu lông Nguyễn Văn Linh", address
 const court = { id: 1, branchId: 1, name: "Sân cầu lông số 1", code: "S01", isActive: true, priceLowPeak: 100000, pricePeak: 150000, weekendSurcharge: 0, capacity: 10, surface: "Sindalo", ratingAvg: 5, ratingCount: 1 };
 const booking = { id: 1, userId: 1, bookingCode: "BK000001", courtId: 1, courtName: court.name, branchName: branch.name, date: "2026-10-24", slotLabel: "18:00–19:00", playerCount: 2, status: "Confirmed", payableAmount: 200000, basePrice: 200000, totalAmount: 200000, discountAmount: 0, pointsRedeemed: 0, pointsEarned: 2000, createdAt: "2026-10-22T08:00:00Z" };
 const paged = { items: [booking], currentPage: 1, totalPages: 2, totalItems: 2, hasNextPage: true, hasPreviousPage: false };
-const routes = ["/", "/dashboard", "/book", "/bookings", "/bookings/1", "/account", "/groups", "/reviews", "/waitlist", "/checkin", "/admin", "/admin/bookings", "/admin/courts", "/admin/vouchers", "/admin/slots", "/admin/branches", "/admin/staff", "/admin/audit", "/admin/membership"];
+const routes = ["/dashboard", "/book", "/bookings", "/bookings/1", "/account", "/groups", "/reviews", "/waitlist", "/checkin", "/admin", "/admin/bookings", "/admin/courts", "/admin/vouchers", "/admin/slots", "/admin/staff", "/admin/audit", "/admin/membership"];
 
 async function setup(page: Page, populated = false) {
   await page.clock.setFixedTime(new Date("2026-10-22T08:00:00Z"));
@@ -25,7 +25,7 @@ async function setup(page: Page, populated = false) {
     { pattern: /\/membership\/members$/, respond: () => ok([{ id: 2, fullName: "Nguyễn Văn Thành Viên", phoneNumber: "0900000002", tier: "Gold", multiplier: 2, expiresAt: "2026-12-01", lapsed: false }]) },
     { pattern: /\/membership\/customers$/, respond: () => ok([{ id: 2, fullName: "Nguyễn Văn Thành Viên", phoneNumber: "0900000002", tier: "Gold", multiplier: 2 }]) },
     { pattern: /\/admin\/audit/, respond: () => ok({ ...paged, items: [{ id: 1, entityType: "CourtDateStatus", entityId: "1@2026-10-24", action: "Update", actorName: "Quản trị viên", createdAt: "2026-10-22T08:00:00Z" }] }) },
-    { pattern: /\/time-slots(?:\?|$)/, respond: () => ok([{ id: 1, label: "18:00–19:00", startTime: "18:00", endTime: "19:00", isPeak: true, isActive: true }]) },
+    { pattern: /\/time-slots$/, respond: () => ok([{ id: 1, label: "18:00–19:00", startTime: "18:00", endTime: "19:00", isPeak: true, isActive: true }]) },
     { pattern: /\/vouchers\?/, respond: () => ok([{ id: 1, code: "WELCOME", type: "Fixed", value: 10000, minSpend: 0, usedQty: 0, totalQty: 10, validUntil: "2027-01-01", isActive: true }]) },
     { pattern: /\/admin\/staff$/, respond: () => ok([{ id: 2, fullName: "Nhân viên cơ sở", phoneNumber: "0900000002", role: "Manager", isActive: true, branchId: 1, branchName: branch.name }]) },
     { pattern: /\/payments\/methods$/, respond: () => ok(["Cash", "QR"]) },

@@ -38,11 +38,11 @@ const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 type Sel = { court: CourtAvailability; slot: Slot };
 
 /**
- * Grid ─æß║╖t s├ón (docs 07 ┬º3/┬º4) ΓÇö redesign:
- *  - header card: c╞í sß╗ƒ + dß║úi ng├áy (m┼⌐i t├¬n) + nhanh "H├┤m nay".
- *  - grid: h├áng = s├ón, cß╗Öt = giß╗¥; cell cho biß║┐t gi├í theo peak/low.
- *  - drawer x├íc nhß║¡n: s├ón/gi├í/ng╞░ß╗¥i/voucher/─æiß╗âm/nh├│m + 1 CTA ch├¡nh.
- *  - ch├║ giß║úi trß║íng th├íi (text + m├áu + icon); drawer kh├┤ng bß╗ï che bottom nav.
+ * Grid đặt sân (docs 07 §3/§4) — redesign:
+ *  - header card: cơ sở + dải ngày (mũi tên) + nhanh "Hôm nay".
+ *  - grid: hàng = sân, cột = giờ; cell cho biết giá theo peak/low.
+ *  - drawer xác nhận: sân/giá/người/voucher/điểm/nhóm + 1 CTA chính.
+ *  - chú giải trạng thái (text + màu + icon); drawer không bị che bottom nav.
  */
 export default function BookPage() {
   const [searchParams] = useSearchParams();
@@ -146,7 +146,7 @@ export default function BookPage() {
     setWaitlistDone(false);
   }
 
-  // Keyboard nav moves within the currently selected court's slots (docs 07 ┬º6).
+  // Keyboard nav moves within the currently selected court's slots (docs 07 §6).
   function onKeyDown(e: React.KeyboardEvent) {
     if (!sel) return;
     const ordered = [...sel.court.slots].sort(
@@ -171,9 +171,9 @@ export default function BookPage() {
   return (
     <div className="mx-auto max-w-5xl p-4 md:p-6" onKeyDown={onKeyDown}>
       <div>
-        <h1 className="text-2xl font-bold">─Éß║╖t s├ón</h1>
+        <h1 className="text-2xl font-bold">Đặt sân</h1>
         <p className="mt-1 text-sm text-muted">
-          Chß╗ìn c╞í sß╗ƒ, ng├áy & khung giß╗¥ trß╗æng ─æß╗â ─æß║╖t. Kh├ích check-in bß║▒ng m├ú/QR tß║íi s├ón.
+          Chọn cơ sở, ngày & khung giờ trống để đặt. Khách check-in bằng mã/QR tại sân.
         </p>
       </div>
 
@@ -185,11 +185,11 @@ export default function BookPage() {
               <MapPin className="h-4 w-4" />
             </span>
             <span className="flex-1">
-              <span className="block text-[11px] font-medium text-muted">C╞í sß╗ƒ</span>
+              <span className="block text-[11px] font-medium text-muted">Cơ sở</span>
               <select
                 value={branchId ?? ""}
                 onChange={(e) => setBranchId(Number(e.target.value))}
-                aria-label="Chß╗ìn c╞í sß╗ƒ"
+                aria-label="Chọn cơ sở"
                 className="w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm font-semibold text-fg outline-none focus:border-primary"
               >
                 {branches.map((b) => (
@@ -205,7 +205,7 @@ export default function BookPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                aria-label="Ng├áy tr╞░ß╗¢c"
+                aria-label="Ngày trước"
                 onClick={() => setDate((d) => addDays(d, -1))}
                 className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted transition-colors hover:text-fg"
               >
@@ -217,13 +217,13 @@ export default function BookPage() {
                   value={date}
                   min={today}
                   onChange={(e) => e.target.value && setDate(e.target.value)}
-                  aria-label="Chß╗ìn ng├áy"
+                  aria-label="Chọn ngày"
                   className="mt-0.5 w-full text-center text-sm font-semibold tnum text-fg outline-none"
                 />
               </div>
               <button
                 type="button"
-                aria-label="Ng├áy sau"
+                aria-label="Ngày sau"
                 onClick={() => setDate((d) => addDays(d, 1))}
                 className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted transition-colors hover:text-fg"
               >
@@ -244,35 +244,35 @@ export default function BookPage() {
                 : "border border-border bg-card text-muted hover:text-fg")
             }
           >
-            <CalendarDays className="h-3.5 w-3.5" /> H├┤m nay
+            <CalendarDays className="h-3.5 w-3.5" /> Hôm nay
           </button>
-          {/* Legend (docs 07 ┬º2: text + color + icon) */}
+          {/* Legend (docs 07 §2: text + color + icon) */}
           <div className="ml-auto flex flex-wrap gap-2.5 text-[11px] text-muted">
             <span className="inline-flex items-center gap-1">
-              <span className="h-3 w-3 rounded bg-slot-free-bg" /> Trß╗æng
+              <span className="h-3 w-3 rounded bg-slot-free-bg" /> Trống
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="h-3 w-3 rounded bg-slot-booked-bg" /> ─É├ú ─æß║╖t
+              <span className="h-3 w-3 rounded bg-slot-booked-bg" /> Đã đặt
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="h-3 w-3 rounded bg-slot-maint-bg" /> Bß║úo tr├¼
+              <span className="h-3 w-3 rounded bg-slot-maint-bg" /> Bảo trì
             </span>
             <span className="inline-flex items-center gap-1 text-accent">
-              <Zap className="h-3 w-3" /> Cao ─æiß╗âm
+              <Zap className="h-3 w-3" /> Cao điểm
             </span>
           </div>
         </div>
       </Card>
 
-      {isLoading && <div className="mt-4"><Busy label="─Éang tß║úi khung giß╗¥ΓÇª" /></div>}
+      {isLoading && <div className="mt-4"><Busy label="Đang tải khung giờ…" /></div>}
 
       {!isLoading && openCourts.length === 0 && (
         <Callout tone="info" className="mt-4">
-          Ch╞░a c├│ s├ón trß╗æng v├áo ng├áy n├áy.
+          Chưa có sân trống vào ngày này.
         </Callout>
       )}
 
-      {/* Grid ΓÇö compact per-court cards, slots wrap within viewport (no h-scroll) */}
+      {/* Grid — compact per-court cards, slots wrap within viewport (no h-scroll) */}
       <div className="mt-4 space-y-3">
         {(courts ?? []).map((c) => (
           <Card key={c.courtId} className="p-4">
@@ -280,16 +280,16 @@ export default function BookPage() {
               <div className="min-w-0">
                 <p className="truncate font-semibold">{c.courtName}</p>
                 <p className="text-[11px] text-muted tnum">
-                  {formatVnd(c.priceLowPeak)} ΓÇô {formatVnd(c.pricePeak)}
+                  {formatVnd(c.priceLowPeak)} – {formatVnd(c.pricePeak)}
                 </p>
               </div>
               <span className="shrink-0 rounded-full bg-bg px-2.5 py-1 text-[11px] font-medium text-muted tnum">
-                {c.slots.filter((s) => !s.isLocked).length}/{c.slots.length} trß╗æng
+                {c.slots.filter((s) => !s.isLocked).length}/{c.slots.length} trống
               </span>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
               {c.slots.map((s) => {
-                const state = !s.isLocked ? "free" : isBooked(s) ? "booked" : s.lockReason === "Bß║úo tr├¼" || s.lockReason === "San bao tri/dong" ? "maint" : "closed";
+                const state = !s.isLocked ? "free" : isBooked(s) ? "booked" : s.lockReason === "Bảo trì" || s.lockReason === "San bao tri/dong" ? "maint" : "closed";
                 const isSel =
                   sel?.court.courtId === c.courtId && sel?.slot.slotId === s.slotId;
                 const cellPrice = s.isPeak ? c.pricePeak : c.priceLowPeak;
@@ -298,7 +298,7 @@ export default function BookPage() {
                     key={s.slotId}
                     state={state}
                     label={s.startTime.slice(0, 5)}
-                    sub={isBooked(s) ? "Nhß║Ñn ─æß╗â v├áo danh s├ích chß╗¥" : s.isLocked ? s.lockReason : formatVnd(cellPrice)}
+                    sub={isBooked(s) ? "Nhấn để vào danh sách chờ" : s.isLocked ? s.lockReason : formatVnd(cellPrice)}
                     peak={s.isPeak}
                     selected={isSel}
                     onClick={() => selectSlot(c, s)}
@@ -325,18 +325,18 @@ export default function BookPage() {
               className="rounded-t-2xl border border-border bg-card p-4 shadow-lg md:rounded-2xl"
               style={{ marginBottom: "env(safe-area-inset-bottom)" }}
               role="dialog"
-              aria-label="X├íc nhß║¡n ─æß║╖t s├ón"
+              aria-label="Xác nhận đặt sân"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-bold">{sel.court.courtName}</p>
                   <p className="mt-0.5 text-sm text-muted tnum">
-                    {weekday} {formatDay(date)} ┬╖ {sel.slot.label}
-                    {sel.slot.isPeak ? " (cao ─æiß╗âm)" : ""}
+                    {weekday} {formatDay(date)} · {sel.slot.label}
+                    {sel.slot.isPeak ? " (cao điểm)" : ""}
                   </p>
                 </div>
                 <button
-                  aria-label="─É├│ng"
+                  aria-label="Đóng"
                   onClick={() => setSel(null)}
                   className="shrink-0 rounded-lg p-1 text-muted transition-colors hover:bg-bg hover:text-fg"
                 >
@@ -348,16 +348,16 @@ export default function BookPage() {
               <div className="mt-4 grid grid-cols-2 gap-2.5">
                 <label className="block">
                   <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted">
-                    <Users className="h-3.5 w-3.5" /> Sß╗æ ng╞░ß╗¥i
+                    <Users className="h-3.5 w-3.5" /> Số người
                   </span>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      aria-label="Giß║úm"
+                      aria-label="Giảm"
                       onClick={() => setPlayers((p) => Math.max(1, p - 1))}
                       className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-lg font-bold text-muted"
                     >
-                      ΓêÆ
+                      −
                     </button>
                     <input
                       type="number"
@@ -369,12 +369,12 @@ export default function BookPage() {
                           Math.max(1, Math.min(10, Number(e.target.value) || 1)),
                         )
                       }
-                      aria-label="Sß╗æ ng╞░ß╗¥i"
+                      aria-label="Số người"
                       className="h-9 w-full rounded-lg border border-border bg-card px-2 text-center text-sm font-semibold tnum text-fg outline-none focus:border-primary"
                     />
                     <button
                       type="button"
-                      aria-label="T─âng"
+                      aria-label="Tăng"
                       onClick={() => setPlayers((p) => Math.min(10, p + 1))}
                       className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-lg font-bold text-muted"
                     >
@@ -393,30 +393,30 @@ export default function BookPage() {
                       setVoucherErr(null);
                       if (voucher.trim() && price) previewVoucher.mutate(price.total);
                     }}
-                    placeholder="M├ú (tuß╗│ chß╗ìn)"
-                    aria-label="M├ú voucher"
+                    placeholder="Mã (tuỳ chọn)"
+                    aria-label="Mã voucher"
                     className="h-9 w-full rounded-lg border border-border bg-card px-2.5 text-sm text-fg outline-none focus:border-primary"
                   />
                 </label>
               </div>
 
-              <p className="mt-2 text-[11px] text-muted">Mß╗ùi m├ú voucher chß╗ë d├╣ng mß╗Öt lß║ºn cho mß╗ùi t├ái khoß║ún. Bß║ín vß║½n c├│ thß╗â d├╣ng m├ú kh├íc.</p>
+              <p className="mt-2 text-[11px] text-muted">Mỗi mã voucher chỉ dùng một lần cho mỗi tài khoản. Bạn vẫn có thể dùng mã khác.</p>
 
               {/* Group (owner-only) */}
               {myGroups.length > 0 && (
                 <label className="mt-2.5 block">
                   <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted">
-                    <Users className="h-3.5 w-3.5" /> ─Éß║╖t cho nh├│m
+                    <Users className="h-3.5 w-3.5" /> Đặt cho nhóm
                   </span>
                   <select
                     value={groupId}
                     onChange={(e) =>
                       setGroupId(e.target.value === "" ? "" : Number(e.target.value))
                     }
-                    aria-label="Chß╗ìn nh├│m"
+                    aria-label="Chọn nhóm"
                     className="h-9 w-full rounded-lg border border-border bg-card px-2.5 text-sm text-fg outline-none focus:border-primary"
                   >
-                    <option value="">C├í nh├ón (mß║╖c ─æß╗ïnh)</option>
+                    <option value="">Cá nhân (mặc định)</option>
                     {myGroups.map((g) => (
                       <option key={g.id} value={g.id}>
                         {g.name} ({g.memberCount}/{g.maxMembers})
@@ -429,7 +429,7 @@ export default function BookPage() {
               {/* Points */}
               <label className="mt-2.5 block">
                 <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted">
-                  <Coins className="h-3.5 w-3.5" /> D├╣ng ─æiß╗âm ─æß╗òi
+                  <Coins className="h-3.5 w-3.5" /> Dùng điểm đổi
                 </span>
                 <input
                   type="number"
@@ -438,18 +438,18 @@ export default function BookPage() {
                   value={pointsToRedeem}
                   onChange={(e) => setPointsToRedeem(e.target.value)}
                   placeholder="VD 2000"
-                  aria-label="Sß╗æ ─æiß╗âm ─æß╗òi"
+                  aria-label="Số điểm đổi"
                   className="h-9 w-full rounded-lg border border-border bg-card px-2.5 text-sm text-fg outline-none focus:border-primary"
                 />
                 <span className="mt-1 block text-[11px] text-muted">
-                  1.000 ─æiß╗âm = 20.000─æ ┬╖ ─æß╗òi tß╗æi ─æa theo d╞░ ─æiß╗âm
+                  1.000 điểm = 20.000đ · đổi tối đa theo dư điểm
                 </span>
               </label>
 
               {/* Price summary */}
               <div className="mt-4 flex items-end justify-between rounded-lg bg-bg p-3">
                 <div className="text-xs text-muted tnum">
-                  {price.peak ? "Cao ─æiß╗âm" : "Giß╗¥ th╞░ß╗¥ng"} ┬╖ {formatVnd(price.base)} ├ù {players}
+                  {price.peak ? "Cao điểm" : "Giờ thường"} · {formatVnd(price.base)} × {players}
                 </div>
                 <p className="text-xl font-bold tnum text-fg">{formatVnd(price.total)}</p>
               </div>
@@ -463,7 +463,7 @@ export default function BookPage() {
                 <Callout tone="error" className="mt-2">
                   {create.error instanceof ApiError
                     ? create.error.message
-                    : "Kh├┤ng ─æß║╖t ─æ╞░ß╗úc. Thß╗¡ khung giß╗¥ kh├íc."}
+                    : "Không đặt được. Thử khung giờ khác."}
                 </Callout>
               )}
 
@@ -473,7 +473,7 @@ export default function BookPage() {
                 disabled={create.isPending || selectedBooked}
                 onClick={() => create.mutate()}
               >
-                {create.isPending ? "─Éang ─æß║╖tΓÇª" : "X├íc nhß║¡n ─æß║╖t s├ón"}
+                {create.isPending ? "Đang đặt…" : "Xác nhận đặt sân"}
               </Button>
 
               {(createFailed || selectedBooked) && !waitlistDone && (
@@ -485,13 +485,13 @@ export default function BookPage() {
                   onClick={() => joinWaitlist.mutate()}
                 >
                   <Hourglass className="h-4 w-4" />
-                  {joinWaitlist.isPending ? "─Éang xß║┐p h├ángΓÇª" : "Tham gia danh s├ích chß╗¥"}
+                  {joinWaitlist.isPending ? "Đang xếp hàng…" : "Tham gia danh sách chờ"}
                 </Button>
               )}
               {joinWaitlist.isError && <Callout tone="error" className="mt-2">{joinWaitlist.error.message}</Callout>}
               {waitlistDone && (
                 <Callout tone="success" className="mt-2">
-                  ─É├ú xß║┐p bß║ín v├áo danh s├ích chß╗¥ (FIFO).
+                  Đã xếp bạn vào danh sách chờ (FIFO).
                 </Callout>
               )}
             </div>
@@ -503,12 +503,12 @@ export default function BookPage() {
       {done && (
         <Card className="mt-4 border-slot-free-bg p-4">
           <Callout tone="success">
-            ─Éß║╖t chß╗ù th├ánh c├┤ng. M├ú: <strong>{done}</strong>. Xem QR trong "─É╞ín cß╗ºa
-            t├┤i" ─æß╗â v├áo s├ón.
+            Đặt chỗ thành công. Mã: <strong>{done}</strong>. Xem QR trong "Đơn của
+            tôi" để vào sân.
           </Callout>
           <div className="mt-3">
             <Button variant="ghost" onClick={() => setDone(null)}>
-              Chß╗ìn s├ón kh├íc
+              Chọn sân khác
             </Button>
           </div>
         </Card>
@@ -517,4 +517,4 @@ export default function BookPage() {
   );
 }
 
-function isBooked(slot: Slot) { return slot.isLocked && ["─É├ú ─æß║╖t", "Da duoc dat"].includes(slot.lockReason); }
+function isBooked(slot: Slot) { return slot.isLocked && ["Đã đặt", "Da duoc dat"].includes(slot.lockReason); }
