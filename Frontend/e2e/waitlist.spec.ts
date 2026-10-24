@@ -117,7 +117,7 @@ test.describe("waitlist", () => {
     // Log in (mocked) → home.
     await page.goto("/auth");
     await page.getByLabel(/Số điện thoại/i).fill("0900000008");
-    await page.getByLabel(/Mật khẩu/i).fill("Pass@123");
+    await page.getByLabel("Mật khẩu", { exact: true }).fill("Pass@123");
     // Disambiguate the form submit button from the "Đăng nhập" tab toggle.
     await page.locator("form").getByRole("button", { name: /Đăng nhập/i }).click();
     // "Xin chào," and the name are separate nodes; the name also shows in the

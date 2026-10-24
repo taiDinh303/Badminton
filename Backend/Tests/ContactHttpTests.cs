@@ -12,15 +12,20 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
+using Repositories.Context;
+using Badminton.Core.Enums;
 using ModelViews.Contact;
 using Services;
 using Xunit;
 
 namespace Badminton.Tests;
 
-// Real HTTP pipeline and JWT authorization, with an isolated inbox double (no live DB).
+// Real HTTP/JWT account validation against an isolated BadmintonTest_* database.
+// Inbox behavior stays independent through the service double.
 public sealed class ContactHttpTests : IAsyncLifetime
 {
+    private readonly TestHost _fixture = new();
     private WebApplication _app = null!;
     private HttpClient _client = null!;
     private readonly Inbox _inbox = new();
@@ -30,7 +35,8 @@ public sealed class ContactHttpTests : IAsyncLifetime
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ApplicationName = typeof(Badminton.API.Program).Assembly.GetName().Name, EnvironmentName = "Testing" });
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> {
-            ["ConnectionStrings:BadmintonBooking"] = "Server=127.0.0.1;Database=UnusedContactTest;Integrated Security=true;Encrypt=true",
+            ["ConnectionStrings:BadmintonBooking"] = _fixture.ConnectionString,
+            ["Database:Provider"] = Environment.GetEnvironmentVariable("BADMINTON_TEST_POSTGRES") is null ? "SqlServer" : "PostgreSQL",
             ["JwtSettings:Key"] = _jwt.Key, ["JwtSettings:Issuer"] = _jwt.Issuer,
             ["JwtSettings:Audience"] = _jwt.Audience, ["JwtSettings:ExpireMinutes"] = "10",
             ["BackgroundJobs:Enabled"] = "false", ["Payment:Provider"] = "mock",
@@ -45,7 +51,14 @@ public sealed class ContactHttpTests : IAsyncLifetime
     }
 
     private static ContactRequest Valid() => new() { FullName = "Guest Example", Phone = "0901234567", Email = "guest@example.test", Consent = true };
-    private void ActAs(string role) => _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", new JwtGenerator(Options.Create(_jwt)).Generate(1, "Contact Test", "0900000000", role).access);
+    private async Task ActAs(string role)
+    {
+        var accountRole = Enum.Parse<Role>(role);
+        var user = await _fixture.RunScopeAsync(sp => sp.GetRequiredService<BadmintonBookingDbContext>()
+            .Users.AsNoTracking().OrderBy(u => u.Id).FirstAsync(u => u.Role == accountRole));
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer",
+            new JwtGenerator(Options.Create(_jwt)).Generate(user.Id, user.FullName, user.PhoneNumber, role, user.SecurityStamp).access);
+    }
 
     [Fact]
     public async Task Guest_can_submit_but_cannot_read_inbox()
@@ -73,7 +86,7 @@ public sealed class ContactHttpTests : IAsyncLifetime
     [InlineData("Admin", HttpStatusCode.OK)]
     public async Task Only_admin_can_read_and_handle(string role, HttpStatusCode expected)
     {
-        ActAs(role);
+        await ActAs(role);
         Assert.Equal(expected, (await _client.GetAsync("/api/v1/contacts")).StatusCode);
         Assert.Equal(expected, (await _client.PatchAsync("/api/v1/contacts/1/handled", null)).StatusCode);
     }
@@ -85,7 +98,7 @@ public sealed class ContactHttpTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.TooManyRequests, (await _client.PostAsJsonAsync("/api/v1/contacts", Valid())).StatusCode);
     }
 
-    public async Task DisposeAsync() { _client.Dispose(); await _app.DisposeAsync(); }
+    public async Task DisposeAsync() { _client.Dispose(); await _app.DisposeAsync(); await _fixture.DisposeAsync(); }
 
     private sealed class Inbox : IContactService
     {

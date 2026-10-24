@@ -26,7 +26,8 @@ async function login(page: Page, phone = "0900000001") {
   await page.getByLabel("Số điện thoại", { exact: true }).fill(phone);
   await page.getByLabel("Mật khẩu", { exact: true }).fill("BrowserOnly$2026");
   await page.locator("form").getByRole("button", { name: "Đăng nhập", exact: true }).click();
-  await expect(page.getByRole("heading", { name: phone.endsWith("2") ? "Bob" : "Alice", exact: true })).toBeVisible();
+  // Login can restore /account after another tab expired this tab's session.
+  await expect(page.getByText(phone.endsWith("2") ? "Bob" : "Alice", { exact: true }).filter({ visible: true }).first()).toBeVisible();
 }
 
 test("changing account in another tab signs the old tab out without erasing the new token", async ({ context, page }) => {
