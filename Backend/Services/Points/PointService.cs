@@ -33,15 +33,47 @@ namespace Services
             return n > 0;
         }
 
-        public async Task<int> RedeemAsync(int userId, int bookingId,
+        public Task<int> RedeemAsync(int userId, int bookingId, int pointsToRedeem, string bookingCode) =>
+            MutateAsync(userId, () => RedeemCoreAsync(userId, bookingId, pointsToRedeem, bookingCode));
+
+        public Task RestoreAsync(int userId, int bookingId, int pointsRestored, string bookingCode) =>
+            MutateAsync(userId, () => RestoreCoreAsync(userId, bookingId, pointsRestored, bookingCode));
+
+        public Task AwardAsync(int userId, int bookingId, int amount, string reason) =>
+            MutateAsync(userId, () => AwardCoreAsync(userId, bookingId, amount, reason));
+
+        public Task ClawbackAsync(int userId, int bookingId, int amount, string reason) =>
+            MutateAsync(userId, () => ClawbackCoreAsync(userId, bookingId, amount, reason));
+
+        private async Task<T> MutateAsync<T>(int userId, Func<Task<T>> action)
+        {
+            T result = default!;
+            await Uow.RunInTransactionAsync(async () =>
+            {
+                await Uow.LockPointsUserAsync(userId);
+                result = await action();
+            });
+            return result;
+        }
+
+        private Task MutateAsync(int userId, Func<Task> action) => MutateAsync(userId, async () =>
+        {
+            await action();
+            return true;
+        });
+
+        private async Task<int> RedeemCoreAsync(int userId, int bookingId,
             int pointsToRedeem, string bookingCode)
         {
             if (pointsToRedeem <= 0) return 0;
 
-            var already = await Repo.CountByConditionAsync(
-                p => p.LedgerKey == $"redeem:{bookingId}");
-            if (already > 0)
-                return (int)(pointsToRedeem * (long)VndPerPoints / PointsPerVnd);
+            var existing = (await Repo.GetByConditionAsync(p => p.LedgerKey == $"redeem:{bookingId}"))
+                .SingleOrDefault();
+            if (existing is not null)
+            {
+                if (existing.UserId != userId) throw new ConflictException("Ledger không thuộc tài khoản này.");
+                return checked((int)(-(long)existing.Delta * VndPerPoints / PointsPerVnd));
+            }
 
             var balance = await GetBalanceAsync(userId);
             if (balance < pointsToRedeem)
@@ -50,7 +82,7 @@ namespace Services
 
             var discount = (int)(pointsToRedeem * (long)VndPerPoints / PointsPerVnd);
 
-            _ = Repo.AddAsync(new PointLedger
+            await Repo.AddAsync(new PointLedger
             {
                 UserId = userId,
                 Delta = -pointsToRedeem,
@@ -62,7 +94,7 @@ namespace Services
             return discount;
         }
 
-        public async Task RestoreAsync(int userId, int bookingId,
+        private async Task RestoreCoreAsync(int userId, int bookingId,
             int pointsRestored, string bookingCode)
         {
             if (pointsRestored <= 0) return;
@@ -71,7 +103,7 @@ namespace Services
                 p => p.LedgerKey == $"restore:{bookingId}");
             if (already > 0) return;
 
-            _ = Repo.AddAsync(new PointLedger
+            await Repo.AddAsync(new PointLedger
             {
                 UserId = userId,
                 Delta = pointsRestored,
@@ -82,7 +114,7 @@ namespace Services
             await SaveAsync();
         }
 
-        public async Task AwardAsync(int userId, int bookingId, int amount, string reason)
+        private async Task AwardCoreAsync(int userId, int bookingId, int amount, string reason)
         {
             if (amount <= 0) return;
 
@@ -90,13 +122,12 @@ namespace Services
             var already = await Repo.CountByConditionAsync(p => p.LedgerKey == $"earn:{bookingId}");
             if (already > 0) return;
 
-            decimal mult = 1.0m;
-            try { mult = await _membership.EffectiveMultiplierAsync(userId); }
-            catch { mult = 1.0m; } // membership lookup must never block earn
+            // A failed tier lookup must roll back the operation rather than silently underpay points.
+            var mult = await _membership.EffectiveMultiplierAsync(userId);
 
             int earned = (int)Math.Round(amount * mult, MidpointRounding.AwayFromZero);
 
-            _ = Repo.AddAsync(new PointLedger
+            await Repo.AddAsync(new PointLedger
             {
                 UserId = userId,
                 Delta = earned,
@@ -107,17 +138,25 @@ namespace Services
             await SaveAsync();
         }
 
-        public async Task ClawbackAsync(int userId, int bookingId, int amount, string reason)
+        private async Task ClawbackCoreAsync(int userId, int bookingId, int amount, string reason)
         {
             if (amount <= 0) return;
 
             var already = await Repo.CountByConditionAsync(p => p.LedgerKey == $"clawback:{bookingId}");
             if (already > 0) return;
 
-            _ = Repo.AddAsync(new PointLedger
+            var earned = (await Repo.GetByConditionAsync(p => p.LedgerKey == $"earn:{bookingId}"))
+                .SingleOrDefault();
+            if (earned is null) return;
+            var booking = await Repository<Booking>().GetByIdAsync(bookingId)
+                ?? throw new NotFoundException("Booking", bookingId);
+            var clawback = booking.PayableAmount <= 0 ? 0 : (int)Math.Round(
+                earned.Delta * Math.Min(1m, (decimal)amount / booking.PayableAmount),
+                MidpointRounding.AwayFromZero);
+            await Repo.AddAsync(new PointLedger
             {
                 UserId = userId,
-                Delta = -amount,
+                Delta = -clawback,
                 BookingId = bookingId,
                 Reason = reason,
                 LedgerKey = $"clawback:{bookingId}"

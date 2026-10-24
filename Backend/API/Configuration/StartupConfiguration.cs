@@ -64,7 +64,7 @@ public static class StartupConfiguration
                 || (production ? uri.Scheme != "https" : uri.Scheme is not ("http" or "https")))
                 errors.Add("Cors:AllowedOrigins contains an invalid origin.");
 
-        foreach (var flag in new[] { "DatabaseInitialization:MigrateOnStartup", "DatabaseInitialization:SeedDemoData", "Seed:AllowInProduction", "BackgroundJobs:Enabled", "Swagger:Enabled" })
+        foreach (var flag in new[] { "DatabaseInitialization:MigrateOnStartup", "DatabaseInitialization:SeedDemoData", "Seed:AllowInProduction", "BackgroundJobs:Enabled", "Swagger:Enabled", "Payment:OnlineRefunds:Enabled" })
             if (configuration[flag] is { } value && !bool.TryParse(value, out _)) errors.Add($"{flag} must be true or false.");
         if (production && (Enabled(configuration, "DatabaseInitialization:MigrateOnStartup")
             || Enabled(configuration, "DatabaseInitialization:SeedDemoData")
@@ -74,11 +74,16 @@ public static class StartupConfiguration
         var provider = (configuration["Payment:Provider"] ?? "mock").Trim().ToLowerInvariant();
         if (provider is not ("mock" or "real" or "onsite")) errors.Add("Payment:Provider must be mock, real or onsite.");
         if (production && provider == "mock") errors.Add("Payment:Provider must be real or onsite outside Development/Testing.");
+        if (Enabled(configuration, "Payment:OnlineRefunds:Enabled"))
+        {
+            if (provider != "real") errors.Add("Payment:OnlineRefunds:Enabled requires Payment:Provider=real.");
+            if (!IsHttps(configuration["Payment:Vnpay:ApiEndpoint"])) errors.Add("Payment:Vnpay:ApiEndpoint requires an absolute HTTPS URL for online refunds.");
+        }
         if (provider == "real")
         {
-            foreach (var path in new[] { "Payment:Momo:AppId", "Payment:Momo:SecretKey", "Payment:Vnpay:MerchantCode", "Payment:Vnpay:SecretKey", "Payment:Zalopay:AppId", "Payment:Zalopay:ApiKey", "Payment:Zalopay:ApiSecret" })
+            foreach (var path in new[] { "Payment:Momo:AppId", "Payment:Momo:SecretKey", "Payment:Momo:AccessKey", "Payment:Vnpay:MerchantCode", "Payment:Vnpay:SecretKey", "Payment:Zalopay:AppId", "Payment:Zalopay:ApiKey", "Payment:Zalopay:CallbackKey" })
                 if (string.IsNullOrWhiteSpace(configuration[path])) errors.Add($"{path} is required for real payment adapters.");
-            foreach (var path in new[] { "Payment:Momo:Endpoint", "Payment:Vnpay:Endpoint", "Payment:Zalopay:Endpoint" })
+            foreach (var path in new[] { "Payment:Momo:Endpoint", "Payment:Vnpay:Endpoint", "Payment:Zalopay:Endpoint", "Payment:Momo:IpayUrl", "Payment:Zalopay:CallbackUrl", "Payment:Vnpay:CallbackUrl" })
                 if (!IsHttps(configuration[path])) errors.Add($"{path} requires an absolute HTTPS URL without credentials.");
         }
         var channels = (configuration["Notify:Channels"] ?? "log").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

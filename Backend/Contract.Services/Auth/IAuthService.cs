@@ -6,5 +6,7 @@ namespace Contract.Services.Auth
     {
         Task<LoginResponse> RegisterAsync(RegisterRequest request);
         Task<LoginResponse> LoginAsync(LoginRequest request);
+        Task ChangePasswordAsync(ChangePasswordRequest request);
+        Task RevokeSessionsAsync();
     }
 }

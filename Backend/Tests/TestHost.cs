@@ -24,6 +24,7 @@ namespace Badminton.Tests
     public sealed class TestHost : IAsyncDisposable
     {
         private readonly ServiceProvider _services;
+        private readonly bool _useMigrations;
         public readonly string DbName;
         public readonly string ConnectionString;
         public int Alice { get; private set; }
@@ -44,13 +45,19 @@ namespace Badminton.Tests
             DateTimeKind.Utc); // 02:00 UTC == 09:00 Hanoi
         public DateOnly FutureDate => DateOnly.FromDateTime(DateTime.UtcNow).AddDays(5);
 
-        public TestHost(string? dbName = null)
+        public TestHost(string? dbName = null, Action<IServiceCollection>? configure = null, bool useMigrations = false)
         {
+            _useMigrations = useMigrations;
             DbName = dbName ?? "BadmintonTest_" + Guid.NewGuid().ToString("N")[..8];
+            if (!DbName.StartsWith("BadmintonTest_", StringComparison.Ordinal))
+                throw new InvalidOperationException("Tests require an isolated BadmintonTest_ database.");
 
             var server =
                 Environment.GetEnvironmentVariable("BADMINTON_TEST_SQLSERVER")
                 ?? ".\\SQLEXPRESS";
+            if (Environment.GetEnvironmentVariable("BADMINTON_TEST_POSTGRES") is null
+                && server is not ("." or ".\\SQLEXPRESS" or "localhost" or "127.0.0.1" or "(localdb)\\MSSQLLocalDB"))
+                throw new InvalidOperationException("SQL Server tests require an isolated loopback server.");
             ConnectionString =
                 $"Server={server};Database={DbName};Trusted_Connection=True;TrustServerCertificate=True;";
             var postgres = Environment.GetEnvironmentVariable("BADMINTON_TEST_POSTGRES");
@@ -68,10 +75,10 @@ namespace Badminton.Tests
             var services = new ServiceCollection();
             if (postgres is not null)
             {
-                services.AddDbContext<PostgresBookingDbContext>(o => o.UseNpgsql(ConnectionString));
+                services.AddDbContext<PostgresBookingDbContext>((sp, o) => o.UseNpgsql(ConnectionString).AddInterceptors(sp.GetServices<Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor>()));
                 services.AddScoped<BadmintonBookingDbContext>(sp => sp.GetRequiredService<PostgresBookingDbContext>());
             }
-            else services.AddDbContext<BadmintonBookingDbContext>(o => o.UseSqlServer(ConnectionString));
+            else services.AddDbContext<BadmintonBookingDbContext>((sp, o) => o.UseSqlServer(ConnectionString).AddInterceptors(sp.GetServices<Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor>()));
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddSingleton<IPricingService, PricingService>();
 
@@ -91,6 +98,12 @@ namespace Badminton.Tests
             services.AddScoped<IPointService, PointService>();
             services.AddScoped<IVoucherService, VoucherService>();
             services.AddScoped<Contract.Services.Account.IAccountService, AccountService>();
+            services.AddScoped<BookingAvailabilityService>();
+            services.AddScoped<BookingCreationService>();
+            services.AddScoped<BookingQuoteService>();
+            services.AddScoped<BookingLifecycleService>();
+            services.AddScoped<BookingCompletionService>();
+            services.AddScoped<BookingExpiryService>();
             services.AddScoped<IBookingService, BookingService>();
             services.AddScoped<IPaymentService, PaymentService>();
 
@@ -117,6 +130,7 @@ namespace Badminton.Tests
             services.AddScoped<Contract.Services.Maintenance.IMaintenanceService, MaintenanceService>();
             services.AddScoped<Contract.Services.Waitlist.IWaitlistService, WaitlistService>();
 
+            configure?.Invoke(services);
             _services = services.BuildServiceProvider();
             EnsureCreatedAndSeed();
         }
@@ -126,7 +140,7 @@ namespace Badminton.Tests
             using var scope = _services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<BadmintonBookingDbContext>();
             db.Database.EnsureDeleted();
-            if (db.Database.IsNpgsql()) db.Database.Migrate();
+            if (_useMigrations || db.Database.IsNpgsql()) db.Database.Migrate();
             else db.Database.EnsureCreated();
 
             var now = DateTime.UtcNow;

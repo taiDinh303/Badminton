@@ -14,7 +14,7 @@ import {
   ConfirmDialog,
 } from "../../../components/ui";
 import { api, type Court } from "../../../services/api";
-import { formatVnd } from "../../../utils/format";
+import { formatVnd, vietnamDate } from "../../../utils/format";
 import { isAdmin, useAuth } from "../../../store/auth";
 
 type MaintStatus = "Open" | "Maintenance" | "Closed";
@@ -49,7 +49,7 @@ export default function CourtsPage() {
   const [editId, setEditId] = useState<number | null>(null);
   // FEAT maintenance: Open/Maintenance/Closed per court per date (docs 03 §8).
   const [maintCourt, setMaintCourt] = useState<Court | null>(null);
-  const [maintDate, setMaintDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [maintDate, setMaintDate] = useState(() => vietnamDate());
   const [maintStatus, setMaintStatus] = useState<MaintStatus>("Maintenance");
   const [maintNote, setMaintNote] = useState("");
   // Confirm dialog before the destructive court delete (docs 07 §4).

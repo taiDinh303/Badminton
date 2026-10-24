@@ -45,6 +45,7 @@ namespace Services
 
         public async Task<int> CreateAsync(CreateBranchRequest request, int actorId)
         {
+            Validate(request.Name, request.Address, ParseTime(request.OpenTime), ParseTime(request.CloseTime));
             var dupes = await Repo.GetByConditionAsync(b => b.Name == request.Name && b.DeletedAt == null);
             if (dupes.Count > 0)
                 throw new ConflictException($"Cơ sở '{request.Name}' đã tồn tại.");
@@ -55,10 +56,10 @@ namespace Services
                 Address = request.Address,
                 GeoLat = request.GeoLat,
                 GeoLng = request.GeoLng,
-                OpenTime = ParseTime(request.OpenTime, new TimeOnly(6, 0)),
-                CloseTime = ParseTime(request.CloseTime, new TimeOnly(23, 0))
+                OpenTime = ParseTime(request.OpenTime),
+                CloseTime = ParseTime(request.CloseTime)
             };
-            _ = Repo.AddAsync(b);
+            await Repo.AddAsync(b);
             await SaveAsync();
             await _audit.LogAsync(actorId, "branch.create", "Branch", b.Id.ToString(), null, b);
             return b.Id;
@@ -71,8 +72,9 @@ namespace Services
             if (request.Name is not null) b.Name = request.Name;
             if (request.Address is not null) b.Address = request.Address;
             if (request.IsActive.HasValue) b.IsActive = request.IsActive.Value;
-            if (request.OpenTime is not null) b.OpenTime = ParseTime(request.OpenTime, b.OpenTime);
-            if (request.CloseTime is not null) b.CloseTime = ParseTime(request.CloseTime, b.CloseTime);
+            if (request.OpenTime is not null) b.OpenTime = ParseTime(request.OpenTime);
+            if (request.CloseTime is not null) b.CloseTime = ParseTime(request.CloseTime);
+            Validate(b.Name, b.Address, b.OpenTime, b.CloseTime);
             b.UpdatedAt = DateTime.UtcNow;
             Repo.Update(b);
             await SaveAsync();
@@ -99,8 +101,15 @@ namespace Services
             return b;
         }
 
-        private static TimeOnly ParseTime(string s, TimeOnly fallback) =>
-            TimeOnly.TryParse(s, out var t) ? t : fallback;
+        private static TimeOnly ParseTime(string s) =>
+            TimeOnly.TryParse(s, out var t) ? t : throw new BadRequestException("Giờ không hợp lệ.");
+
+        private static void Validate(string name, string address, TimeOnly open, TimeOnly close)
+        {
+            if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 100 || string.IsNullOrWhiteSpace(address) || address.Length > 255)
+                throw new BadRequestException("Tên và địa chỉ cơ sở không hợp lệ.");
+            if (close <= open) throw new BadRequestException("Giờ đóng cửa phải sau giờ mở cửa trong cùng ngày.");
+        }
 
         private static object? AuditCopy(Branch b) => new
         {

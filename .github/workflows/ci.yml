@@ -2,13 +2,21 @@ name: ci
 
 on:
   push:
-    branches: [ main, master ]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 # Fast static guard first — fails immediately if a secret leaked into the
 # tree or the seed gate regressed. Cheap; runs in parallel with the rest.
 jobs:
   ci-guard:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +27,7 @@ jobs:
         run: ./scripts/CiGuard.ps1
 
   build-and-verify:
+    timeout-minutes: 20
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -66,6 +75,7 @@ jobs:
 
   test:
     needs: build-and-verify
+    timeout-minutes: 20
     runs-on: windows-latest
     env:
       BADMINTON_TEST_SQLSERVER: '(localdb)\MSSQLLocalDB'
@@ -80,9 +90,20 @@ jobs:
       - name: Restore
         run: dotnet restore Backend/Badminton.slnx
       - name: Run service/database tests
-        run: dotnet test Backend/Tests/Badminton.Tests.csproj -c Debug --no-restore
+        run: dotnet test Backend/Tests/Badminton.Tests.csproj -c Debug --no-restore --logger "trx;LogFileName=sqlserver.trx" --results-directory artifacts/test-results
+      - name: Rehearse isolated SQL backup restore and worker process crashes
+        run: dotnet run --project tools/OperationsRehearsal/OperationsRehearsal.csproj -c Debug
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sqlserver-test-results
+          path: |
+            artifacts/test-results
+            artifacts/operations-acceptance
+          if-no-files-found: warn
 
   frontend:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -97,6 +118,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run lint
+      - run: npx tsc -p tsconfig.e2e.json --noEmit
       - run: npm run build
 
   # docs 04 §7 — E2E smoke via Playwright. The app is NOT running; all
@@ -104,6 +126,7 @@ jobs:
   # envelopes so the test suite is fully offline (no DB, no .NET runtime
   # required in the CI runner).
   e2e:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -124,3 +147,77 @@ jobs:
       - run: npx playwright test
         env:
           E2E_BASE_URL: 'http://localhost:4173'
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-results
+          path: |
+            Frontend/test-results
+            Frontend/playwright-report
+          if-no-files-found: ignore
+
+  postgres-tests:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci-isolated-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      BADMINTON_TEST_POSTGRES: 'Host=127.0.0.1;Port=5432;Username=postgres;Password=ci-isolated-only;Database=postgres'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            8.0.x
+      - run: dotnet restore Backend/Badminton.slnx
+      - run: dotnet test Backend/Tests/Badminton.Tests.csproj -c Release --no-restore --logger "trx;LogFileName=postgres.trx" --results-directory artifacts/test-results
+      - name: Install PostgreSQL backup client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client-16
+      - name: Rehearse isolated PostgreSQL backup restore and worker process crashes
+        run: dotnet run --project tools/OperationsRehearsal/OperationsRehearsal.csproj -c Release -- /usr/lib/postgresql/16/bin
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+      - run: npm ci
+        working-directory: Frontend
+      - run: npm run build
+        working-directory: Frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: Frontend
+      - name: Browser to real API and isolated PostgreSQL
+        run: npx playwright test --config playwright.integration.config.ts
+        working-directory: Frontend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-api-browser-results
+          path: Frontend/test-results
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: postgres-test-results
+          path: |
+            artifacts/test-results
+            artifacts/operations-acceptance
+          if-no-files-found: warn
+
+  docker-build:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image without publishing
+        run: docker build -t badminton-ci .

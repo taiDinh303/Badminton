@@ -16,23 +16,34 @@ namespace Services
 
         private IGenericRepository<TimeSlot> Repo => Repository<TimeSlot>();
 
-        public async Task<IReadOnlyList<TimeSlotView>> GetAllAsync()
+        public async Task<IReadOnlyList<TimeSlotView>> GetAllAsync(bool includeInactive = false)
         {
-            var slots = await Repo.GetByConditionAsync(s => s.IsActive && s.DeletedAt == null);
+            var slots = await Repo.GetByConditionAsync(s => (includeInactive || s.IsActive) && s.DeletedAt == null);
             return slots.OrderBy(s => s.StartTime).Select(ToView).ToList();
         }
 
         public async Task<int> CreateAsync(CreateTimeSlotRequest request, int actorId)
         {
+            int result = 0;
+            await Uow.RunInTransactionAsync(async () =>
+            {
+                await Uow.LockTimeSlotsAsync();
+                result = await CreateCoreAsync(request, actorId);
+            });
+            return result;
+        }
+
+        private async Task<int> CreateCoreAsync(CreateTimeSlotRequest request, int actorId)
+        {
             var start = ParseTime(request.StartTime);
             var end = ParseTime(request.EndTime);
-            if (end <= start)
-                throw new BadRequestException("Giờ kết thúc phải sau giờ bắt đầu.");
+            if (end - start != TimeSpan.FromHours(1))
+                throw new BadRequestException("Khung giờ phải dài đúng 60 phút.");
 
             var dupes = await Repo.GetByConditionAsync(
-                s => s.StartTime == start && s.EndTime == end && s.DeletedAt == null);
+                s => s.StartTime < end && start < s.EndTime && s.IsActive && s.DeletedAt == null);
             if (dupes.Count > 0)
-                throw new ConflictException("Khung giờ này đã tồn tại.");
+                throw new ConflictException("Khung giờ giao với khung giờ đang hoạt động.");
 
             var s = new TimeSlot
             {
@@ -41,17 +52,29 @@ namespace Services
                 EndTime = end,
                 IsPeak = request.IsPeak || start.Hour >= 18
             };
-            _ = Repo.AddAsync(s);
+            await Repo.AddAsync(s);
             await SaveAsync();
             await _audit.LogAsync(actorId, "timeslot.create", "TimeSlot", s.Id.ToString(), null, s);
             return s.Id;
         }
 
-        public async Task UpdateAsync(int id, UpdateTimeSlotRequest request, int actorId)
+        public Task UpdateAsync(int id, UpdateTimeSlotRequest request, int actorId) => Uow.RunInTransactionAsync(async () =>
+        {
+            await Uow.LockTimeSlotsAsync();
+            await UpdateCoreAsync(id, request, actorId);
+        });
+
+        private async Task UpdateCoreAsync(int id, UpdateTimeSlotRequest request, int actorId)
         {
             var s = await MustGetAsync(id);
             var before = new { s.Label, s.IsActive };
             if (request.Label is not null) s.Label = request.Label;
+            if (request.IsActive == true && !s.IsActive)
+            {
+                var overlaps = await Repo.CountByConditionAsync(x => x.Id != id && x.IsActive && x.DeletedAt == null
+                    && x.StartTime < s.EndTime && s.StartTime < x.EndTime);
+                if (overlaps > 0) throw new ConflictException("Khung giờ giao với khung giờ đang hoạt động.");
+            }
             if (request.IsActive.HasValue) s.IsActive = request.IsActive.Value;
             s.UpdatedAt = DateTime.UtcNow;
             Repo.Update(s);
@@ -59,7 +82,13 @@ namespace Services
             await _audit.LogAsync(actorId, "timeslot.update", "TimeSlot", id.ToString(), before, s);
         }
 
-        public async Task DeleteAsync(int id, int actorId)
+        public Task DeleteAsync(int id, int actorId) => Uow.RunInTransactionAsync(async () =>
+        {
+            await Uow.LockTimeSlotsAsync();
+            await DeleteCoreAsync(id, actorId);
+        });
+
+        private async Task DeleteCoreAsync(int id, int actorId)
         {
             var s = await MustGetAsync(id);
             var before = new { s.Label, s.IsActive };

@@ -35,12 +35,13 @@ Ba role: `customer`, `manager`, `admin`. Khách tự đăng ký bằng số đi�
 - **Manager gắn với MỘT cơ sở** (branch-scope): `PaymentService.AuthorizeStaffScope` và `MaintenanceService` có kiểm tra một số thao tác; chưa đủ chứng minh scope trên mọi endpoint (xem §9). (Quyết định Q3=A.)
 - **Đúng 1 admin active** được enforce bởi unique filtered index `ux_active_admin` (`[Status]='Active' AND [Role]='Admin'`). Tạo admin thứ hai hoặc khóa admin cuối cùng → bị từ chối.
 
-> **Dev note (code):** TimeSlotController hiện cho Manager tạo/sửa slot, khác mục tiêu chỉ Admin cấu hình; cần quyết định quyền riêng. Role lưu trong enum `Role { Customer, Manager, Admin }` ở `Core/Enums/Enums.cs`; quyền API enforce qua JWT claims `[Authorize(Roles=...)]`. Frontend guard `isStaff`/`isAdmin` ở `src/store/auth.ts`.
+> **CURRENT 24/10/2026:** Chỉ Admin tạo/sửa/xóa cấu hình khung giờ toàn hệ thống. Manager đọc slot đang hoạt động; Admin có `includeInactive=true` để bật lại slot tắt. Server khóa cấu hình và từ chối slot giao nhau; lịch cũ giao giờ vẫn bị chặn khi đặt sân.
 
 ## 3. Quy tắc sân và khung giờ chuẩn
 
 - Mỗi cơ sở có dải giờ mở cửa do admin cấu hình: **mặc định khởi tạo 06:00–23:00, bước 1 giờ → 17 slot/ngày** (slot bắt đầu 06:00…22:00, mỗi slot 60 phút). Đây là giá trị seed (`SeedData.cs` sinh 17 slot, peak = bắt đầu ≥ 18:00). Slot là dữ liệu trong `TimeSlots`, có API quản trị. V1 giữ slot 60 phút; slot khác độ dài là mở rộng cần thiết kế giá và chống khoảng giờ chồng lấn, không chỉ thêm bản ghi.
 - **Khung peak** = slot bắt đầu từ 18:00–22:00 (5 slot); các slot còn lại là **low-peak**. Mỗi sân có `price_low_peak` và `price_peak` riêng (nguyên, VND/giờ). Giá thực = giá peak nếu slot thuộc peak, ngược lại là low-peak.
+- **Quyết định owner 24/10/2026:** giá tính theo **một sân/một slot**, không nhân số người. `1 <= PlayerCount <= Court.Capacity`; cả đặt trực tiếp và danh sách chờ kiểm sức chứa. Voucher min-spend và điểm dùng tổng giá slot; giữ nguyên snapshot đơn lịch sử.
 - **Cuối tuần** (thứ 7, chủ nhật) áp phụ thu theo tỷ lệ sân (`weekend_surcharge`, mặc định 0.20 = +20% lên giá cơ sở của slot (peak hoặc low-peak)). Admin cấu hình; yêu cầu có audit.
 - Một đặt chỗ chiếm **một slot duy nhất** của một sân trong một ngày. Không đặt slot trùng của cùng khách/nhóm vượt hạn mức.
 - Slot có `court_date_status` khác `Open` (bảo trì/đóng) → **không cho đặt**; hiển thị là slot khóa.

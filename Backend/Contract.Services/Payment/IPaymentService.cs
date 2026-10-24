@@ -5,6 +5,8 @@ namespace Contract.Services.Payment
 {
     public interface IPaymentService
     {
+        Task<PaymentView> ReconcileRefundAsync(int paymentId, int actorId);
+        Task<(IReadOnlyList<PaymentReconciliationView> Items, int TotalCount)> GetReconciliationAsync(int? branchId, Contract.Repositories.UnitOfWork.Page page);
         Task<PaymentInitResponse> InitAsync(InitPaymentRequest request, int userId);
         Task<WebhookResult> HandleWebhookAsync(string provider, PaymentWebhookRequest raw);
         Task<PaymentView> ConfirmOnSiteAsync(int bookingId, string method, int actorId, string? note = null);

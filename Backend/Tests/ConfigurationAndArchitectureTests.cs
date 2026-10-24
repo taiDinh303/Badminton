@@ -21,6 +21,10 @@ public class ConfigurationAndArchitectureTests
         ["Payment:Provider"] = "real",
         ["Payment:Momo:AppId"] = "synthetic",
         ["Payment:Momo:SecretKey"] = "synthetic",
+        ["Payment:Momo:AccessKey"] = "synthetic",
+        ["Payment:Momo:IpayUrl"] = "https://api.example.invalid/api/v1/payments/callback/momo",
+        ["Payment:Zalopay:CallbackUrl"] = "https://api.example.invalid/api/v1/payments/callback/zalopay",
+        ["Payment:Vnpay:CallbackUrl"] = "https://api.example.invalid/api/v1/payments/callback/vnpay",
         ["Payment:Momo:Endpoint"] = "https://momo.example.invalid",
         ["Payment:Vnpay:MerchantCode"] = "synthetic",
         ["Payment:Vnpay:SecretKey"] = "synthetic",
@@ -28,6 +32,7 @@ public class ConfigurationAndArchitectureTests
         ["Payment:Zalopay:AppId"] = "synthetic",
         ["Payment:Zalopay:ApiKey"] = "synthetic",
         ["Payment:Zalopay:ApiSecret"] = "synthetic",
+        ["Payment:Zalopay:CallbackKey"] = "synthetic",
         ["Payment:Zalopay:Endpoint"] = "https://zalopay.example.invalid",
     };
 
@@ -94,6 +99,19 @@ public class ConfigurationAndArchitectureTests
         values["Payment:Provider"] = "onsite";
         foreach (var key in values.Keys.Where(k => k.StartsWith("Payment:") && k != "Payment:Provider").ToArray()) values.Remove(key);
         Assert.Empty(Check(values));
+    }
+
+    [Fact]
+    public void Online_refunds_require_explicit_real_provider_and_https_merchant_api()
+    {
+        var values = Valid();
+        values["Payment:OnlineRefunds:Enabled"] = "true";
+        values["Payment:Vnpay:ApiEndpoint"] = "http://insecure.example.invalid/refund";
+        Assert.Contains(Check(values), e => e.Contains("Payment:Vnpay:ApiEndpoint"));
+        values["Payment:Vnpay:ApiEndpoint"] = "https://merchant.example.invalid/refund";
+        Assert.Empty(Check(values));
+        values["Payment:Provider"] = "onsite";
+        Assert.Contains(Check(values), e => e.Contains("Payment:OnlineRefunds:Enabled"));
     }
 
     [Theory]

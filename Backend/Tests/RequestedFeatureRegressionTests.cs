@@ -150,16 +150,23 @@ public sealed class RequestedFeatureRegressionTests : IAsyncLifetime
     [Fact]
     public async Task Migration_upgrades_existing_whole_day_closure_without_losing_it()
     {
-        var connection = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_h.ConnectionString) { InitialCatalog = _h.DbName + "_Upgrade" };
-        await using var db = new BadmintonBookingDbContext(new DbContextOptionsBuilder<BadmintonBookingDbContext>().UseSqlServer(connection.ConnectionString).Options);
+        var postgres = Environment.GetEnvironmentVariable("BADMINTON_TEST_POSTGRES") is not null;
+        await using BadmintonBookingDbContext db = postgres
+            ? new PostgresBookingDbContext(new DbContextOptionsBuilder<PostgresBookingDbContext>().UseNpgsql(
+                new Npgsql.NpgsqlConnectionStringBuilder(_h.ConnectionString) { Database = _h.DbName + "_Upgrade" }.ConnectionString).Options)
+            : new BadmintonBookingDbContext(new DbContextOptionsBuilder<BadmintonBookingDbContext>().UseSqlServer(
+                new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_h.ConnectionString) { InitialCatalog = _h.DbName + "_Upgrade" }.ConnectionString).Options);
         try
         {
-            await db.GetService<IMigrator>().MigrateAsync("20261018074522_AddNotifyWaitlistQrMembership");
+            await db.GetService<IMigrator>().MigrateAsync(postgres ? "20261021120243_InitialPostgres" : "20261018074522_AddNotifyWaitlistQrMembership");
             var branch = new Contract.Repositories.Entity.Branch { Name = "Migration test", Address = "Test", OpenTime = new TimeOnly(6, 0), CloseTime = new TimeOnly(23, 0) };
             var court = new Contract.Repositories.Entity.Court { Branch = branch, Code = "TEST", Name = "Test court" };
             db.Courts.Add(court);
             await db.SaveChangesAsync();
-            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO CourtDateStatus (CourtId, Date, Status, Note, CreatedAt) VALUES ({court.Id}, {_h.FutureDate}, {"Closed"}, {"Keep existing schedule"}, {DateTime.UtcNow})");
+            FormattableString insert;
+            if (postgres) insert = $"INSERT INTO \"CourtDateStatus\" (\"CourtId\", \"Date\", \"Status\", \"Note\", \"CreatedAt\") VALUES ({court.Id}, {_h.FutureDate}, {"Closed"}, {"Keep existing schedule"}, {DateTime.UtcNow})";
+            else insert = $"INSERT INTO CourtDateStatus (CourtId, Date, Status, Note, CreatedAt) VALUES ({court.Id}, {_h.FutureDate}, {"Closed"}, {"Keep existing schedule"}, {DateTime.UtcNow})";
+            await db.Database.ExecuteSqlInterpolatedAsync(insert);
             await db.GetService<IMigrator>().MigrateAsync();
             var row = await db.CourtDateStatuses.SingleAsync();
             Assert.Equal("Keep existing schedule", row.Note);

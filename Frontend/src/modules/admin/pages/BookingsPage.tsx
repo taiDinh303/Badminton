@@ -1,3 +1,4 @@
+import { useBookingRefresh } from "../../booking/hooks/useBookingRefresh";
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, type UseMutationResult } from "@tanstack/react-query";
 import {
@@ -40,6 +41,7 @@ const STATUS_TABS: { key: string; label: string }[] = [
  *     thanh giá + nút thao tác theo trạng thái
  */
 export default function BookingsPage() {
+  const refreshBookings = useBookingRefresh();
   const [status, setStatus] = useState("");
   const [branchId, setBranchId] = useState<number | "">("");
   const [q, setQ] = useState("");
@@ -50,7 +52,7 @@ export default function BookingsPage() {
     queryFn: api.branches.list,
   });
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, refetch, error: loadError } = useQuery({
     queryKey: ["admin-bookings", status, branchId, page],
     queryFn: () =>
       api.booking.all(
@@ -64,24 +66,25 @@ export default function BookingsPage() {
 
   const onSite = useMutation({
     mutationFn: (id: number) => api.payments.onSite(id),
-    onSuccess: () => refetch(),
+    onSuccess: refreshBookings,
   });
   const complete = useMutation({
     mutationFn: (id: number) =>
       api.booking.complete(id, "Quản trị viên xác nhận"),
-    onSuccess: () => refetch(),
+    onSuccess: refreshBookings,
   });
   const noShow = useMutation({
     mutationFn: (id: number) => api.booking.noShow(id, "Khách không đến"),
-    onSuccess: () => refetch(),
+    onSuccess: refreshBookings,
   });
   const refund = useMutation({
     mutationFn: (id: number) =>
       api.payments.refund(id, "Quản trị hoàn tiền"),
-    onSuccess: () => refetch(),
+    onSuccess: refreshBookings,
   });
 
   const err =
+    loadError?.message ??
     (onSite.error as Error | undefined)?.message ??
     (complete.error as Error | undefined)?.message ??
     (noShow.error as Error | undefined)?.message ??
@@ -367,6 +370,8 @@ function BookingCard({
             Hoàn tiền
           </Button>
         </div>
+      ) : b.status === "Completed" ? (
+        <Button className="mt-3 w-full" variant="danger" size="sm" disabled={busy} onClick={() => refund.mutate(b.id)}>Hoàn tiền</Button>
       ) : null}
     </Card>
   );

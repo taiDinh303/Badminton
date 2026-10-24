@@ -29,6 +29,22 @@ public static class DependencyInjection
             {
                 o.MapInboundClaims = false;
                 o.SaveToken = true;
+                o.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = async context =>
+                    {
+                        var idText = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                        var role = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+                        if (!int.TryParse(idText, out var id)) { context.Fail("Invalid identity."); return; }
+                        var users = context.HttpContext.RequestServices.GetRequiredService<Contract.Repositories.UnitOfWork.IUnitOfWork>()
+                            .GetRepository<Contract.Repositories.Entity.User>();
+                        var user = (await users.GetByConditionAsync(u => u.Id == id, context.HttpContext.RequestAborted)).SingleOrDefault();
+                        if (user is null || user.DeletedAt.HasValue || user.Status != Badminton.Core.Enums.UserStatus.Active
+                            || !user.IsVerified || !string.Equals(user.Role.ToString(), role, StringComparison.Ordinal)
+                            || (context.Principal?.FindFirst("sv")?.Value ?? "") != (user.SecurityStamp ?? ""))
+                            context.Fail("Account or permissions are no longer valid.");
+                    }
+                };
                 o.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuerSigningKey = true,
@@ -102,7 +118,7 @@ public static class DependencyInjection
             {
                 Title = "Badminton Booking API v1",
                 Version = "v1",
-                Description = "Court booking (docs 01–05): branches, courts, " +
+                Description = "Court booking : branches, courts, " +
                               "slots, booking, payment, voucher, points, review."
             });
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme

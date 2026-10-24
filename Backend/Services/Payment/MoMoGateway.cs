@@ -66,12 +66,9 @@ namespace Services
         Task<MomoPayInit> CreatePayUrlAsync(MomoPayRequest request, CancellationToken ct);
     }
 
-    public sealed record MomoPayRequest(
-        string AppId, string PartnerCode, string PartnerRef,
-        long Timestamp, string IpAddr, int Amount,
-        string OrderInfo, string ReturnUrl,
-        string RequestId, string AccessKey, string Sign,
-        int PayMethod);
+    public sealed record MomoPayRequest(string PartnerCode, string OrderId, long Amount,
+        string OrderInfo, string RedirectUrl, string IpnUrl, string RequestId,
+        string Signature, string RequestType = "captureWallet", string ExtraData = "");
 
     public sealed record MomoPayInit(bool Ok, string? CreatePayUrl, string? OrderId,
         string? ErrorCode, string? Message);
@@ -89,37 +86,33 @@ namespace Services
 
         public async Task<MomoPayInit> CreatePayUrlAsync(MomoPayRequest r, CancellationToken ct)
         {
-            var payload = new Dictionary<string, string>
-            {
-                ["partnerCode"] = r.PartnerCode,
-                ["partnerRef"] = r.PartnerRef,
-                ["merchantRef"] = r.PartnerRef,
-                ["orderId"] = r.PartnerRef,
-                ["orderInfo"] = r.OrderInfo,
-                ["amount"] = r.Amount.ToString(),
-                ["returnUrl"] = r.ReturnUrl,
-                ["cancelUrl"] = r.ReturnUrl,
-                ["userId"] = r.AppId,
-                ["payMethod"] = r.PayMethod.ToString(),
-                ["requestId"] = r.RequestId,
-                ["timestamp"] = r.Timestamp.ToString(),
-                ["sign"] = r.Sign
-            };
-            var json = System.Text.Json.JsonSerializer.Serialize(payload);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            var resp = await _http.PostAsync(
-                _settings.Endpoint + "/gateway/api/" + _payMethod + "/createpayurl", content, ct);
-            var body = await resp.Content.ReadAsStringAsync(ct);
-            var doc = System.Text.Json.JsonDocument.Parse(body);
-            var code = doc.RootElement.TryGetProperty("resultCode", out var rc) ? rc.GetInt32() : -1;
-            var msg = doc.RootElement.TryGetProperty("message", out var m) ? m.GetString() ?? "" : "";
-            if (code != 0)
-                return new MomoPayInit(false, null, null, msg, msg);
-            var payUrl = doc.RootElement.TryGetProperty("createPayUrl", out var pu)
-                ? pu.GetString() : null;
-            var orderId = doc.RootElement.TryGetProperty("orderId", out var oid)
-                ? oid.GetString() : null;
-            return new MomoPayInit(true, payUrl, orderId, null, null);
+            using var content = new StringContent(System.Text.Json.JsonSerializer.Serialize(new {
+                partnerCode = r.PartnerCode, requestId = r.RequestId, orderId = r.OrderId,
+                amount = r.Amount, orderInfo = r.OrderInfo, redirectUrl = r.RedirectUrl,
+                ipnUrl = r.IpnUrl, requestType = r.RequestType, extraData = r.ExtraData,
+                signature = r.Signature, lang = "vi", autoCapture = true
+            }), Encoding.UTF8, "application/json");
+            using var resp = await _http.PostAsync(_settings.Endpoint.TrimEnd('/') + "/v2/gateway/api/create", content, ct);
+            if (!resp.IsSuccessStatusCode) return new(false, null, null, "HTTP_ERROR", "MoMo không xác nhận khởi tạo giao dịch.");
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("resultCode", out var code) || !code.TryGetInt32(out var result) || result != 0)
+                return new(false, null, null, "PROVIDER_REJECTED", "MoMo từ chối khởi tạo giao dịch.");
+            if (!root.TryGetProperty("orderId", out var order) || order.GetString() != r.OrderId
+                || !root.TryGetProperty("requestId", out var request) || request.GetString() != r.RequestId
+                || !root.TryGetProperty("amount", out var amount) || !amount.TryGetInt64(out var actualAmount) || actualAmount != r.Amount
+                || !root.TryGetProperty("payUrl", out var url) || url.ValueKind != System.Text.Json.JsonValueKind.String
+                || !Uri.TryCreate(url.GetString(), UriKind.Absolute, out var checkout) || checkout.Scheme != "https")
+                return new(false, null, null, "INVALID_RESPONSE", "Phản hồi MoMo không khớp giao dịch.");
+            var signedFields = WebhookSecurity.ReadObject(root.GetRawText());
+            string[] responseKeys = ["amount", "message", "orderId", "partnerCode", "payUrl", "requestId", "responseTime", "resultCode"];
+            if (responseKeys.Any(k => !signedFields.ContainsKey(k)) || signedFields["partnerCode"] != r.PartnerCode
+                || !signedFields.TryGetValue("signature", out var signature))
+                return new(false, null, null, "INVALID_RESPONSE", "MoMo thiếu dữ liệu xác minh phản hồi.");
+            var canonical = "accessKey=" + _settings.AccessKey + "&" + string.Join("&", responseKeys.Select(k => k + "=" + signedFields[k]));
+            var expected = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(_settings.SecretKey), Encoding.UTF8.GetBytes(canonical)));
+            if (!WebhookSecurity.EqualHex(signature, expected)) return new(false, null, null, "INVALID_RESPONSE", "Chữ ký phản hồi MoMo không hợp lệ.");
+            return new(true, checkout.AbsoluteUri, r.OrderId, null, null);
         }
     }
 
@@ -136,55 +129,25 @@ namespace Services
 
         public PaymentMethod Method { get; } = PaymentMethod.MoMo;
 
-        public bool IsConfigured => !string.IsNullOrWhiteSpace(_s.SecretKey);
+        public bool IsConfigured => !string.IsNullOrWhiteSpace(_s.AppId) && !string.IsNullOrWhiteSpace(_s.SecretKey);
 
-        public Task<PaymentInitResult> InitAsync(string bookingId, decimal amount,
+        public async Task<PaymentInitResult> InitAsync(string bookingId, decimal amount,
             string returnUrl, CancellationToken ct = default)
         {
-            if (!IsConfigured)
-                return Task.FromResult(PaymentInitResult.Fail(
-                    "MoMo chua duoc cau hinh (thieu SecretKey), khong the thanh toan truc tuyen."));
-
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var requestId = MoMoSigner.RequestId(timestamp * 1000);
-            var accessKey = MoMoSigner.AccessKey(requestId, _s.SecretKey);
-
-            var paramsDict = new Dictionary<string, string>
-            {
-                ["partnerCode"] = _s.AppId,
-                ["partnerRef"] = bookingId,
-                ["orderInfo"] = "Badminton Booking " + bookingId,
-                ["amount"] = ((int)amount).ToString(),
-                ["returnUrl"] = returnUrl,
-                ["cancelUrl"] = returnUrl,
-                ["requestId"] = requestId,
-                ["timestamp"] = timestamp.ToString()
-            };
-            var sign = MoMoSigner.ComputeSign(paramsDict);
-
-            var req = new MomoPayRequest(
-                _s.AppId, _s.AppId, bookingId, timestamp,
-                "127.0.0.1", (int)amount, "Badminton Booking " + bookingId,
-                returnUrl, requestId, accessKey, sign, 1);
-
-            return CreatePay(req, ct);
-        }
-
-        private async Task<PaymentInitResult> CreatePay(MomoPayRequest req, CancellationToken ct)
-        {
-            try
-            {
-                var init = await _client.CreatePayUrlAsync(req, ct);
-                if (!init.Ok)
-                    return PaymentInitResult.Fail(init.Message ?? "MoMo tra loi loi.");
-                if (string.IsNullOrEmpty(init.CreatePayUrl))
-                    return PaymentInitResult.Fail("MoMo khong tra ve payUrl.");
-                return PaymentInitResult.Success(init.OrderId ?? req.PartnerRef, init.CreatePayUrl);
-            }
-            catch (Exception ex)
-            {
-                return PaymentInitResult.Fail("Loi goi MoMo: " + ex.Message);
-            }
+            if (!IsConfigured || string.IsNullOrWhiteSpace(_s.AccessKey) || string.IsNullOrWhiteSpace(_s.IpayUrl))
+                return PaymentInitResult.Fail("MoMo chua duoc cau hinh (AppId/AccessKey/SecretKey/IpayUrl).");
+            if (amount != decimal.Truncate(amount) || amount < 1000 || amount > 50000000)
+                return PaymentInitResult.Fail("Số tiền nằm ngoài giới hạn ví MoMo.");
+            var orderInfo = "Badminton Booking " + bookingId;
+            var requestId = bookingId;
+            var canonical = $"accessKey={_s.AccessKey}&amount={amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}&extraData=&ipnUrl={_s.IpayUrl}&orderId={bookingId}&orderInfo={orderInfo}&partnerCode={_s.AppId}&redirectUrl={returnUrl}&requestId={requestId}&requestType=captureWallet";
+            var signature = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(_s.SecretKey), Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
+            var init = await _client.CreatePayUrlAsync(new(_s.AppId, bookingId, (long)amount,
+                orderInfo, returnUrl, _s.IpayUrl, requestId, signature), ct);
+            if (!init.Ok || string.IsNullOrWhiteSpace(init.CreatePayUrl))
+                return PaymentInitResult.Fail("MoMo không xác nhận khởi tạo giao dịch.");
+            if (init.OrderId != bookingId) return PaymentInitResult.Fail("MoMo trả về mã giao dịch không khớp.");
+            return PaymentInitResult.Success(bookingId, init.CreatePayUrl);
         }
 
         public Task<WebhookOutcome> VerifyWebhookAsync(RawWebhook raw, CancellationToken ct = default)
@@ -197,47 +160,33 @@ namespace Services
                 return Task.FromResult(new WebhookOutcome(false, false, raw.GatewayRef,
                     "webhook MoMo thieu body, khong the xac minh."));
 
-            // Parse the notification body for the order id + provider responseKey.
-            string? orderId = null;
-            string? providerKey = null;
-            string? status = null;
+            // MoMo v2 IPN: every settlement field belongs to the HMAC payload.
             try
             {
-                var doc = System.Text.Json.JsonDocument.Parse(raw.Body);
-                orderId = doc.RootElement.TryGetProperty("orderId", out var o) ? o.GetString() : null;
-                providerKey = doc.RootElement.TryGetProperty("responseKey", out var r) ? r.GetString() : null;
-                status = doc.RootElement.TryGetProperty("responseStatus", out var s) ? s.GetString() : null;
+                if (string.IsNullOrWhiteSpace(_s.AccessKey))
+                    return Task.FromResult(new WebhookOutcome(false, false, null, "MoMo thiếu AccessKey cho IPN."));
+                var fields = WebhookSecurity.ReadObject(raw.Body);
+                string[] keys = ["amount", "extraData", "message", "orderId", "orderInfo", "orderType", "partnerCode", "payType", "requestId", "responseTime", "resultCode", "transId"];
+                if (keys.Any(k => !fields.ContainsKey(k)) || !fields.TryGetValue("signature", out var signature))
+                    return Task.FromResult(new WebhookOutcome(false, false, null, "Webhook MoMo thiếu dữ liệu ký."));
+                var canonical = "accessKey=" + _s.AccessKey + "&" + string.Join("&", keys.Select(k => k + "=" + fields[k]));
+                var expected = Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(_s.SecretKey), Encoding.UTF8.GetBytes(canonical)));
+                if (!WebhookSecurity.EqualHex(signature, expected) || fields["partnerCode"] != _s.AppId
+                    || fields["orderId"] != raw.GatewayRef || !long.TryParse(fields["amount"], System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture, out var amount) || amount < 0)
+                    return Task.FromResult(new WebhookOutcome(false, false, null, "Chữ ký hoặc giao dịch MoMo không hợp lệ."));
+                return Task.FromResult(new WebhookOutcome(true, fields["resultCode"] == "0", fields["orderId"], null, amount, "VND", fields.GetValueOrDefault("transId")));
             }
             catch (System.Text.Json.JsonException)
             {
-                return Task.FromResult(new WebhookOutcome(false, false, raw.GatewayRef,
-                    "webhook MoMo body khong phu hop JSON."));
+                return Task.FromResult(new WebhookOutcome(false, false, null, "Webhook MoMo không hợp lệ."));
             }
-
-            if (string.IsNullOrEmpty(orderId))
-                return Task.FromResult(new WebhookOutcome(false, false, raw.GatewayRef,
-                    "webhook MoMo thieu orderId de xac minh."));
-
-            if (!string.IsNullOrWhiteSpace(raw.GatewayRef)
-                && !string.Equals(raw.GatewayRef, orderId, System.StringComparison.OrdinalIgnoreCase))
-                return Task.FromResult(new WebhookOutcome(false, false, raw.GatewayRef,
-                    "MoMo orderId khong khop voi gateway_ref (nguon goc nghich nhau)."));
-
-            var expectedKey = MoMoSigner.ResponseKey(orderId, _s.SecretKey);
-            if (string.IsNullOrWhiteSpace(providerKey)
-                || !string.Equals(providerKey, expectedKey, System.StringComparison.OrdinalIgnoreCase))
-                return Task.FromResult(new WebhookOutcome(false, false, raw.GatewayRef,
-                    "chu ky responseKey cua MoMo thieu hoac sai (khong the xac minh)."));
-
-            var success = status == "0";
-
-            return Task.FromResult(new WebhookOutcome(true, success, raw.GatewayRef, null));
         }
 
         public Task<RefundResult> RefundAsync(string bookingId, decimal amount,
             string reason, CancellationToken ct = default)
         {
-            return Task.FromResult(new RefundResult(true, amount, null));
+            return Task.FromResult(RefundResult.Fail("ONLINE_REFUND_UNAVAILABLE: Chưa có kết nối hoàn tiền online. Giao dịch chưa được hoàn; cần xử lý và đối soát với nhà cung cấp."));
         }
     }
 

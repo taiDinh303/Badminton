@@ -28,33 +28,38 @@ namespace Services
 
         public async Task<VoucherView> GetByCodeAsync(string code)
         {
-            var found = (await Repo.GetByConditionAsync(v => v.Code == code)).FirstOrDefault();
+            code = code.Trim().ToUpperInvariant();
+            var found = (await Repo.GetByConditionAsync(v => v.Code.ToUpper() == code)).FirstOrDefault();
             if (found is null) throw new NotFoundException("Voucher", code);
             return ToView(found);
         }
 
         public async Task<int> CreateAsync(CreateVoucherRequest request, int actorId)
         {
-            var dupes = await Repo.GetByConditionAsync(v => v.Code == request.Code);
+            var type = ParseType(request.Type);
+            var from = string.IsNullOrWhiteSpace(request.ValidFrom) ? HanoiTime.HanoiToday() : ParseDate(request.ValidFrom);
+            DateOnly? until = string.IsNullOrWhiteSpace(request.ValidUntil) ? null : ParseDate(request.ValidUntil);
+            if (string.IsNullOrWhiteSpace(request.Code) || request.Code.Trim().Length > 30 || request.Value <= 0
+                || (type == VoucherType.Percent && request.Value > 100) || request.MinSpend < 0
+                || request.MaxValue is <= 0 || request.TotalQty <= 0 || (until.HasValue && until < from))
+                throw new BadRequestException("Mã, giá trị, số lượng hoặc thời hạn voucher không hợp lệ.");
+            request = request with { Code = request.Code.Trim().ToUpperInvariant() };
+            var dupes = await Repo.GetByConditionAsync(v => v.Code.ToUpper() == request.Code);
             if (dupes.Count > 0) throw new ConflictException($"Mã {request.Code} đã tồn tại.");
 
             var entity = new Voucher
             {
                 Code = request.Code,
-                Type = ParseType(request.Type),
+                Type = type,
                 Value = request.Value,
                 MaxValue = request.MaxValue,
                 MinSpend = request.MinSpend,
                 MaxPerUser = 1,
                 TotalQty = request.TotalQty,
-                ValidFrom = string.IsNullOrWhiteSpace(request.ValidFrom)
-                    ? HanoiTime.HanoiToday()
-                    : ParseDate(request.ValidFrom),
-                ValidUntil = string.IsNullOrWhiteSpace(request.ValidUntil)
-                    ? null
-                    : ParseDate(request.ValidUntil)
+                ValidFrom = from,
+                ValidUntil = until
             };
-            _ = Repo.AddAsync(entity);
+            await Repo.AddAsync(entity);
             await SaveAsync();
             await _audit.LogAsync(actorId, "voucher.create", "Voucher", entity.Id.ToString(),
                 null, entity, $"Tạo voucher {entity.Code}");
@@ -74,24 +79,18 @@ namespace Services
 
         public async Task<int> PreviewDiscountAsync(string code, int userId, int baseAmount)
         {
-            var v = (await Repo.GetByConditionAsync(x => x.Code == code)).FirstOrDefault();
-            if (v is not null && IsExpired(v)) throw new BadRequestException("Voucher đã hết hạn sử dụng.");
-            if (v is null || !v.IsActive) return 0;
-
-            // P1-4: Hanoi business day, not the machine clock.
-            var today = HanoiTime.HanoiToday();
-            if (v.ValidUntil.HasValue && today > v.ValidUntil.Value) return 0;
-            if (today < v.ValidFrom) return 0;
-            if (baseAmount < v.MinSpend) return 0;
+            code = code.Trim().ToUpperInvariant();
+            var v = (await Repo.GetByConditionAsync(x => x.Code.ToUpper() == code)).FirstOrDefault();
+            ValidateApplicable(v, baseAmount);
 
             var redemptions = Repository<VoucherRedemption>();
             var used = await redemptions.GetByConditionAsync(
-                r => r.VoucherId == v.Id && r.UserId == userId);
+                r => r.VoucherId == v!.Id && r.UserId == userId);
             if (used.Count > 0)
                 throw new ConflictException("Bạn đã sử dụng mã voucher này. Hãy chọn mã khác.");
-            if (v.UsedQty >= v.TotalQty) return 0;
+            if (v!.UsedQty >= v.TotalQty) throw new ConflictException("Voucher đã hết lượt.");
 
-            return ComputeDiscount(v, baseAmount);
+            return ComputeDiscount(v!, baseAmount);
         }
 
         // ── Atomic reservation (total-qty + per-user limits) ──────────────
@@ -100,79 +99,66 @@ namespace Services
             string code, int userId, int baseAmount)
         {
             await Uow.LockVoucherUserAsync(userId);
-            var v = (await Repo.GetByConditionAsync(x => x.Code == code)).FirstOrDefault();
-            if (v is not null && IsExpired(v)) throw new BadRequestException("Voucher đã hết hạn sử dụng.");
-            if (v is null || !v.IsActive)
-                throw new BadRequestException("Voucher khong ap dung cho don nay.");
-
-            // P1-4: Hanoi business day, not the machine clock.
-            var today = HanoiTime.HanoiToday();
-            if (v.ValidUntil.HasValue && today > v.ValidUntil.Value)
-                throw new BadRequestException("Voucher đã hết hạn sử dụng.");
-            if (today < v.ValidFrom)
-                throw new BadRequestException("Voucher chua co hieu luc.");
-            if (baseAmount < v.MinSpend)
-                throw new BadRequestException("So tien don thap hon muc toi thieu cua voucher.");
+            code = code.Trim().ToUpperInvariant();
+            var v = (await Repo.GetByConditionAsync(x => x.Code.ToUpper() == code)).FirstOrDefault();
+            ValidateApplicable(v, baseAmount);
 
             var redemptions = Repository<VoucherRedemption>();
             var prior = await redemptions.GetByConditionAsync(
-                r => r.VoucherId == v.Id && r.UserId == userId);
+                r => r.VoucherId == v!.Id && r.UserId == userId);
             if (prior.Count > 0)
                 throw new ConflictException("Bạn đã sử dụng mã voucher này. Hãy chọn mã khác.");
 
-            var discount = ComputeDiscount(v, baseAmount);
+            var discount = ComputeDiscount(v!, baseAmount);
 
-            int claimed = await Uow.ExecuteSqlRawAsync(
-                "UPDATE \"Vouchers\" SET \"UsedQty\" = \"UsedQty\" + 1 " +
-                "WHERE \"Code\" = @p0 AND \"IsActive\" = @p1 AND \"UsedQty\" < \"TotalQty\"",
-                code, true);
+            int claimed = await Uow.Vouchers.ReserveAsync(v!.Code);
             if (claimed == 0)
                 throw new ConflictException("Voucher da het luot (total cap).");
 
             var redemption = new VoucherRedemption
             {
-                VoucherId = v.Id,
+                VoucherId = v!.Id,
                 UserId = userId,
                 DiscountAmount = discount
             };
-            _ = redemptions.AddAsync(redemption); // staged, not committed
+            await redemptions.AddAsync(redemption); // staged, not committed
 
             return (discount, redemption);
         }
 
-        public async Task ReleaseVoucherAsync(int redemptionId)
+        public Task ReleaseVoucherAsync(int redemptionId) => Uow.RunInTransactionAsync(async () =>
         {
-            var redemption = await Repository<VoucherRedemption>().GetByIdAsync(redemptionId);
+            var repo = Repository<VoucherRedemption>();
+            var candidate = (await repo.GetByConditionAsync(r => r.Id == redemptionId)).SingleOrDefault();
+            if (candidate is null) return;
+            await Uow.LockPointsUserAsync(candidate.UserId);
+            await Uow.LockVoucherUserAsync(candidate.UserId);
+            var redemption = (await repo.GetByConditionAsync(r => r.Id == redemptionId)).SingleOrDefault();
             if (redemption is null) return;
-
-            var v = await Repo.GetByIdAsync(redemption.VoucherId);
-            if (v is not null)
-            {
-                // Decrement only if the counter is still above zero (guarded).
-                var released = await Uow.ExecuteSqlRawAsync(
-                    "UPDATE \"Vouchers\" SET \"UsedQty\" = \"UsedQty\" - 1 " +
-                    "WHERE \"Id\" = @p0 AND \"UsedQty\" > 0",
-                    v.Id);
-                if (released > 0)
-                    _ = Repository<VoucherRedemption>().RemoveAsync(redemption);
-            }
-            else
-            {
-                _ = Repository<VoucherRedemption>().RemoveAsync(redemption);
-            }
+            if (await Uow.Vouchers.DeleteRedemptionAsync(redemptionId) > 0)
+                await Uow.Vouchers.ReleaseAsync(redemption.VoucherId);
             await SaveAsync();
+        });
+
+        private static void ValidateApplicable(Voucher? voucher, int baseAmount)
+        {
+            if (baseAmount < 0) throw new BadRequestException("Số tiền không được âm.");
+            if (voucher is null || !voucher.IsActive || voucher.DeletedAt.HasValue)
+                throw new BadRequestException("Voucher không áp dụng cho đơn này.");
+            var today = HanoiTime.HanoiToday();
+            if (voucher.ValidUntil is { } end && end < today) throw new BadRequestException("Voucher đã hết hạn sử dụng.");
+            if (today < voucher.ValidFrom) throw new BadRequestException("Voucher chưa có hiệu lực.");
+            if (baseAmount < voucher.MinSpend) throw new BadRequestException("Số tiền đơn thấp hơn mức tối thiểu của voucher.");
+            if (voucher.Value <= 0 || !Enum.IsDefined(voucher.Type) || voucher.MinSpend < 0 || voucher.TotalQty <= 0
+                || voucher.MaxValue is <= 0 || (voucher.Type == VoucherType.Percent && voucher.Value > 100))
+                throw new BadRequestException("Voucher có cấu hình không hợp lệ.");
         }
 
         private static int ComputeDiscount(Voucher v, int baseAmount)
         {
-            if (v.Type == VoucherType.Percent)
-            {
-                var discount = (int)Math.Round((decimal)baseAmount * (v.Value / 100m));
-                if (v.MaxValue.HasValue && discount > v.MaxValue.Value)
-                    discount = v.MaxValue.Value;
-                return discount;
-            }
-            return v.Value;
+            decimal discount = v.Type == VoucherType.Percent ? Math.Round((decimal)baseAmount * v.Value / 100m) : v.Value;
+            if (v.MaxValue is { } cap) discount = Math.Min(discount, cap);
+            return (int)Math.Clamp(discount, 0, baseAmount);
         }
 
         private async Task<Voucher> MustGetAsync(int id)
@@ -182,18 +168,20 @@ namespace Services
             return e;
         }
 
-        private static VoucherType ParseType(string s) =>
-            s.Equals("percent", System.StringComparison.OrdinalIgnoreCase)
-                ? VoucherType.Percent : VoucherType.Fixed;
+        private static VoucherType ParseType(string s) => s?.Trim().ToLowerInvariant() switch
+        {
+            "percent" => VoucherType.Percent,
+            "fixed" => VoucherType.Fixed,
+            _ => throw new BadRequestException("Loại voucher không hợp lệ.")
+        };
 
-        // P1-4: an unparseable date falls back to the Hanoi business day.
         private static DateOnly ParseDate(string s) =>
-            DateOnly.TryParse(s, out var d) ? d : HanoiTime.HanoiToday();
+            DateOnly.TryParse(s, out var d) ? d : throw new BadRequestException("Ngày voucher không hợp lệ.");
 
         private static VoucherView ToView(Voucher v) => new(
             v.Id, v.Code, v.Type.ToString(), v.Value, v.MaxValue, v.MinSpend,
             v.MaxPerUser, v.TotalQty, v.UsedQty,
-            v.ValidUntil?.ToString("yyyy-MM-dd"), v.ValidFrom.ToString("yyyy-MM-dd"), v.IsActive && !IsExpired(v));
+            v.ValidFrom.ToString("yyyy-MM-dd"), v.ValidUntil?.ToString("yyyy-MM-dd"), v.IsActive && !IsExpired(v));
 
         private static bool IsExpired(Voucher v) => v.ValidUntil is { } end && end < HanoiTime.HanoiToday();
     }

@@ -12,6 +12,12 @@ namespace Contract.Repositories.Entity
         public int Amount { get; set; }
         public PaymentMethod Method { get; set; }
         public string? GatewayRef { get; set; }
+        public string? ProviderTransactionId { get; set; }
+        public string? ProviderTransactionDate { get; set; }
+        public string? GatewayUrl { get; set; }
+        public string? ReturnUrl { get; set; }
+        public bool ReconciliationRequired { get; set; }
+        public string? ReconciliationReason { get; set; }
         public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
         public int RefundAmount { get; set; }
         public DateTime? RefundedAt { get; set; }

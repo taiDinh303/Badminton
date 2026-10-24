@@ -35,6 +35,7 @@ namespace Repositories.Context
 
             mb.Entity<User>(e =>
             {
+                e.Property(x => x.SecurityStamp).HasMaxLength(32);
                 e.ToTable("Users");
                 e.HasKey(x => x.Id);
                 e.Property(x => x.Id).ValueGeneratedOnAdd();
@@ -125,6 +126,7 @@ namespace Repositories.Context
             // ---- Bookings ----
             mb.Entity<Booking>(e =>
             {
+                e.Property(x => x.RequestFingerprint).HasMaxLength(64);
                 e.ToTable("Bookings");
                 e.HasKey(x => x.Id);
                 e.Property(x => x.Id).ValueGeneratedOnAdd();
@@ -206,6 +208,12 @@ namespace Repositories.Context
                     .HasConversion(s => s.ToString(), s => Enum.Parse<PaymentStatus>(s))
                     .HasMaxLength(20).HasDefaultValue(PaymentStatus.Pending);
                 e.Property(x => x.GatewayRef).HasMaxLength(120);
+                e.Property(x => x.ProviderTransactionId).HasMaxLength(100);
+                e.Property(x => x.ProviderTransactionDate).HasMaxLength(14);
+                e.Property(x => x.GatewayUrl).HasMaxLength(2048);
+                e.Property(x => x.ReturnUrl).HasMaxLength(2048);
+                e.Property(x => x.ReconciliationReason).HasMaxLength(80);
+                e.HasIndex(x => new { x.ReconciliationRequired, x.CreatedAt });
                 e.Property(x => x.RawResponse).HasMaxLength(2000);
                 e.HasIndex(x => x.BookingId);
                 e.HasIndex(x => x.GatewayRef).IsUnique().HasFilter("\"GatewayRef\" IS NOT NULL");
@@ -214,6 +222,17 @@ namespace Repositories.Context
                     .HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Cascade);
                 e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            mb.Entity<OnlineRefundOperation>(e =>
+            {
+                e.ToTable("OnlineRefundOperations");
+                e.HasKey(x => x.Id);
+                e.Property(x => x.RequestId).HasMaxLength(50).IsRequired();
+                e.Property(x => x.Reason).HasMaxLength(255).IsRequired();
+                e.HasIndex(x => x.PaymentId).IsUnique();
+                e.HasIndex(x => x.RequestId).IsUnique();
+                e.HasOne<Payment>().WithMany().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
             });
 
             // ---- Vouchers / Redemptions ----

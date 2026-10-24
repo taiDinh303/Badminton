@@ -5,8 +5,18 @@ namespace Contract.Repositories.Entity
 {
     public class Booking : IntBaseEntity
     {
+        public void Complete(int earnedPoints, DateTime now)
+        {
+            if (Status != BookingStatus.Confirmed)
+                throw new Badminton.Core.Base.ConflictException("Chỉ hoàn thành đơn đã xác nhận.");
+            if (earnedPoints < 0) throw new ArgumentOutOfRangeException(nameof(earnedPoints));
+            Status = BookingStatus.Completed;
+            PointsEarned = earnedPoints;
+            UpdatedAt = now;
+        }
         public string BookingCode { get; set; } = null!;
         public string? IdempotencyKey { get; set; }
+        public string? RequestFingerprint { get; set; }
         public int UserId { get; set; }
         public User? User { get; set; }
         public int? GroupId { get; set; }

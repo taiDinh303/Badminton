@@ -15,7 +15,7 @@ namespace ModelViews.Booking
         string? QrToken = null, DateTime? CheckedInAt = null, int UserId = 0);
 
     public record CourtAvailabilityView(int CourtId, string CourtCode, string CourtName,
-        int PriceLowPeak, int PricePeak, List<SlotView> Slots);
+        int PriceLowPeak, int PricePeak, List<SlotView> Slots, int Capacity = 10);
 
     public record SlotView(int SlotId, string Label, string StartTime, string EndTime,
         bool IsPeak, bool IsLocked, string LockReason);

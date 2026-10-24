@@ -7,17 +7,18 @@
 | Mức | Công cụ / phạm vi | Không tự chứng minh |
 | --- | --- | --- |
 | Config/architecture | xUnit configuration synthetic, reflection | DB/gateway kết nối thật |
-| Service/DB | TestHost DI + SQL Server BadmintonTest_* | Routing/JWT/browser |
+| Service/DB | TestHost DI + SQL Server/PostgreSQL loopback BadmintonTest_* | Routing/JWT/browser |
 | HTTP/DB | Kestrel loopback + JWT/controllers + DB fixture | Payment sandbox/cloud |
 | Frontend pure | Node test env/date/currency | UI hoặc server |
-| Browser | Playwright built SPA, mock API | DB/gateway thật |
+| Browser mock | Playwright built SPA, mock API | DB/gateway thật |
+| Browser tích hợp | Built SPA + Kestrel + BCrypt/JWT + DB fixture, không mock API | Gateway/cloud thật |
 | Load/cloud | Script hiện hữu, chưa nghiệm thu | Không suy p95/production từ build |
 
 ## 2. Backend
 
 [Tests](../Backend/Tests) bao gồm slot/refund concurrency, webhook replay/signature, voucher, lifecycle/points, timezone, notify/waitlist/check-in/membership và cancel-refund. ConfigurationAndArchitectureTests kiểm key/CORS/init/provider/notify, thông báo không lộ secret và dependency không tham chiếu ngược persistence/HTTP.
 
-HttpBookingFlowTests dùng JWT thật: tạo/đọc đơn; chặn anonymous/customer khác/manager khác branch; retry key; snapshot giá; readiness khi jobs tắt. Host không gọi initializer/worker. Fixture EnsureCreated không thay migration nâng cấp. Gateway tests dùng stub, không thu tiền/gửi SMS thật.
+HttpBookingFlowTests dùng JWT thật: tạo/đọc đơn; chặn anonymous/customer khác/manager khác branch; retry key; snapshot giá; readiness khi jobs tắt. Host không gọi initializer/worker. HTTP fixture dùng migrations thật; các service fixture SQL mặc định EnsureCreated, PostgreSQL luôn migrations. Gateway tests dùng stub, không thu tiền/gửi SMS thật.
 
 Root repo:
 
@@ -55,3 +56,11 @@ Test redeem cũ giả định ngày thường đã sửa expected theo cuối tu
 ## 5. Gate và ghi bằng chứng
 
 Ghi ngày/commit/SDK/Node/provider/lệnh/pass/fail/skip/artifact/giới hạn. Không coi build là acceptance live. Gateway sandbox, migration/restore, tải nhiều instance và các điểm chưa chốt phải đạt [14](14-release-checklist.md) trước dùng thật.
+
+## 6. Bộ kiểm thử tích hợp mới — CURRENT 24/10/2026
+
+ProjectQualityTests kiểm giá không đổi theo người, quote không giữ voucher/điểm, sức chứa, legacy overlap, group concurrent join, registration BCrypt limits, receipt dates/refund-only days, occupancy/maintenance và retry notification. HttpBookingFlowTests kiểm quyền ghi slot, quote contract, migration readiness và quản trị cơ sở. Ngày UTC lưu dạng Unspecified trên SQL được diễn giải là UTC.
+
+Chạy từ Frontend sau npm run build và cài Chromium: `npx tsc -p tsconfig.e2e.json --noEmit`, `npx playwright test`, rồi `npx playwright test --config playwright.integration.config.ts`. Suite tích hợp dùng Backend/BrowserTests riêng, cần env BADMINTON_TEST_SQLSERVER hoặc BADMINTON_TEST_POSTGRES local, tự tạo/xóa BadmintonTest_*. Không dùng VITE_API_URL remote/local overrides cho suite này: built SPA cần same-origin /api/v1. Hạ host bằng test teardown; không chạy chung suite tích hợp trên cùng cổng5099.
+
+CI không có bước deploy. Docker build/runner GitHub là mức kiểm riêng, không suy ra từ local Windows. Command/count cuối cùng ở worklog.

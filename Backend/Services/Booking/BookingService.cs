@@ -18,204 +18,39 @@ namespace Services
 {
     public sealed class BookingService : BaseService, IBookingService
     {
-        private readonly IPricingService _pricing;
+        private readonly BookingCreationService _creation;
+        private readonly BookingQuoteService _quote;
+        private readonly BookingAvailabilityService _availability;
         private readonly IVoucherService _vouchers;
         private readonly IGroupService _groups;
         private readonly IAuditService _audit;
         private readonly IPointService _points;
         private readonly IPaymentService _payments;
-        private readonly INotifyService _notify;
+        private readonly BookingLifecycleService _lifecycle;
 
         public BookingService(IUnitOfWork uow, ICurrentUser currentUser,
-            IPricingService pricing, IVoucherService vouchers, IGroupService groups,
+            BookingCreationService creation, IVoucherService vouchers, IGroupService groups,
             IAuditService audit, IPointService points, IPaymentService payments,
-            INotifyService notify)
+            BookingLifecycleService lifecycle, BookingAvailabilityService availability, BookingQuoteService quote)
             : base(uow, currentUser)
         {
-            _pricing = pricing;
+            _creation = creation;
+            _quote = quote;
+            _availability = availability;
             _vouchers = vouchers;
             _groups = groups;
             _audit = audit;
             _points = points;
             _payments = payments;
-            _notify = notify;
+            _lifecycle = lifecycle;
         }
 
         private IGenericRepository<Booking> Repo => Repository<Booking>();
 
-        public async Task<BookingView> CreateAsync(CreateBookingRequest request, int userId)
-        {
-            if (!string.IsNullOrWhiteSpace(request.IdempotencyKey))
-            {
-                var existing = (await Repo.GetByConditionAsync(
-                    b => b.IdempotencyKey == request.IdempotencyKey)).FirstOrDefault();
-                if (existing is not null)
-                {
-                    if (existing.UserId != userId || existing.CourtId != request.CourtId || existing.SlotId != request.SlotId
-                        || existing.Date != ParseDate(request.Date) || existing.GroupId != request.GroupId
-                        || existing.PlayerCount != request.PlayerCount)
-                        throw new ConflictException("IdempotencyKey đã được dùng cho một yêu cầu khác.");
-                    return await ToView(existing);
-                }
-            }
+        public Task<BookingPriceBreakdown> QuoteAsync(CreateBookingRequest request, int userId) => _quote.QuoteAsync(request, userId);
 
-            var court = await Repository<Court>().GetByIdAsync(request.CourtId);
-            if (court is null || !court.IsActive)
-                throw new BadRequestException("San khong ton tai hoac khong hoat dong.");
-
-            var slot = await Repository<TimeSlot>().GetByIdAsync(request.SlotId);
-            if (slot is null || !slot.IsActive)
-                throw new BadRequestException("Khung gio khong ton tai.");
-            var branch = await Repository<Branch>().GetByIdAsync(court.BranchId);
-            if (branch is null || slot.StartTime < branch.OpenTime || slot.EndTime > branch.CloseTime)
-                throw new BadRequestException("Khung giờ nằm ngoài giờ mở cửa của cơ sở.");
-
-            var date = ParseDate(request.Date);
-
-            var dateStatus = await GetCourtDateStatus(court.Id, date, slot);
-            if (dateStatus != CourtDateStatus.Open)
-                throw new ConflictException("San dang bao tri hoac dong trong ngay nay.");
-
-            var hanoiNow = HanoiTime.HanoiNow();
-            var slotStart = HanoiTime.SlotStart(date, slot.StartTime);
-            if (slotStart < hanoiNow.AddMinutes(30))
-                throw new BadRequestException(
-                    "Thoi gian nay khong the dat (slot da bat dau hoac trong 30 phut toi).");
-            var hanoiToday = HanoiTime.HanoiToday();
-            if (date > hanoiToday.AddDays(30))
-                throw new BadRequestException("Vui long chon ngay trong 30 ngay toi.");
-
-            var requester = await Repository<User>().GetByIdAsync(userId);
-            if (requester is null || requester.DeletedAt.HasValue || requester.Status != UserStatus.Active || !requester.IsVerified)
-                throw new ConflictException("Tài khoản chưa được xác minh hoặc đã bị khóa.");
-            if (requester is not null
-                && requester.NoShowLimited
-                && requester.NoShowLimitedPeriod is { } lp
-                && lp == HanoiTime.HanoiToday().MonthStart())
-                throw new ConflictException(
-                    "Tai khoan dang bi gioi han dat sau 3 lan ko di (thang nay). Thang tiep se mo lai.");
-
-            if (request.GroupId is { } groupId)
-            {
-                if (!await _groups.CanBookForGroupAsync(groupId, userId))
-                    throw new ConflictException("Chi nguoi tao nhom duoc dat cho nhom.");
-                if (await CountActiveBookings(userId, groupId, date) >= 8)
-                    throw new ConflictException("Nhom da dat gi?i han 8 slot/ngay.");
-            }
-            else
-            {
-                if (await CountActiveBookings(userId, null, date) >= 4)
-                    throw new ConflictException("Ban da dat gi?i han 4 slot/ngay.");
-            }
-
-            var perPerson = (int)_pricing.WithWeekend(
-                court.PriceLowPeak, court.PricePeak, slot.IsPeak,
-                court.WeekendSurcharge, IsWeekend(date));
-
-            var playerCount = Math.Max(1, request.PlayerCount);
-            // Order total = court-hour rate × number of players. The frontend
-            // previews the voucher against this same base (per-person, group
-            // booking), so preview and submit stay consistent. NOTE: docs 01 §3
-            // describes the rate as VND/giờ (per court-hour); billing per
-            // person is the policy applied here — confirm in 08-plan.
-            var total = perPerson * playerCount;
-
-            Booking? booking = null;
-            await Uow.RunInTransactionAsync(async () =>
-            {
-                await LockCourtDateAsync(court.Id, date);
-                if (await GetCourtDateStatus(court.Id, date, slot) != CourtDateStatus.Open)
-                    throw new ConflictException("Sân bảo trì/đóng trong khung giờ này.");
-                int voucherDiscount = 0;
-                int pointsDiscount = 0;
-                VoucherRedemption? voucherRedemption = null;
-
-                if (!string.IsNullOrWhiteSpace(request.VoucherCode))
-                {
-                    (voucherDiscount, voucherRedemption) =
-                        await _vouchers.ReserveVoucherAsync(
-                            request.VoucherCode, userId, total);
-                }
-
-                int pointsRedeemedCount = 0;
-                if (request.PointsToRedeem is { } ptsReq && ptsReq > 0)
-                {
-                    var afterVoucher = total - voucherDiscount;
-                    // maxPointsThatFit = points whose 20k-per-1000 discount â‰¤ afterVoucher.
-                    var maxPointsThatFit = (long)afterVoucher * 1_000 / 20_000;
-                    pointsRedeemedCount = Math.Min(ptsReq, (int)maxPointsThatFit);
-                    if (pointsRedeemedCount < 1_000)
-                        pointsRedeemedCount = 0; // can't redeem less than one 1000-pt unit
-                    pointsDiscount = pointsRedeemedCount * 20_000 / 1_000;
-                }
-
-                var finalAmount = Math.Max(0, total - voucherDiscount - pointsDiscount);
-
-                var b = new Booking
-                {
-                    BookingCode = GenerateCode(),
-                    IdempotencyKey = request.IdempotencyKey,
-                    UserId = userId,
-                    GroupId = request.GroupId,
-                    CourtId = court.Id,
-                    SlotId = slot.Id,
-                    BranchId = court.BranchId,
-                    Date = date,
-                    PlayerCount = Math.Max(1, request.PlayerCount),
-                    Status = BookingStatus.Pending,
-                    TotalAmount = total,
-                    DiscountAmount = voucherDiscount + pointsDiscount,
-                    PayableAmount = finalAmount,
-                    PointsRedeemed = pointsRedeemedCount,
-                    PendingExpiresAt = DateTime.UtcNow.AddMinutes(10),
-                    Note = request.Note
-                };
-
-                // In-transaction slot pre-check
-                var slotTaken = await Repo.GetByConditionAsync(x =>
-                    x.CourtId == court.Id && x.Date == date && x.SlotId == slot.Id
-                    && (x.Status == BookingStatus.Pending || x.Status == BookingStatus.Confirmed));
-                if (slotTaken.Count > 0)
-                    throw new ConflictException(
-                        "SLOT_CONFLICT: san nay gio vay vua duoc dat, hay chon khung khac.");
-
-                _ = Repo.AddAsync(b);
-                var user = await Repository<User>().GetByIdAsync(userId);
-                _ = Repository<BookingPlayer>().AddAsync(new BookingPlayer
-                {
-                    UserId = userId,
-                    IsCreator = true,
-                    Booking = b,
-                    User = user
-                });
-
-                try { await SaveAsync(); }
-                catch (UniqueConstraintException ex)
-                {
-                    if (ex.ConstraintName == "ux_court_slot_active")
-                        throw new ConflictException(
-                            "SLOT_CONFLICT: san nay gio vay vua duoc dat, hay chon khung khac.");
-                    throw;
-                }
-
-                // Patch cross-links now that both rows have primary keys.
-                if (voucherRedemption is not null)
-                {
-                    voucherRedemption.BookingId = b.Id;
-                    b.VoucherRedemptionId = voucherRedemption.Id;
-                }
-
-                if (b.PointsRedeemed > 0)
-                    await _points.RedeemAsync(userId, b.Id, b.PointsRedeemed, b.BookingCode);
-
-                if (voucherRedemption is not null || b.PointsRedeemed > 0)
-                    await SaveAsync();
-
-                booking = b;
-            });
-
-            return await ToView(booking!);
-        }
+        public async Task<BookingView> CreateAsync(CreateBookingRequest request, int userId) =>
+            await ToView(await _creation.CreateAsync(request, userId));
 
         // - read ------------------------------------------------------------
 
@@ -315,7 +150,7 @@ namespace Services
 
                 var basePrice = b.TotalAmount;
                 const int weekendOnly = 0;
-                var pointsVnd = b.PointsRedeemed * 20_000 / 1_000; // 1000 pts â†’ 20k
+                var pointsVnd = b.PointsRedeemed * 20_000 / 1_000;
                 var voucherVnd = b.DiscountAmount - pointsVnd;
                 var breakdown = new BookingPriceBreakdown(
                     basePrice, weekendOnly, voucherVnd, pointsVnd,
@@ -338,19 +173,27 @@ namespace Services
 
         public async Task CancelForMaintenanceAsync(int bookingId, int actorId)
         {
+            var booking = await Repo.GetByIdAsync(bookingId) ?? throw new NotFoundException("Booking", bookingId);
+            await AuthorizeStaffBranchAsync(booking.BranchId, actorId);
+            if (booking.Status == BookingStatus.Confirmed)
+            {
+                await _payments.RefundForMaintenanceAsync(bookingId, actorId, "Hoàn toàn phần do sân bảo trì/đóng");
+                return;
+            }
+            await Uow.RunInTransactionAsync(() => CancelForMaintenanceCoreAsync(bookingId, actorId));
+        }
+
+        private async Task CancelForMaintenanceCoreAsync(int bookingId, int actorId)
+        {
             var b = await Repo.GetByIdAsync(bookingId) ?? throw new NotFoundException("Booking", bookingId);
             await AuthorizeStaffBranchAsync(b.BranchId, actorId);
             if (b.Status == BookingStatus.Confirmed)
             {
-                await _payments.RefundForMaintenanceAsync(bookingId, actorId, "Hoàn toàn phần do sân bảo trì/đóng");
-                if (b.VoucherRedemptionId is { } rid) await _vouchers.ReleaseVoucherAsync(rid);
-                return;
+                throw new ConflictException("Đơn vừa được thanh toán. Lưu lại lịch để xử lý hoàn tiền.");
             }
             if (b.Status != BookingStatus.Pending) return;
             var now = DateTime.UtcNow;
-            var claimed = await Uow.ExecuteSqlRawAsync(
-                "UPDATE \"Bookings\" SET \"Status\"='Cancelled', \"CancelReason\"=@p0, \"CancelledAt\"=@p1, \"UpdatedAt\"=@p1 WHERE \"Id\"=@p2 AND \"Status\"='Pending'",
-                "Sân bảo trì/đóng", now, bookingId);
+            var claimed = await Uow.Bookings.CancelPendingAsync(bookingId, "Sân bảo trì/đóng", now);
             if (claimed == 0) throw new ConflictException("Đơn vừa thay đổi trạng thái. Lưu lại lịch để xử lý hoàn tiền.");
             b.Status = BookingStatus.Cancelled; b.CancelReason = "Sân bảo trì/đóng"; b.CancelledAt = now; b.UpdatedAt = now;
             Repo.Update(b);
@@ -362,6 +205,21 @@ namespace Services
 
         public async Task<BookingView> CancelAsync(int bookingId, int actorId)
         {
+            var booking = await Repo.GetByIdAsync(bookingId) ?? throw new NotFoundException("Booking", bookingId);
+            if (booking.DeletedAt.HasValue) throw new NotFoundException("Booking", bookingId);
+            await AuthorizeCancel(booking, actorId);
+            if (booking.Status is BookingStatus.Confirmed or BookingStatus.Completed)
+            {
+                await _payments.CancelRefundAsync(bookingId, actorId, "Khach/manager huy don da thanh toan.");
+                return await ToView((await Repo.GetByConditionAsync(x => x.Id == bookingId)).Single());
+            }
+            BookingView result = null!;
+            await Uow.RunInTransactionAsync(async () => result = await CancelCoreAsync(bookingId, actorId));
+            return result;
+        }
+
+        private async Task<BookingView> CancelCoreAsync(int bookingId, int actorId)
+        {
             var b = await Repo.GetByIdAsync(bookingId);
             if (b is null || b.DeletedAt.HasValue)
                 throw new NotFoundException("Booking", bookingId);
@@ -372,22 +230,7 @@ namespace Services
 
             if (b.Status is BookingStatus.Confirmed or BookingStatus.Completed)
             {
-                if (b.VoucherRedemptionId is { } paidRid)
-                    await _vouchers.ReleaseVoucherAsync(paidRid);
-
-                var refund = await _payments.CancelRefundAsync(bookingId, actorId,
-                    "Khach/manager huy don da thanh toan.");
-                b.Status = BookingStatus.Cancelled;
-                b.CancelledAt = DateTime.UtcNow;
-                b.CancelReason = "Huy don da thanh toan (hoan tien theo quy dinh)";
-                b.UpdatedAt = DateTime.UtcNow;
-                Repo.Update(b);
-                await SaveAsync();
-                await _audit.LogAsync(actorId, "booking.cancel-paid", "Booking", b.Id.ToString(),
-                    new { b.Status },
-                    new { Status = b.Status, RefundGatewayRef = refund.GatewayRef, RefundAmount = refund.RefundAmount },
-                    b.CancelReason);
-                return await ToView(b);
+                throw new ConflictException("Đơn vừa được thanh toán. Vui lòng gửi lại yêu cầu hủy để xử lý hoàn tiền.");
             }
 
             // Unpaid (Pending) path: just release the slot + voucher + points.
@@ -396,6 +239,8 @@ namespace Services
                 : null;
 
             var before = new { b.Status, b.CancelReason };
+            if (await Uow.Bookings.CancelPendingAsync(bookingId, "Khach/manager huy", DateTime.UtcNow) == 0)
+                throw new ConflictException("Đơn vừa thay đổi trạng thái. Vui lòng tải lại.");
             b.Status = BookingStatus.Cancelled;
             b.CancelledAt = DateTime.UtcNow;
             b.CancelReason = "Khach/manager huy";
@@ -415,186 +260,18 @@ namespace Services
             return await ToView(b);
         }
 
-        // - lifecycle: Confirmed â†’ Completed / NoShow -----------------------
+        public async Task<BookingView> MarkCompletedAsync(int bookingId, int actorId, string? note = null) =>
+            await ToView(await _lifecycle.MarkCompletedAsync(bookingId, actorId, note));
 
-        public async Task<BookingView> MarkCompletedAsync(int bookingId, int actorId, string? note = null)
-        {
-            var b = await MustGetActive(bookingId);
-            await AuthorizeStaffBranchAsync(b.BranchId, actorId);
-            if (b.Status is not BookingStatus.Confirmed)
-                throw new ConflictException($"Chi duoc danh dau hoan thanh don o trang thai Confirmed (hien tai: {b.Status}).");
-
-            int claimed = await Uow.ExecuteSqlRawAsync(
-                "UPDATE \"Bookings\" SET \"Status\" = 'Completed', \"PointsEarned\" = @p0, " +
-                "  \"UpdatedAt\" = @p1 " +
-                "WHERE \"Id\" = @p2 AND \"Status\" = 'Confirmed'",
-                b.PayableAmount, DateTime.UtcNow, bookingId);
-            if (claimed == 0)
-            {
-                var nowStatus = await Repo.GetByIdAsync(bookingId);
-                throw new ConflictException(
-                    $"Don {b.BookingCode} da o trang thai {nowStatus?.Status}, khong con the hoan thanh.");
-            }
-            b.Status = BookingStatus.Completed;
-            b.PointsEarned = b.PayableAmount; // DEC-01: points bank at Completed
-            b.UpdatedAt = DateTime.UtcNow;
-            if (!string.IsNullOrWhiteSpace(note)) b.CancelReason = note; // reuse free-text field
-            Repo.Update(b);
-            await SaveAsync();
-
-            if (b.PayableAmount > 0)
-                await _points.AwardAsync(b.UserId, b.Id, b.PayableAmount,
-                    $"completed booking {b.BookingCode}");
-
-            await _audit.LogAsync(actorId, "booking.complete", "Booking", b.Id.ToString(),
-                new { b.Status }, new { b.Status }, note);
-            return await ToView(b);
-        }
-
-        public async Task<BookingView> MarkNoShowAsync(int bookingId, int actorId, string? note = null)
-        {
-            var b = await MustGetActive(bookingId);
-            await AuthorizeStaffBranchAsync(b.BranchId, actorId);
-            if (b.Status is not BookingStatus.Confirmed)
-                throw new ConflictException($"Chi duoc gan co no-show don o trang thai Confirmed (hien tai: {b.Status}).");
-
-            var slot = await Repository<TimeSlot>().GetByIdAsync(b.SlotId);
-            if (slot is not null)
-            {
-                var slotStart = HanoiTime.SlotStart(b.Date, slot.StartTime);
-                var hanoiNow = HanoiTime.HanoiNow();
-                if (hanoiNow < slotStart)
-                    throw new ConflictException(
-                        $"Khung gio chua bat dau (bat dau {slot.StartTime:HH\\:mm}), khong the gan co no-show.");
-            }
-
-            int claimed = await Uow.ExecuteSqlRawAsync(
-                "UPDATE \"Bookings\" SET \"Status\" = 'NoShow', \"CancelReason\" = @p0, " +
-                "  \"CancelledAt\" = @p1, \"UpdatedAt\" = @p2 " +
-                "WHERE \"Id\" = @p3 AND \"Status\" = 'Confirmed'",
-                "No-show: khach khong den san" + (string.IsNullOrWhiteSpace(note) ? "" : " - " + note),
-                DateTime.UtcNow, DateTime.UtcNow, bookingId);
-            if (claimed == 0)
-            {
-                var nowStatus = await Repo.GetByIdAsync(bookingId);
-                throw new ConflictException(
-                    $"Don {b.BookingCode} da o trang thai {nowStatus?.Status}, khong con the gan co no-show.");
-            }
-            b.Status = BookingStatus.NoShow;
-            b.CancelledAt = DateTime.UtcNow;
-            b.CancelReason = "No-show: khach khong den san" + (string.IsNullOrWhiteSpace(note) ? "" : " - " + note);
-            b.UpdatedAt = DateTime.UtcNow;
-            Repo.Update(b);
-
-            if (b.PointsEarned > 0 && await _points.HasEarnedRowAsync(b.Id))
-                await _points.ClawbackAsync(b.UserId, b.Id, b.PointsEarned,
-                    "no-show: " + b.BookingCode);
-
-            // FEAT 1: notify the customer they were recorded as a no-show.
-            await _notify.NotifyNoShowAsync(b.Id);
-
-            // Increment the user's no-show counter (calendar month keyed).
-            var user = await Repository<User>().GetByIdAsync(b.UserId);
-            if (user is not null)
-            {
-                var monthStart = HanoiTime.HanoiToday().MonthStart();
-                if (user.NoShowPeriod != monthStart)
-                {
-                    user.NoShowPeriod = monthStart;
-                    user.NoShowCount = 0; // new month window
-                }
-                user.NoShowCount++;
-                if (user.NoShowCount >= 3)
-                {
-                    // Block next Hanoi month: set the limit flag + period.
-                    user.NoShowLimited = true;
-                    user.NoShowLimitedPeriod = monthStart.AddMonths(1);
-                }
-                Repository<User>().Update(user);
-            }
-
-            await SaveAsync();
-            await _audit.LogAsync(actorId, "booking.no-show", "Booking", b.Id.ToString(),
-                new { beforeStatus = BookingStatus.Confirmed },
-                new { afterStatus = b.Status }, note);
-            return await ToView(b);
-        }
+        public async Task<BookingView> MarkNoShowAsync(int bookingId, int actorId, string? note = null) =>
+            await ToView(await _lifecycle.MarkNoShowAsync(bookingId, actorId, note));
 
         // - availability grid ----------------------------------------------
 
-        public async Task<IReadOnlyList<CourtAvailabilityView>> GetAvailabilityAsync(int branchId, DateOnly date)
-        {
-            var branch = await Repository<Branch>().GetByIdAsync(branchId);
-            if (branch is null) throw new NotFoundException("Branch", branchId);
-            var courts = await Repository<Court>().GetByConditionAsync(
-                c => c.BranchId == branchId && c.IsActive && c.DeletedAt == null);
-            var slots = await Repository<TimeSlot>().GetByConditionAsync(
-                s => s.IsActive && s.DeletedAt == null);
-            var hanoiNowAvail = HanoiTime.HanoiNow();
-
-            var courtIds = courts.Select(c => c.Id).ToList();
-            var dateStatusRows = await Repository<CourtDateStatusEntry>().GetByConditionAsync(
-                r => r.Date == date && courtIds.Contains(r.CourtId));
-            var statusByCourt = dateStatusRows
-                .ToDictionary(r => r.CourtId);
-
-            var bookedRows = await Repo.GetByConditionAsync(b =>
-                b.Date == date && courtIds.Contains(b.CourtId)
-                && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed));
-            var bookedByCourt = bookedRows
-                .GroupBy(b => b.CourtId)
-                .ToDictionary(g => g.Key, g => g.Select(b => b.SlotId).ToHashSet());
-
-            var views = new List<CourtAvailabilityView>(courts.Count);
-            foreach (var c in courts)
-            {
-                statusByCourt.TryGetValue(c.Id, out var schedule);
-                var bookedSlots = bookedByCourt.TryGetValue(c.Id, out var set) ? set : default;
-                bookedSlots ??= new HashSet<int>();
-
-                var slotViews = slots.Where(sl => sl.StartTime >= branch.OpenTime && sl.EndTime <= branch.CloseTime)
-                    .OrderBy(sl => sl.StartTime).Select(sl =>
-                {
-                    var start = HanoiTime.SlotStart(date, sl.StartTime);
-                    var dayStatus = schedule?.Blocks(sl.StartTime, sl.EndTime) == true ? schedule.Status : CourtDateStatus.Open;
-                    var isLocked = dayStatus != CourtDateStatus.Open
-                        || bookedSlots.Contains(sl.Id)
-                        || start < hanoiNowAvail.AddMinutes(30);
-                    var lockReason = isLocked
-                        ? (dayStatus != CourtDateStatus.Open ? (dayStatus == CourtDateStatus.Maintenance ? "Bảo trì" : "Đóng")
-                          : bookedSlots.Contains(sl.Id) ? "Đã đặt"
-                          : "Đã qua giờ đặt")
-                        : "";
-                    return new SlotView(sl.Id, sl.Label,
-                        sl.StartTime.ToString("HH\\:mm"), sl.EndTime.ToString("HH\\:mm"),
-                        sl.IsPeak, isLocked, lockReason);
-                }).ToList();
-
-                views.Add(new CourtAvailabilityView(
-                    c.Id, c.Code, c.Name, c.PriceLowPeak, c.PricePeak, slotViews));
-            }
-            return views;
-        }
+        public Task<IReadOnlyList<CourtAvailabilityView>> GetAvailabilityAsync(int branchId, DateOnly date) =>
+            _availability.GetAsync(branchId, date);
 
         // - helpers ---------------------------------------------------------
-
-        private async Task<int> CountActiveBookings(int userId, int? groupId, DateOnly date)
-        {
-            // Server-side COUNT â€” no materialising the bookings list.
-            var u = userId; var g = groupId;
-            return await Repo.CountByConditionAsync(b =>
-                b.Date == date && b.UserId == u &&
-                ((b.GroupId == null && g == null) || b.GroupId == g) &&
-                (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed));
-        }
-
-        private async Task<CourtDateStatus> GetCourtDateStatus(int courtId, DateOnly date, TimeSlot slot)
-        {
-            var rows = await Repository<CourtDateStatusEntry>().GetByConditionAsync(
-                r => r.CourtId == courtId && r.Date == date);
-            var row = rows.FirstOrDefault();
-            return row?.Blocks(slot.StartTime, slot.EndTime) == true ? row.Status : CourtDateStatus.Open;
-        }
 
         private async Task AuthorizeView(Booking b, int requestingUserId)
         {
@@ -651,12 +328,6 @@ namespace Services
                 b.CreatedAt, user?.FullName, breakdown, b.CancelReason, b.QrToken, b.CheckedInAt, b.UserId);
         }
 
-        private static bool IsWeekend(DateOnly d) =>
-            d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
-
-        private static DateOnly ParseDate(string s) =>
-            DateOnly.TryParse(s, out var d) ? d : throw new BadRequestException("Ngay khong hop le.");
-
         private async Task<Booking> MustGetActive(int bookingId)
         {
             var b = await Repo.GetByIdAsync(bookingId);
@@ -665,8 +336,5 @@ namespace Services
             return b;
         }
 
-        private static string GenerateCode() =>
-            "BD-" + DateTime.UtcNow.ToString("yyMMdd") + "-" +
-            Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
     }
 }

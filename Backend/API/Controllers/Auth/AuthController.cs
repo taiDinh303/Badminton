@@ -23,5 +23,21 @@ namespace Badminton.API.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> Login(LoginRequest request) =>
             Resp(await _auth.LoginAsync(request), "Đăng nhập thành công.");
+        [HttpPost("change-password")]
+        [Authorize]
+        public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
+        {
+            await _auth.ChangePasswordAsync(request);
+            return Resp("Đã đổi mật khẩu và thu hồi mọi phiên đăng nhập.");
+        }
+
+        [HttpPost("logout")]
+        [Authorize]
+        public async Task<IActionResult> Logout()
+        {
+            await _auth.RevokeSessionsAsync();
+            return Resp("Đã thu hồi mọi phiên đăng nhập.");
+        }
+
     }
 }

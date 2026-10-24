@@ -35,6 +35,10 @@ function Invoke-SyntheticCheck([string]$signingKey) {
         Payment__Provider = 'real'
         Payment__Momo__AppId = 'synthetic'
         Payment__Momo__SecretKey = 'synthetic'
+        Payment__Momo__AccessKey = 'synthetic'
+        Payment__Momo__IpayUrl = 'https://api.example.invalid/api/v1/payments/callback/momo'
+        Payment__Zalopay__CallbackUrl = 'https://api.example.invalid/api/v1/payments/callback/zalopay'
+        Payment__Vnpay__CallbackUrl = 'https://api.example.invalid/api/v1/payments/callback/vnpay'
         Payment__Momo__Endpoint = 'https://momo.example.invalid'
         Payment__Vnpay__MerchantCode = 'synthetic'
         Payment__Vnpay__SecretKey = 'synthetic'
@@ -42,6 +46,7 @@ function Invoke-SyntheticCheck([string]$signingKey) {
         Payment__Zalopay__AppId = 'synthetic'
         Payment__Zalopay__ApiKey = 'synthetic'
         Payment__Zalopay__ApiSecret = 'synthetic'
+        Payment__Zalopay__CallbackKey = 'synthetic'
         Payment__Zalopay__Endpoint = 'https://zalopay.example.invalid'
         Notify__Channels = 'log'
     }

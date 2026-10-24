@@ -1,40 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
   MapPin,
-  X,
-  Users,
-  Hourglass,
   CalendarDays,
-  BadgePercent,
-  Coins,
   Zap,
 } from "lucide-react";
-import { api, ApiError, type CourtAvailability, type Slot, type GroupView } from "../../../services/api";
-import { formatDay, formatVnd } from "../../../utils/format";
+import { api, type CourtAvailability, type Slot, type GroupView } from "../../../services/api";
+import { formatVnd } from "../../../utils/format";
 import { Card, Callout, Busy, Button, SlotCell } from "../../../components/ui";
 import { useAuth } from "../../../store/auth";
-
-function localDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+import { useBookingForm, isBooked, type BookingSelection } from "../hooks/useBookingForm";
+import BookingConfirmationDrawer from "../components/BookingConfirmationDrawer";
 
 function addDays(date: string, n: number): string {
-  const [y, m, d] = date.split("-").map(Number);
-  const dt = new Date(y, m - 1, d);
-  dt.setDate(dt.getDate() + n);
-  return localDate(dt);
+  const dt = new Date(`${date}T00:00:00Z`);
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
 }
 
 const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 
-type Sel = { court: CourtAvailability; slot: Slot };
+type Sel = BookingSelection;
 
 /**
  * Grid đặt sân (docs 07 §3/§4) — redesign:
@@ -44,17 +32,10 @@ type Sel = { court: CourtAvailability; slot: Slot };
  *  - chú giải trạng thái (text + màu + icon); drawer không bị che bottom nav.
  */
 export default function BookPage() {
-  const qc = useQueryClient();
-  const today = localDate(new Date());
+  const today = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const [branchId, setBranchId] = useState<number | null>(null);
   const [sel, setSel] = useState<Sel | null>(null);
-  const [players, setPlayers] = useState(2);
-  const [voucher, setVoucher] = useState("");
-  const [done, setDone] = useState<string | null>(null);
-  const [groupId, setGroupId] = useState<number | "">("");
-  const [pointsToRedeem, setPointsToRedeem] = useState("");
-
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
     queryFn: api.branches.list,
@@ -80,62 +61,16 @@ export default function BookPage() {
     refetchInterval: 15_000,
   });
 
-  const create = useMutation({
-    mutationFn: () =>
-      api.booking.create({
-        courtId: sel!.court.courtId,
-        date,
-        slotId: sel!.slot.slotId,
-        playerCount: players,
-        voucherCode: voucher.trim() || null,
-        groupId: groupId === "" ? null : groupId,
-        pointsToRedeem: pointsToRedeem.trim() ? Number(pointsToRedeem) : null,
-      }),
-    onSuccess: (b) => {
-      setDone(b.bookingCode);
-      setSel(null);
-      setVoucher("");
-      setPointsToRedeem("");
-      setGroupId("");
-      void qc.invalidateQueries({ queryKey: ["account"] });
-      void qc.invalidateQueries({ queryKey: ["my-bookings"] });
-      refetch();
-    },
-  });
-
-  const [voucherErr, setVoucherErr] = useState<string | null>(null);
-  const [waitlistDone, setWaitlistDone] = useState(false);
-  const previewVoucher = useMutation({
-    mutationFn: (baseAmount: number) => api.vouchers.preview(voucher.trim(), baseAmount),
-    onError: (error) => setVoucherErr(error.message),
-  });
-
-  const joinWaitlist = useMutation({
-    mutationFn: () =>
-      api.waitlist.join({
-        courtId: sel!.court.courtId,
-        slotId: sel!.slot.slotId,
-        date,
-        playerCount: players,
-      }),
-    onSuccess: () => { setWaitlistDone(true); qc.invalidateQueries({ queryKey: ["waitlist"] }); },
-  });
-
-  const createFailed = create.isError && create.error instanceof ApiError && create.error.status === 409;
-  const selectedBooked = !!sel && isBooked(sel.slot);
-
-  const price = useMemo(() => {
-    if (!sel) return null;
-    const unit = sel.slot.isPeak ? sel.court.pricePeak : sel.court.priceLowPeak;
-    return { base: unit, total: unit * players, peak: sel.slot.isPeak };
-  }, [sel, players]);
+  const form = useBookingForm(sel, date, () => { void refetch(); }, () => setSel(null));
+  const { create, joinWaitlist, setWaitlistDone, done, setDone } = form;
 
   const openCourts =
     courts?.filter((c) => c.slots.some((s) => !s.isLocked)) ?? [];
 
   function selectSlot(court: CourtAvailability, slot: Slot) {
     if (slot.isLocked && !isBooked(slot)) return;
-    create.reset(); joinWaitlist.reset(); setVoucherErr(null);
+    create.reset(); joinWaitlist.reset();
+    form.setPlayers(p => Math.min(p, court.capacity ?? 10));
     setSel({ court, slot });
     setWaitlistDone(false);
   }
@@ -305,193 +240,7 @@ export default function BookPage() {
         ))}
       </div>
 
-      {/* Confirmation drawer */}
-      <AnimatePresence>
-        {sel && price && (
-          <motion.div
-            className="booking-drawer fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-2xl md:bottom-4 md:right-4 md:left-auto md:w-80"
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-          >
-            <div
-              className="rounded-t-2xl border border-border bg-card p-4 shadow-lg md:rounded-2xl"
-              style={{ marginBottom: "env(safe-area-inset-bottom)" }}
-              role="dialog"
-              aria-label="Xác nhận đặt sân"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-bold">{sel.court.courtName}</p>
-                  <p className="mt-0.5 text-sm text-muted tnum">
-                    {weekday} {formatDay(date)} · {sel.slot.label}
-                    {sel.slot.isPeak ? " (cao điểm)" : ""}
-                  </p>
-                </div>
-                <button
-                  aria-label="Đóng"
-                  onClick={() => setSel(null)}
-                  className="shrink-0 rounded-lg p-1 text-muted transition-colors hover:bg-bg hover:text-fg"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* People + voucher */}
-              <div className="mt-4 grid grid-cols-2 gap-2.5">
-                <label className="block">
-                  <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted">
-                    <Users className="h-3.5 w-3.5" /> Số người
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      aria-label="Giảm"
-                      onClick={() => setPlayers((p) => Math.max(1, p - 1))}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-lg font-bold text-muted"
-                    >
-                      −
-                    </button>
-                    <input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={players}
-                      onChange={(e) =>
-                        setPlayers(
-                          Math.max(1, Math.min(10, Number(e.target.value) || 1)),
-                        )
-                      }
-                      aria-label="Số người"
-                      className="h-9 w-full rounded-lg border border-border bg-card px-2 text-center text-sm font-semibold tnum text-fg outline-none focus:border-primary"
-                    />
-                    <button
-                      type="button"
-                      aria-label="Tăng"
-                      onClick={() => setPlayers((p) => Math.min(10, p + 1))}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-lg font-bold text-muted"
-                    >
-                      +
-                    </button>
-                  </div>
-                </label>
-                <label className="block">
-                  <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted">
-                    <BadgePercent className="h-3.5 w-3.5" /> Voucher
-                  </span>
-                  <input
-                    value={voucher}
-                    onChange={(e) => { setVoucher(e.target.value); setVoucherErr(null); previewVoucher.reset(); }}
-                    onBlur={() => {
-                      setVoucherErr(null);
-                      if (voucher.trim() && price) previewVoucher.mutate(price.total);
-                    }}
-                    placeholder="Mã (tuỳ chọn)"
-                    aria-label="Mã voucher"
-                    className="h-9 w-full rounded-lg border border-border bg-card px-2.5 text-sm text-fg outline-none focus:border-primary"
-                  />
-                </label>
-              </div>
-
-              <p className="mt-2 text-[11px] text-muted">Mỗi mã voucher chỉ dùng một lần cho mỗi tài khoản. Bạn vẫn có thể dùng mã khác.</p>
-
-              {/* Group (owner-only) */}
-              {myGroups.length > 0 && (
-                <label className="mt-2.5 block">
-                  <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted">
-                    <Users className="h-3.5 w-3.5" /> Đặt cho nhóm
-                  </span>
-                  <select
-                    value={groupId}
-                    onChange={(e) =>
-                      setGroupId(e.target.value === "" ? "" : Number(e.target.value))
-                    }
-                    aria-label="Chọn nhóm"
-                    className="h-9 w-full rounded-lg border border-border bg-card px-2.5 text-sm text-fg outline-none focus:border-primary"
-                  >
-                    <option value="">Cá nhân (mặc định)</option>
-                    {myGroups.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name} ({g.memberCount}/{g.maxMembers})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              {/* Points */}
-              <label className="mt-2.5 block">
-                <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted">
-                  <Coins className="h-3.5 w-3.5" /> Dùng điểm đổi
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  step={1000}
-                  value={pointsToRedeem}
-                  onChange={(e) => setPointsToRedeem(e.target.value)}
-                  placeholder="VD 2000"
-                  aria-label="Số điểm đổi"
-                  className="h-9 w-full rounded-lg border border-border bg-card px-2.5 text-sm text-fg outline-none focus:border-primary"
-                />
-                <span className="mt-1 block text-[11px] text-muted">
-                  1.000 điểm = 20.000đ · đổi tối đa theo dư điểm
-                </span>
-              </label>
-
-              {/* Price summary */}
-              <div className="mt-4 flex items-end justify-between rounded-lg bg-bg p-3">
-                <div className="text-xs text-muted tnum">
-                  {price.peak ? "Cao điểm" : "Giờ thường"} · {formatVnd(price.base)} × {players}
-                </div>
-                <p className="text-xl font-bold tnum text-fg">{formatVnd(price.total)}</p>
-              </div>
-
-              {voucherErr && (
-                <Callout tone="error" className="mt-2">
-                  {voucherErr}
-                </Callout>
-              )}
-              {create.isError && (
-                <Callout tone="error" className="mt-2">
-                  {create.error instanceof ApiError
-                    ? create.error.message
-                    : "Không đặt được. Thử khung giờ khác."}
-                </Callout>
-              )}
-
-              <Button
-                variant="accent"
-                className="mt-3 w-full"
-                disabled={create.isPending || selectedBooked}
-                onClick={() => create.mutate()}
-              >
-                {create.isPending ? "Đang đặt…" : "Xác nhận đặt sân"}
-              </Button>
-
-              {(createFailed || selectedBooked) && !waitlistDone && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-2 w-full"
-                  disabled={joinWaitlist.isPending}
-                  onClick={() => joinWaitlist.mutate()}
-                >
-                  <Hourglass className="h-4 w-4" />
-                  {joinWaitlist.isPending ? "Đang xếp hàng…" : "Tham gia danh sách chờ"}
-                </Button>
-              )}
-              {joinWaitlist.isError && <Callout tone="error" className="mt-2">{joinWaitlist.error.message}</Callout>}
-              {waitlistDone && (
-                <Callout tone="success" className="mt-2">
-                  Đã xếp bạn vào danh sách chờ (FIFO).
-                </Callout>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <BookingConfirmationDrawer selection={sel} date={date} weekday={weekday} groups={myGroups} form={form} close={() => setSel(null)} />
 
       {/* Success */}
       {done && (
@@ -510,5 +259,3 @@ export default function BookPage() {
     </div>
   );
 }
-
-function isBooked(slot: Slot) { return slot.isLocked && ["Đã đặt", "Da duoc dat"].includes(slot.lockReason); }

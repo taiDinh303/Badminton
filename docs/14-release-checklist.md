@@ -28,3 +28,7 @@
 ## 4. Bằng chứng
 
 Ghi ngày UTC+7/commit/môi trường/lệnh/pass-fail-skip/ảnh/lỗi mở ở [worklog](worklog.md). Chỉ tick khi có bằng chứng. Checklist không tự cấp quyền deploy. [06](06-deployment.md) quản lý release, [08](08-plan.md) quản lý việc mở.
+
+## 5. Bằng chứng local bổ sung 24/10/2026
+
+SQL Server/PostgreSQL đã có diễn tập native backup/restore, checksum dữ liệu/migration/index, kiểm unique slot sau restore và completion/expiry nhiều process + kill/recover job lock. Đây là bằng chứng local có giới hạn; giữ các gate production, endurance và merchant sandbox ở trạng thái chưa nghiệm thu. Người dùng xác nhận chưa có merchant sandbox; flag hoàn tiền online giữ tắt. Migration thêm OnlineRefundOperations chưa áp live. Quy trình/lệnh ở [công cụ rehearsal](../tools/OperationsRehearsal/README.md) và [cấu hình](13-configuration.md).

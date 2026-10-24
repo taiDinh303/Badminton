@@ -58,6 +58,7 @@ namespace Badminton.API.Jobs
                 _heartbeat.Record(LockKey);
                 using var scope = _scopes.CreateScope();
                 var sp = scope.ServiceProvider;
+                await sp.GetRequiredService<Contract.Services.Notify.INotifyService>().RetryPendingAsync();
                 var waitlist = sp.GetRequiredService<IWaitlistService>();
                 var uow = sp.GetRequiredService<IUnitOfWork>();
                 var today = HanoiTime.HanoiToday();

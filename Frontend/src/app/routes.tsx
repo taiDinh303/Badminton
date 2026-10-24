@@ -16,10 +16,12 @@ const Groups = lazy(pageLoaders.Groups);
 const Reviews = lazy(pageLoaders.Reviews);
 const Checkin = lazy(pageLoaders.Checkin);
 const Dashboard = lazy(pageLoaders.Dashboard);
+const Reconciliation = lazy(pageLoaders.Reconciliation);
 const AdminBookings = lazy(pageLoaders.AdminBookings);
 const Courts = lazy(pageLoaders.Courts);
 const Vouchers = lazy(pageLoaders.Vouchers);
 const Slots = lazy(pageLoaders.Slots);
+const Branches = lazy(pageLoaders.Branches);
 const Staff = lazy(pageLoaders.Staff);
 const Audit = lazy(pageLoaders.Audit);
 const Membership = lazy(pageLoaders.Membership);
@@ -53,12 +55,14 @@ export const router = createBrowserRouter([
     { path: "reviews", element: <Reviews /> },
     { element: <Gate roles={["Admin", "Manager"]} />, children: [
       { path: "admin", element: <Dashboard /> },
+      { path: "admin/reconciliation", element: <Reconciliation /> },
       { path: "admin/bookings", element: <AdminBookings /> },
       { path: "admin/courts", element: <Courts /> },
       { path: "admin/vouchers", element: <Vouchers /> },
       { path: "admin/slots", element: <Slots /> },
       { path: "checkin", element: <Checkin /> },
       { element: <Gate roles={["Admin"]} />, children: [
+        { path: "admin/branches", element: <Branches /> },
         { path: "admin/staff", element: <Staff /> },
         { path: "admin/audit", element: <Audit /> },
         { path: "admin/membership", element: <Membership /> },

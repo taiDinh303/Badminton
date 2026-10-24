@@ -13,6 +13,7 @@ test.describe("booking", () => {
     // reach /book we first complete a mocked login (mirrors a real session).
 
     await mockApi(page, [
+    { pattern: /\/bookings\/quote$/, method: "POST", respond: () => ok({ basePrice: 100000, weekendSurcharge: 0, voucherDiscount: 0, pointsDiscount: 0, total: 100000, payable: 100000 }) },
       {
         pattern: /\/auth\/login$/,
         method: "POST",
@@ -89,9 +90,9 @@ test.describe("booking", () => {
             slotLabel: "10:00",
             playerCount: 2,
             status: "Pending",
-            totalAmount: 200000,
+            totalAmount: 100000,
             discountAmount: 0,
-            payableAmount: 200000,
+            payableAmount: 100000,
             pointsEarned: 0,
             pointsRedeemed: 0,
             groupId: null,
@@ -103,8 +104,8 @@ test.describe("booking", () => {
               weekendSurcharge: 0,
               voucherDiscount: 0,
               pointsDiscount: 0,
-              total: 200000,
-              payable: 200000,
+              total: 100000,
+              payable: 100000,
             },
           }),
       },

@@ -12,10 +12,16 @@ namespace Repositories.UnitOfWork
         private readonly BadmintonBookingDbContext _context;
         private readonly Dictionary<Type, object> _cache = new();
         private bool _disposed;
+        public IBookingCommands Bookings { get; }
+        public IPaymentCommands Payments { get; }
+        public IVoucherCommands Vouchers { get; }
 
         public UnitOfWork(BadmintonBookingDbContext context)
         {
             _context = context;
+            Bookings = new BookingCommands(context);
+            Payments = new PaymentCommands(context);
+            Vouchers = new VoucherCommands(context);
         }
 
         public IGenericRepository<T> GetRepository<T>() where T : class
@@ -51,6 +57,11 @@ namespace Repositories.UnitOfWork
         public async Task RunInTransactionAsync(Func<Task> action,
             CancellationToken ct = default)
         {
+            if (_context.Database.CurrentTransaction is not null)
+            {
+                await action();
+                return;
+            }
             await using var tx = await _context.Database.BeginTransactionAsync(ct);
             try
             {
@@ -60,14 +71,9 @@ namespace Repositories.UnitOfWork
             catch
             {
                 await tx.RollbackAsync(ct);
+                _context.ChangeTracker.Clear();
                 throw;
             }
-        }
-
-        public Task<int> ExecuteSqlRawAsync(string sql,
-            params object[] sqlParameters)
-        {
-            return _context.Database.ExecuteSqlRawAsync(sql, sqlParameters);
         }
 
         public async Task LockCourtDateAsync(int courtId, DateOnly date, CancellationToken ct = default)
@@ -97,6 +103,32 @@ namespace Repositories.UnitOfWork
             else await _context.Database.ExecuteSqlRawAsync(
                 "DECLARE @result int; EXEC @result = sp_getapplock @Resource={0}, @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=15000; " +
                 "IF @result < 0 THROW 51000, 'Voucher reservation busy. Retry.', 1;", [$"voucher-user:{userId}"], ct);
+        }
+
+        public Task LockPointsUserAsync(int userId, CancellationToken ct = default) =>
+            LockResourceAsync($"points-user:{userId}", ct);
+
+        public Task LockBookingRequestAsync(string key, CancellationToken ct = default) =>
+            LockResourceAsync($"booking-request:{key}", ct);
+
+        public Task LockTimeSlotsAsync(CancellationToken ct = default) => LockResourceAsync("time-slots", ct);
+        public Task LockNotificationAsync(string ledgerKey, CancellationToken ct = default) => LockResourceAsync($"notification:{ledgerKey}", ct);
+        public Task LockGroupAsync(int groupId, CancellationToken ct = default) => LockResourceAsync($"group:{groupId}", ct);
+
+        private async Task LockResourceAsync(string resource, CancellationToken ct)
+        {
+            if (_context.Database.CurrentTransaction is null)
+                throw new InvalidOperationException("Business locks require an active transaction.");
+            if (_context.Database.IsNpgsql())
+            {
+                var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(resource));
+                var key = System.Buffers.Binary.BinaryPrimitives.ReadInt64BigEndian(hash);
+                await _context.Database.ExecuteSqlRawAsync("SET LOCAL lock_timeout = '15s'", ct);
+                await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", [key], ct);
+            }
+            else await _context.Database.ExecuteSqlRawAsync(
+                "DECLARE @result int; EXEC @result = sp_getapplock @Resource={0}, @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=15000; " +
+                "IF @result < 0 THROW 51000, 'Business operation busy. Retry.', 1;", [resource], ct);
         }
 
         public void Dispose()

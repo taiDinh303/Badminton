@@ -15,6 +15,7 @@ test.describe("waitlist", () => {
     let left = false;
 
     await mockApi(page, [
+    { pattern: /\/bookings\/quote$/, method: "POST", respond: () => ok({ basePrice: 100000, weekendSurcharge: 0, voucherDiscount: 0, pointsDiscount: 0, total: 100000, payable: 100000 }) },
       {
         pattern: /\/auth\/login$/,
         method: "POST",

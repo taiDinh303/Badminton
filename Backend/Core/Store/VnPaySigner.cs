@@ -11,9 +11,10 @@ namespace Badminton.Core.Store
                 .Where(kv => !string.IsNullOrEmpty(kv.Key) &&
                              kv.Key.StartsWith("vnp_", StringComparison.OrdinalIgnoreCase) &&
                              !string.IsNullOrEmpty(kv.Value) &&
-                             !kv.Key.Equals("vnp_SecureHash", StringComparison.OrdinalIgnoreCase))
+                             !kv.Key.Equals("vnp_SecureHash", StringComparison.OrdinalIgnoreCase) &&
+                             !kv.Key.Equals("vnp_SecureHashType", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(kv => kv.Key, StringComparer.Ordinal)
-                .Select(kv => $"{kv.Key}={kv.Value}")
+                .Select(kv => $"{System.Net.WebUtility.UrlEncode(kv.Key)}={System.Net.WebUtility.UrlEncode(kv.Value)}")
                 .ToList();
 
             var signData = string.Join("&", sorted);
@@ -26,7 +27,9 @@ namespace Badminton.Core.Store
             IReadOnlyDictionary<string, string> fields)
         {
             var computed = Sign(secretKey, fields);
-            return string.Equals(computed, expectedHash, StringComparison.OrdinalIgnoreCase);
+            if (expectedHash.Length != computed.Length) return false;
+            try { return CryptographicOperations.FixedTimeEquals(Convert.FromHexString(computed), Convert.FromHexString(expectedHash)); }
+            catch (FormatException) { return false; }
         }
 
         public static string BuildQuery(string secretKey,
@@ -37,7 +40,7 @@ namespace Badminton.Core.Store
             return string.Join("&",
                 all.Where(kv => !string.IsNullOrEmpty(kv.Value))
                   .OrderBy(kv => kv.Key, StringComparer.Ordinal)
-                  .Select(kv => $"{Uri.EscapeDataString(kv.Key)}={Uri.EscapeDataString(kv.Value)}"));
+                  .Select(kv => $"{System.Net.WebUtility.UrlEncode(kv.Key)}={System.Net.WebUtility.UrlEncode(kv.Value)}"));
         }
     }
 }

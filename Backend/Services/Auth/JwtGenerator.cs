@@ -18,7 +18,7 @@ namespace Services
         }
 
         public (string access, string refresh, int expiresInMinutes) Generate(
-            int userId, string fullName, string phone, string role)
+            int userId, string fullName, string phone, string role, string? securityStamp = null)
         {
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Key));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -30,7 +30,8 @@ namespace Services
                 new(JwtRegisteredClaimNames.Sub, userId.ToString()),
                 new(JwtRegisteredClaimNames.Email, phone),
                 new(ClaimTypes.Name, fullName),
-                new(ClaimTypes.Role, role)
+                new(ClaimTypes.Role, role),
+                new("sv", securityStamp ?? "")
             };
 
             var accessToken = new JwtSecurityToken(

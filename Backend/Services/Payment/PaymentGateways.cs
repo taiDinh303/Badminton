@@ -5,6 +5,7 @@ namespace Services
 {
     public sealed class MockOnlineGateway : IPaymentGateway
     {
+        public bool IsSimulation => true;
         public PaymentMethod Method { get; }
 
         public MockOnlineGateway(PaymentMethod method) => Method = method;
@@ -12,7 +13,7 @@ namespace Services
         public Task<PaymentInitResult> InitAsync(string bookingId, decimal amount,
             string returnUrl, CancellationToken ct = default)
         {
-            var refCode = $"MOCK-{Method}-{bookingId}-{Guid.NewGuid():N}".ToUpperInvariant()[..24];
+            var refCode = bookingId;
             // In production this URL is signed by the provider's SDK.
             return Task.FromResult(PaymentInitResult.Success(refCode,
                 $"https://mock-gateway.local/{Method.ToString().ToLowerInvariant()}/checkout?ref={refCode}"));
@@ -79,7 +80,7 @@ namespace Services
 
         public PaymentGatewayFactory(IEnumerable<IPaymentGateway> gateways)
         {
-            _map = gateways.GroupBy(g => g.Method).ToDictionary(g => g.Key, g => g.First());
+            _map = gateways.ToDictionary(g => g.Method);
         }
 
         public IPaymentGateway GetGateway(PaymentMethod method) =>
