@@ -1,9 +1,10 @@
 import { pageLoaders } from "./pageLoaders";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router-dom";
 import Layout from "../components/Layout";
 import { Busy } from "../components/ui";
 import { useAuth } from "../store/auth";
+import { expireLocalSession, sessionMatchesStorage } from "../services/session";
 
 const Auth = lazy(pageLoaders.Auth);
 const Contacts = lazy(pageLoaders.Contacts);
@@ -31,7 +32,13 @@ const Membership = lazy(pageLoaders.Membership);
 function Gate({ roles }: { roles?: string[] }) {
   const user = useAuth(state => state.user);
   const location = useLocation();
-  if (!user) return <Navigate to="/auth" replace state={{ from: location.pathname + location.search }} />;
+  // Cached pages may not issue a request, so the transport cannot be the only
+  // boundary detecting a missed storage event when the shared token changes.
+  const sessionValid = sessionMatchesStorage();
+  useEffect(() => {
+    if (!sessionValid) expireLocalSession();
+  }, [sessionValid]);
+  if (!user || !sessionValid) return <Navigate to="/auth" replace state={{ from: location.pathname + location.search }} />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
   return <Outlet />;
 }

@@ -52,6 +52,13 @@ test("changing account in another tab signs the old tab out without erasing the 
 test("a missed storage event cannot make old identity requests use a replacement token", async ({ context, page }) => {
   await mockSessions(context);
   await login(page);
+  // Populate both account queries before changing the shared token. Navigation
+  // must reject the old identity even when fresh cache data avoids all HTTP.
+  await page.getByRole("link", { name: "Tài khoản", exact: true }).filter({ visible: true }).first().click();
+  await expect(page.getByText(/^1\.234\s*điểm$/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Chỉnh sửa tài khoản", exact: true })).toBeEnabled();
+  await page.getByRole("link", { name: "Trang chính", exact: true }).filter({ visible: true }).first().click();
+  await expect(page.getByRole("heading", { name: "Alice", exact: true })).toBeVisible();
   const wrongIdentityRequests: string[] = [];
   page.on("request", request => {
     if (request.url().includes("/api/v1/") && request.headers().authorization === "Bearer token-bob")
@@ -62,6 +69,7 @@ test("a missed storage event cannot make old identity requests use a replacement
   await page.evaluate(() => localStorage.setItem("bb_token", "token-bob"));
   await page.getByRole("link", { name: "Tài khoản", exact: true }).filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/\/auth$/);
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("bb_user"))).toBeNull();
   expect(wrongIdentityRequests).toEqual([]);
   expect(await page.evaluate(() => localStorage.getItem("bb_token"))).toBe("token-bob");
   await page.reload();
