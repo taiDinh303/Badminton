@@ -304,3 +304,10 @@ Chi tiết ở [08](08-plan.md), [13](13-configuration.md), [14](14-release-chec
 
 - Thêm icon Eye/EyeOff trong trường mật khẩu /auth cho đăng nhập và đăng ký; type=button, nhãn tiếng Việt, aria-pressed/controls, padding tránh đè nội dung. Mặc định che mật khẩu và tự che lại khi đổi form, giữ nguyên giá trị. autocomplete theo current-password/new-password.
 - npm run build đạt. Kiểm browser Playwright trực tiếp trên preview: đăng nhập hiện/ẩn, đăng ký hiện, đổi tab che lại, không đổi giá trị: PASS. Không thêm test file cho thay đổi UI nhỏ. Không đổi backend hoặc deploy live.
+
+## 13. 24/10/2026 — Áp dụng migration liên hệ trên Supabase qua Dashboard
+
+- Người dùng cho phép thao tác trên tab Supabase đã đăng nhập, giữ nguyên tài khoản plugin khác. Connector không có quyền project; dùng browser UI đăng nhập Owner của đúng BadmintonBooking / LuanORG / otwhjkimfzxabbnaktpl.
+- SQL Editor kiểm trước: EF history có InitialPostgres và RestrictInternalRlsHelper; ContactInquiries chưa có. Áp dụng AddContactInquiries trong transaction với kiểm tiền nhiệm/idempotency; thêm bảng, index, bật RLS, REVOKE PUBLIC/anon/authenticated và ghi EF history 20261023155315_AddContactInquiries (8.0.28).
+- SELECT xác minh sau commit: applied=true, rls_enabled=true, public_access_blocked=true (SELECT/INSERT/UPDATE/DELETE của anon/authenticated), column_count=7, index_exists=true. Không sửa/xóa dữ liệu booking, không seed/test insert và không đổi tài khoản plugin.
+- Bằng chứng screenshot ở outputs của chat, ngoài repo. NOT VERIFIED: form qua API/local/Render kết nối DB thực; chưa khởi chạy API vì chưa cấu hình connection secret. Không deploy Render trong lượt này.
