@@ -55,7 +55,8 @@ test("real login, slot quote with voucher and points, booking, and owner cancell
   await page.getByLabel("Số điện thoại", { exact: true }).fill("0900000001");
   await page.getByLabel("Mật khẩu", { exact: true }).fill("BrowserChanged$2026");
   await page.locator("form").getByRole("button", { name: "Đăng nhập", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Alice", exact: true })).toBeVisible();
+  // Gate restores the account page that required reauthentication.
+  await expect(page.getByText("Alice", { exact: true }).filter({ visible: true }).first()).toBeVisible();
   const previousToken = await page.evaluate(() => localStorage.getItem("bb_token"));
   await page.goto("/account");
   const revoked = page.waitForResponse(r => r.url().endsWith("/auth/logout"));
