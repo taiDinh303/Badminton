@@ -77,7 +77,7 @@ public static class DependencyInjection
         services.AddRateLimiter(o =>
         {
             o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            foreach (var (name, limit, seconds) in new[] { ("public", 100, 10), ("auth", 5, 60) })
+            foreach (var (name, limit, seconds) in new[] { ("public", 100, 10), ("auth", 5, 60), ("contact", 3, 60) })
                 o.AddPolicy(name, context => RateLimitPartition.GetFixedWindowLimiter(
                     context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                     _ => new FixedWindowRateLimiterOptions

@@ -112,7 +112,7 @@ test.describe("booking", () => {
     ]);
 
     // Complete a (mocked) login so the customer session exists.
-    await page.goto("/");
+    await page.goto("/auth");
     await page.getByLabel(/Số điện thoại/i).fill("0900000007");
     await page.getByLabel(/Mật khẩu/i).fill("Pass@123");
     // Disambiguate the form submit button from the "Đăng nhập" tab toggle.

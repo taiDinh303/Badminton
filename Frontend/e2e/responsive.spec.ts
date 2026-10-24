@@ -6,7 +6,7 @@ const branch = { id: 1, name: "Cơ sở cầu lông Nguyễn Văn Linh", address
 const court = { id: 1, branchId: 1, name: "Sân cầu lông số 1", code: "S01", isActive: true, priceLowPeak: 100000, pricePeak: 150000, weekendSurcharge: 0, capacity: 10, surface: "Sindalo", ratingAvg: 5, ratingCount: 1 };
 const booking = { id: 1, userId: 1, bookingCode: "BK000001", courtId: 1, courtName: court.name, branchName: branch.name, date: "2026-10-24", slotLabel: "18:00–19:00", playerCount: 2, status: "Confirmed", payableAmount: 200000, basePrice: 200000, totalAmount: 200000, discountAmount: 0, pointsRedeemed: 0, pointsEarned: 2000, createdAt: "2026-10-22T08:00:00Z" };
 const paged = { items: [booking], currentPage: 1, totalPages: 2, totalItems: 2, hasNextPage: true, hasPreviousPage: false };
-const routes = ["/", "/book", "/bookings", "/bookings/1", "/account", "/groups", "/reviews", "/waitlist", "/checkin", "/admin", "/admin/bookings", "/admin/courts", "/admin/vouchers", "/admin/slots", "/admin/branches", "/admin/staff", "/admin/audit", "/admin/membership"];
+const routes = ["/", "/dashboard", "/book", "/bookings", "/bookings/1", "/account", "/groups", "/reviews", "/waitlist", "/checkin", "/admin", "/admin/bookings", "/admin/courts", "/admin/vouchers", "/admin/slots", "/admin/branches", "/admin/staff", "/admin/audit", "/admin/membership"];
 
 async function setup(page: Page, populated = false) {
   await page.clock.setFixedTime(new Date("2026-10-22T08:00:00Z"));
@@ -55,7 +55,7 @@ for (const width of [320, 360, 390, 430, 767]) {
       await ready(page, path);
       await fits(page);
       await expect(page.getByRole("button", { name: "Mở menu" })).toBeVisible();
-      if (["/", "/book", "/admin"].includes(path)) await page.screenshot({ path: `test-results/mobile-${width}-${path.replaceAll("/", "_") || "home"}.png`, fullPage: true });
+      if (["/dashboard", "/book", "/admin"].includes(path)) await page.screenshot({ path: `test-results/mobile-${width}-${path.replaceAll("/", "_") || "home"}.png`, fullPage: true });
     }
     await page.screenshot({ path: `test-results/mobile-${width}.png`, fullPage: true });
   });

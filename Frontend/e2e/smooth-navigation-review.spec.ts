@@ -34,7 +34,7 @@ test("warm customer navigation reuses data, stays within permissions and leaves 
     { pattern: /\/reviews\?courtId=1$/, respond: () => ok([{ id: 1, bookingId: 1, rating: 5, userName: "Khách", courtName: "Sân A", comment: "Đánh giá đã tải trước", createdAt: "2026-10-20T00:00:00Z" }]) },
     { pattern: /\/groups\/mine$/, respond: () => ok([]) },
   ]);
-  await page.goto("/");
+  await page.goto("/dashboard");
   await expect.poll(() => requests.filter(p => p.endsWith('/reviews')).length).toBe(1);
   await page.getByRole("link", { name: "Đánh giá", exact: true }).click();
   await expect(page.getByText("Đánh giá đã tải trước")).toBeVisible();

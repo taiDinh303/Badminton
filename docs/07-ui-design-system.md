@@ -24,12 +24,13 @@ Font stack Be Vietnam Pro/Inter/system chưa chứng minh font web được tả
 
 ## 3. Điều hướng và module
 
-app/navigation.ts quản lý sidebar/customer/mobile/staff items, app/routes.tsx quản lý lazy routes/guards. Desktop sidebar sticky, header tên màn/vai trò; mobile bottom nav năm mục và Mở menu cho toàn bộ chức năng, bao gồm vận hành staff. Admin-only staff/audit/membership không hiển thị cho Manager.
+app/navigation.ts quản lý sidebar/customer/mobile/staff items, app/routes.tsx quản lý lazy routes/guards. Các màn yêu cầu đăng nhập dùng desktop sidebar sticky, header tên màn/menu avatar; mobile bottom nav năm mục và Mở menu cho toàn bộ chức năng, bao gồm vận hành staff. Admin-only staff/audit/membership không hiển thị cho Manager.
 
 | Route | Module | Nội dung |
 | --- | --- | --- |
 | /auth | auth | Login/register SĐT/password |
-| / | customer | Cơ sở, lời chào, hành động đặt sân |
+| /home, / | customer/public | Trang giới thiệu công khai, không sidebar; / chuyển hướng /home; header đăng nhập/đăng ký, tiện ích và hướng dẫn |
+| /dashboard | customer | Trang chính sau đăng nhập: lời chào, đồng hồ UTC+7, thao tác nhanh và cơ sở thực từ API |
 | /book, /bookings, /bookings/:id | booking | Availability, xác nhận, trạng thái/payment/hủy |
 | /account, /groups, /reviews, /waitlist | Theo feature | Hồ sơ, nhóm, đánh giá, hàng chờ |
 | /checkin | checkin | Nhân viên nhập code/token, đúng branch |
@@ -53,3 +54,15 @@ CURRENT 22/10/2026: `Frontend/src/mobile.css` áp dụng dưới breakpoint `md`
 Mỗi màn cần loading/empty/validation/submitting/success/conflict/network/forbidden. Giữ dữ liệu form, focus lỗi đầu, disable gửi lặp, refresh query sau mutation; slot conflict cập nhật grid. Dialog có label/keyboard/Escape; menu có aria-expanded/controls và skip-to-main.
 
 Kiểm 375/768/1024/1440px; desktop/mobile staff; deep link/Back/refresh; logout/expired token/cache; một vòng khách đặt/đọc đơn và staff đúng/sai cơ sở. Browser mock test không chứng minh tiền/DB thật; HTTP fixture kiểm boundary server riêng. [05](05-testing-strategy.md), [12](12-figma-sync.md) quản lý bằng chứng tiếp theo.
+
+## 6. Trang công khai và trải nghiệm khách — 23/10/2026
+
+CURRENT: /home ở ngoài Gate/Layout, khách chưa đăng nhập truy cập trực tiếp hoặc reload được; trang giới thiệu không gọi API riêng tư. /auth?mode=register mở form đăng ký, /auth có liên kết về /home. Đặt sân khi chưa đăng nhập chuyển qua auth và giữ đường dẫn nội bộ cần quay lại; đăng nhập trực tiếp mặc định /dashboard. Các trang đơn/tài khoản/vận hành vẫn có guard, server giữ quyền hiện hành.
+
+Header ứng dụng có avatar với cursor pointer, dropdown tài khoản/đơn/trang chính/trang giới thiệu/đăng xuất, hỗ trợ Escape, Tab và click ngoài. Đăng xuất về /home và xóa session/cache. Đồng hồ cập nhật mỗi giây theo Asia/Ho_Chi_Minh, không dùng aria-live để tránh đọc liên tục. Dashboard có ô icon thao tác nhanh; chọn cơ sở truyền branchId sang màn đặt sân. Không dùng minh họa trên landing làm bằng chứng sân trống, giá hay số lượng cơ sở thực.
+
+## 7. Giao diện rộng và form liên hệ — 23/10/2026
+
+CURRENT: `redesign.css` thống nhất palette xanh đậm/lime, nền sáng, sidebar tối, mục đang chọn tương phản, header gọn, card/bảng/form và bottom navigation. Style landing nền đặt trong layer `home-base`; thiết kế chung có thể điều chỉnh riêng qua redesign. Giữ nhãn ngắn cạnh icon, focus ring, skip link, reduced motion và responsive 320–1440px. Logo trong sidebar đưa về /home.
+
+Home có form họ tên/SĐT bắt buộc, email/lời nhắn tùy chọn, đồng ý liên hệ; không cần đăng nhập. Không lưu PII trong localStorage. Chỉ báo thành công sau POST /api/v1/contacts thành công; lỗi mạng giữ nguyên form. Hộp thư /admin/contacts chỉ dành Admin, phân trang 20 yêu cầu, gọi điện/email và đánh dấu xử lý; Manager không có quyền đọc danh sách toàn hệ thống. Đây là yêu cầu tư vấn, không giữ chỗ hoặc xác nhận đặt sân.

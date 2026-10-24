@@ -32,6 +32,8 @@ namespace Services.DI
             this IServiceCollection services, IConfiguration? configuration = null)
         {
 
+            services.AddScoped<Contract.Services.Contact.IContactService, ContactService>();
+
             // On-site gateways never move real money — always registered.
             services.AddScoped<IPaymentGateway>(sp =>
                 new OnSiteGateway(PaymentMethod.Cash));

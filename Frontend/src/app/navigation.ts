@@ -1,7 +1,7 @@
-import { Home, CalendarDays, ListChecks, User, LayoutDashboard, Dumbbell, Ticket, Clock, Users, ScrollText, Crown, Hourglass, Star, ScanLine } from "lucide-react";
+import { Home, CalendarDays, ListChecks, User, LayoutDashboard, Dumbbell, Ticket, Clock, Users, ScrollText, Crown, Hourglass, Star, ScanLine, Inbox } from "lucide-react";
 
 export const customerItems = [
-  { to: "/", label: "Trang chủ", icon: Home, end: true },
+  { to: "/dashboard", label: "Trang chính", icon: Home, end: true },
   { to: "/book", label: "Đặt sân", icon: CalendarDays },
   { to: "/bookings", label: "Đơn của tôi", icon: ListChecks },
   { to: "/waitlist", label: "Chờ", icon: Hourglass },
@@ -12,7 +12,7 @@ export const customerItems = [
 
 // Mobile bottom nav keeps only the essentials so 5 items fit (docs 07 §3).
 export const mobileItems = [
-  { to: "/", label: "Trang chủ", icon: Home, end: true },
+  { to: "/dashboard", label: "Trang chính", icon: Home, end: true },
   { to: "/book", label: "Đặt sân", icon: CalendarDays },
   { to: "/bookings", label: "Đơn của tôi", icon: ListChecks },
   { to: "/waitlist", label: "Chờ", icon: Hourglass },
@@ -25,6 +25,7 @@ export type NavItem = { to: string; label: string; icon: typeof Home; end?: bool
 // maintenance on own branch, slots, vouchers, dashboard-summary). Admin adds
 // the back-office: staff, audit log, membership, court CRUD.
 export const adminItems: NavItem[] = [
+  { to: "/admin/contacts", label: "Liên hệ", icon: Inbox, adminOnly: true },
   { to: "/admin", label: "Tổng quan", icon: LayoutDashboard, end: true },
   { to: "/admin/reconciliation", label: "Đối soát", icon: ScrollText },
   { to: "/admin/bookings", label: "Đặt chỗ", icon: ListChecks },

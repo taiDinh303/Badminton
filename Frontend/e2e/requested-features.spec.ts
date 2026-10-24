@@ -86,7 +86,7 @@ test("court closure sends selected hours and renders status colors", async ({ pa
   await page.goto("/admin/courts");
   await expect(page.getByText("Mở", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Bảo trì", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Mở (bình thường)" })).toHaveCSS("color", "rgb(21, 128, 61)");
+  await expect(page.getByRole("button", { name: "Mở (bình thường)" })).toHaveCSS("color", "rgb(23, 99, 69)");
   await page.locator('button[aria-pressed]').filter({ hasText: "Bảo trì" }).click();
   await expect(page.locator('button[aria-pressed]').filter({ hasText: "Bảo trì" })).toHaveCSS("color", "rgb(245, 158, 11)");
   await page.getByRole("button", { name: "Đóng", exact: true }).filter({ hasText: "Đóng" }).click();

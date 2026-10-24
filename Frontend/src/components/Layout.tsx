@@ -1,7 +1,8 @@
-import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { clsx } from "clsx";
 import { Feather, LogOut, Menu, X } from "lucide-react";
 import { useState, useRef } from "react";
+import AccountMenu from "./AccountMenu";
 import { customerItems, mobileItems, adminItems } from "../app/navigation";
 import { useAuth, isStaff, isAdmin } from "../store/auth";
 
@@ -39,9 +40,9 @@ export default function Layout() {
   const admin = isAdmin(user);
   const items = adminItems.filter((it) => !it.adminOnly || admin);
 
-  function doLogout() {
+  async function doLogout() {
+    await nav("/home", { replace: true, flushSync: true });
     logout();
-    nav("/auth");
   }
 
   return (
@@ -49,7 +50,7 @@ export default function Layout() {
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:p-3">Bỏ qua điều hướng</a>
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-y-auto border-r border-border bg-card md:flex">
-        <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
+        <Link to="/home" aria-label="Về trang chủ" className="flex items-center gap-2.5 px-5 pt-5 pb-4">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white shadow-sm shadow-primary/30">
             <Feather className="h-5 w-5" />
           </span>
@@ -57,7 +58,7 @@ export default function Layout() {
             <p className="text-sm leading-tight font-bold">Cầu Lông</p>
             <p className="text-[11px] leading-tight text-muted">Booking</p>
           </div>
-        </div>
+        </Link>
 
         <div className="px-5">
           {staff && (
@@ -129,7 +130,7 @@ export default function Layout() {
               </button>
               <div><p className="text-sm font-semibold">{title}</p><p className="text-xs text-muted">Đặt sân cầu lông · {staff ? "Vận hành cơ sở" : "Sẵn sàng cho trận đấu"}</p></div>
             </div>
-            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{admin ? "Quản trị viên" : staff ? "Quản lý" : "Khách hàng"}</span>
+            <AccountMenu />
           </div>
           {menuOpen && <nav id="mobile-menu" aria-label="Menu di động" className="mt-3 max-h-[65dvh] overflow-y-auto border-t border-border pt-3 md:hidden"
             onKeyDown={event => { if (event.key === "Escape") { setMenuOpen(false); menuButton.current?.focus(); } }}>

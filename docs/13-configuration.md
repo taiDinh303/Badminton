@@ -92,3 +92,8 @@ JWT kiểm lại user active, verified, chưa xóa, role và SecurityStamp khớ
 - TARGET: merchant sandbox/certification, production restore rehearsal theo quyền riêng, endurance và quyết định RPO/RTO. Diễn tập local không tự đóng các gate này.
 
 Nguồn protocol: [MoMo refund/query](https://developers.momo.vn/v3/docs/payment/api/payment-api/refund/), [ZaloPay refund/query](https://developer.zalopay.vn/v2/general/overview.html), [VNPAY refund/query](https://sandbox.vnpayment.vn/apis/docs/truy-van-hoan-tien/querydr%26refund.html). Credential và dữ liệu mẫu của tài liệu nhà cung cấp không đưa vào cấu hình dự án.
+$110. Lưu liên hệ công khai — 23/10/2026
+
+CURRENT source: POST /api/v1/contacts cho khách chưa đăng nhập, 3 lần/phút/IP; server kiểm họ tên, SĐT Việt Nam, email, độ dài lời nhắn và consent. Honeypot loại submission bot; không ghi thông tin liên hệ vào log. GET /api/v1/contacts?page=1 và PATCH /api/v1/contacts/{id}/handled chỉ cho JWT role Admin.
+
+Có migration AddContactInquiries riêng trong hai thư mục provider, không sửa migration lịch sử. Trước khi phát hành API có form liên hệ, cần backup/review/apply migration tương ứng bằng quy trình triển khai hiện hành; PostgreSQL mới nhất là 20261023155315_AddContactInquiries, SQL Server là 20261023155259_AddContactInquiries. PostgreSQL bật RLS và thu hồi quyền PUBLIC/anon/authenticated; .NET tiếp tục là cổng ghi/đọc qua connection server. Production không auto-migrate hoặc seed. Chưa áp dụng migration lên database live trong nhiệm vụ giao diện này; chưa nghiệm thu lưu/đọc thực trên live. Không có email/SMS tự động cho form này; đội ngũ Admin xem và liên hệ từ hộp thư.
