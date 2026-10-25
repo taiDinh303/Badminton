@@ -108,9 +108,10 @@ namespace Services
             if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
                 throw new BadRequestException("Mật khẩu hiện tại không đúng.");
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            user.PasswordRecoveryHash = null; user.PasswordRecoveryExpiresAt = null;
             user.SecurityStamp = Guid.NewGuid().ToString("N");
             user.UpdatedAt = DateTime.UtcNow;
-            Repository<User>().Update(user);
+            Repository<User>().UpdateProperties(user, nameof(User.PasswordHash), nameof(User.SecurityStamp), nameof(User.PasswordRecoveryHash), nameof(User.PasswordRecoveryExpiresAt), nameof(User.UpdatedAt));
             await SaveAsync();
         });
 
@@ -120,9 +121,64 @@ namespace Services
             var user = await RequireUserAsync();
             user.SecurityStamp = Guid.NewGuid().ToString("N");
             user.UpdatedAt = DateTime.UtcNow;
-            Repository<User>().Update(user);
+            Repository<User>().UpdateProperties(user, nameof(User.SecurityStamp), nameof(User.UpdatedAt));
             await SaveAsync();
         });
+
+        public async Task<RecoveryCodeResponse> IssueRecoveryCodeAsync(int userId, RecoveryCodeRequest request)
+        {
+            RecoveryCodeResponse result = null!;
+            await Uow.RunInTransactionAsync(async () => {
+                await Uow.LockPointsUserAsync(userId);
+                var admin = await Repository<User>().GetByIdAsync(_currentUser.Id);
+                if (admin is null || admin.Role != Role.Admin || !_currentUser.IsInRole("Admin") || admin.Status != UserStatus.Active
+                    || admin.DeletedAt.HasValue || !BCrypt.Net.BCrypt.Verify(request.CurrentPassword, admin.PasswordHash))
+                    throw new ConflictException("Không thể xác nhận quyền quản trị.");
+                if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 5 || request.Reason.Length > 500)
+                    throw new BadRequestException("Nhập lý do và kết quả xác minh khách (5–500 ký tự).");
+                var user = await Repository<User>().GetByIdAsync(userId);
+                if (user is null || user.Role == Role.Admin || user.Status != UserStatus.Active || user.DeletedAt.HasValue)
+                    throw new ConflictException("Tài khoản không hỗ trợ khôi phục theo cách này.");
+                var code = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+                user.PasswordRecoveryHash = RecoveryHash(code);
+                user.PasswordRecoveryExpiresAt = DateTime.UtcNow.AddMinutes(15); user.PasswordRecoveryFailures = 0;
+                Repository<User>().UpdateProperties(user, nameof(User.PasswordRecoveryHash), nameof(User.PasswordRecoveryExpiresAt), nameof(User.PasswordRecoveryFailures));
+                await Repository<AuditLog>().AddAsync(new AuditLog { ActorId = _currentUser.Id, Action = "account.recovery-issued",
+                    EntityType = "User", EntityId = userId.ToString(), Reason = request.Reason.Trim() });
+                await SaveAsync(); result = new(code, user.PasswordRecoveryExpiresAt.Value);
+            });
+            return result;
+        }
+
+        public async Task ResetPasswordAsync(ResetPasswordRequest request)
+        {
+            AuthInput.Password(request.NewPassword);
+            var phone = AuthInput.Phone(request.PhoneNumber);
+            var valid = false;
+            await Uow.RunInTransactionAsync(async () => {
+                var found = (await Repository<User>().GetByConditionAsync(u => u.PhoneNumber == phone)).SingleOrDefault();
+                if (found is null) return;
+                await Uow.LockPointsUserAsync(found.Id);
+                var user = (await Repository<User>().GetByConditionAsync(u => u.Id == found.Id)).Single();
+                if (user.PasswordRecoveryHash is null || user.PasswordRecoveryExpiresAt <= DateTime.UtcNow || user.PasswordRecoveryExpiresAt is null
+                    || user.PasswordRecoveryFailures >= 5 || user.Status != UserStatus.Active || user.DeletedAt.HasValue || user.Role == Role.Admin) return;
+                if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(user.PasswordRecoveryHash),
+                    System.Text.Encoding.ASCII.GetBytes(RecoveryHash(request.Code ?? "")))) {
+                    user.PasswordRecoveryFailures++;
+                    Repository<User>().UpdateProperties(user, nameof(User.PasswordRecoveryFailures));
+                    await SaveAsync(); return;
+                }
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+                user.SecurityStamp = Guid.NewGuid().ToString("N"); user.PasswordRecoveryHash = null; user.PasswordRecoveryExpiresAt = null;
+                user.UpdatedAt = DateTime.UtcNow;
+                Repository<User>().UpdateProperties(user, nameof(User.PasswordHash), nameof(User.SecurityStamp), nameof(User.PasswordRecoveryHash), nameof(User.PasswordRecoveryExpiresAt), nameof(User.UpdatedAt));
+                await Repository<AuditLog>().AddAsync(new AuditLog { ActorId = user.Id, Action = "account.password-recovered", EntityType = "User", EntityId = user.Id.ToString() });
+                await SaveAsync(); valid = true;
+            });
+            if (!valid) throw new BadRequestException("Mã khôi phục không hợp lệ hoặc đã hết hạn.");
+        }
+
+        private static string RecoveryHash(string code) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(code.Trim())));
 
         private async Task<User> RequireUserAsync()
         {

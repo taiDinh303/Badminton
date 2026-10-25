@@ -15,7 +15,7 @@ namespace Contract.Services.Booking
             GetByUserPagedAsync(int userId, string? status, Page page);
 
         Task<(IReadOnlyList<BookingView> Items, int TotalCount)>
-            GetAllPagedAsync(string? status, int? branchId, Page page);
+            GetAllPagedAsync(string? status, int? branchId, Page page, string? search = null, DateOnly? date = null, bool needsAttendance = false);
 
         Task CancelForMaintenanceAsync(int bookingId, int actorId);
         Task<BookingView> CancelAsync(int bookingId, int actorId);

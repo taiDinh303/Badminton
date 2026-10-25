@@ -51,6 +51,7 @@ namespace Contract.Repositories.UnitOfWork
         Task AddRangeAsync(IEnumerable<T> entities, CancellationToken ct = default);
 
         void Update(T entity);
+        void UpdateProperties(T entity, params string[] properties);
 
         Task RemoveAsync(T entity, CancellationToken ct = default);
     }

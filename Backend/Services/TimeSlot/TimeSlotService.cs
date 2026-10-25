@@ -27,8 +27,9 @@ namespace Services
             int result = 0;
             await Uow.RunInTransactionAsync(async () =>
             {
-                await Uow.LockTimeSlotsAsync();
+                await LockInventoryAsync();
                 result = await CreateCoreAsync(request, actorId);
+                await new InventoryHistoryService(Uow).CaptureTodayAsync();
             });
             return result;
         }
@@ -60,8 +61,9 @@ namespace Services
 
         public Task UpdateAsync(int id, UpdateTimeSlotRequest request, int actorId) => Uow.RunInTransactionAsync(async () =>
         {
-            await Uow.LockTimeSlotsAsync();
+            await LockInventoryAsync();
             await UpdateCoreAsync(id, request, actorId);
+            await new InventoryHistoryService(Uow).CaptureTodayAsync();
         });
 
         private async Task UpdateCoreAsync(int id, UpdateTimeSlotRequest request, int actorId)
@@ -84,8 +86,9 @@ namespace Services
 
         public Task DeleteAsync(int id, int actorId) => Uow.RunInTransactionAsync(async () =>
         {
-            await Uow.LockTimeSlotsAsync();
+            await LockInventoryAsync();
             await DeleteCoreAsync(id, actorId);
+            await new InventoryHistoryService(Uow).CaptureTodayAsync();
         });
 
         private async Task DeleteCoreAsync(int id, int actorId)
@@ -98,6 +101,13 @@ namespace Services
             Repo.Update(s);
             await SaveAsync();
             await _audit.LogAsync(actorId, "timeslot.delete", "TimeSlot", id.ToString(), before, s);
+        }
+
+        private async Task LockInventoryAsync()
+        {
+            var branches = await Repository<Branch>().GetAllAsync();
+            foreach (var branch in branches.OrderBy(b => b.Id)) await Uow.LockBookingRequestAsync($"branch-config:{branch.Id}");
+            await Uow.LockTimeSlotsAsync();
         }
 
         private async Task<TimeSlot> MustGetAsync(int id)

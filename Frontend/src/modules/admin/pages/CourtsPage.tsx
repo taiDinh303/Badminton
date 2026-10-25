@@ -56,6 +56,10 @@ export default function CourtsPage() {
   const [deleteCourt, setDeleteCourt] = useState<Court | null>(null);
   // Transient maintenance-success feedback so the user sees it saved.
   const [maintSaved, setMaintSaved] = useState(false);
+  const [maintLoading, setMaintLoading] = useState<number | null>(null);
+  const [maintLoadError, setMaintLoadError] = useState<string | null>(null);
+  const impactId = deleteCourt?.id ?? editId;
+  const impact = useQuery({ queryKey: ["court-impact", impactId], queryFn: () => api.courts.impact(impactId!), enabled: impactId != null });
   const canManageCourts = isAdmin(useAuth((s) => s.user));
 
   const { data: branches = [] } = useQuery({
@@ -120,15 +124,16 @@ export default function CourtsPage() {
     (create.error as Error | undefined)?.message ??
     (update.error as Error | undefined)?.message ??
     (del.error as Error | undefined)?.message ??
-    (setMaint.error as Error | undefined)?.message ?? null;
+    (setMaint.error as Error | undefined)?.message ?? maintLoadError ?? null;
 
-  function openMaint(c: Court) {
-    const schedule = qc.getQueryData<Awaited<ReturnType<typeof api.admin.maintenance.schedule>>>(["maintenance", c.id, maintDate]);
-    setMaint.reset();
-    setMaintCourt(c);
-    setMaintStatus(schedule?.status ?? "Maintenance");
-    setMaintStart(schedule?.startTime ?? ""); setMaintEnd(schedule?.endTime ?? "");
-    setMaintNote(schedule?.note ?? "");
+  async function openMaint(c: Court, date = maintDate) {
+    setMaintLoading(c.id); setMaintLoadError(null); setMaint.reset();
+    try {
+      const schedule = await qc.fetchQuery({ queryKey: ["maintenance", c.id, date], queryFn: () => api.admin.maintenance.schedule(c.id, date), staleTime: 0 });
+      setMaintStatus(schedule.status); setMaintStart(schedule.startTime ?? ""); setMaintEnd(schedule.endTime ?? "");
+      setMaintNote(schedule.note ?? ""); setMaintDate(date); setMaintCourt(c);
+    } catch (error) { setMaintLoadError(error instanceof Error ? error.message : "Không tải được lịch sân."); }
+    finally { setMaintLoading(null); }
   }
 
   function openEdit(c: Court) {
@@ -161,7 +166,7 @@ export default function CourtsPage() {
         }
       />
 
-      <div className="mt-4 max-w-xs"><Field label="Ngày xem trạng thái sân" type="date" value={maintDate} onChange={(e) => setMaintDate(e.target.value)} /></div>
+      <div className="mt-4 max-w-xs"><Field label="Ngày xem trạng thái sân" type="date" value={maintDate} onChange={(e) => { const court = maintCourt; setMaintCourt(null); if (court) void openMaint(court, e.target.value); }} /></div>
       {maintSaved && (
         <Callout tone="success" className="mt-3">
           Đã lưu trạng thái bảo trì. Khung giờ của sân vào ngày đó đã được cập nhật.
@@ -218,7 +223,7 @@ export default function CourtsPage() {
                     <Pencil className="h-3 w-3" /> Chỉnh sửa
                   </Button>
                 )}
-                <Button variant="ghost" size="xs" className="flex-1" onClick={() => openMaint(c)}>
+                <Button variant="ghost" size="xs" className="flex-1" disabled={maintLoading != null} onClick={() => void openMaint(c)}>
                   <Wrench className="h-3 w-3" /> Bảo trì
                 </Button>
                 {canManageCourts && (
@@ -259,6 +264,7 @@ export default function CourtsPage() {
             )}
             <Field label="Mã sân" value={form.code} disabled={editId != null}
               onChange={(e) => setForm({ ...form, code: e.target.value })} />
+            {editId != null && impact.data && impact.data.count > 0 && <Callout tone="info">Có {impact.data.count} đơn đang hoạt động: {impact.data.bookingCodes.join(", ")}. Không thể vô hiệu sân trước khi xử lý đơn.</Callout>}
             <Field label="Tên sân" value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <Field label="Sức chứa (người)" type="number" min={1} max={10}
@@ -315,7 +321,7 @@ export default function CourtsPage() {
               label="Ngày áp dụng"
               type="date"
               value={maintDate}
-              onChange={(e) => setMaintDate(e.target.value)}
+              onChange={(e) => { const court = maintCourt; setMaintCourt(null); if (court) void openMaint(court, e.target.value); }}
             />
             <div>
               <p className="mb-1.5 text-sm font-medium text-muted">Trạng thái</p>
@@ -368,7 +374,7 @@ export default function CourtsPage() {
       {deleteCourt && (
         <ConfirmDialog
           title="Xóa sân?"
-          message={`Sân "${deleteCourt.name}" (mã ${deleteCourt.code}) sẽ bị vô hiệu. Các đơn đã đặt giữ nguyên. Việc này không thể hoàn tác.`}
+          message={`Sân "${deleteCourt.name}" sẽ bị vô hiệu. ${impact.data ? `${impact.data.count} đơn đang hoạt động. ${impact.data.bookingCodes.join(", ")}` : "Đang kiểm tra các đơn bị ảnh hưởng."} Có đơn đang hoạt động thì phải xử lý trước.`}
           confirmLabel="Xóa sân"
           tone="danger"
           busy={del.isPending}

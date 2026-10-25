@@ -455,6 +455,41 @@ namespace Repositories.Migrations.PostgreSql
                     b.ToTable("GroupMembers", (string)null);
                 });
 
+            modelBuilder.Entity("Contract.Repositories.Entity.InventoryDaySnapshot", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BranchId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CapacityJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId", "Date")
+                        .IsUnique();
+
+                    b.ToTable("InventoryDaySnapshots", (string)null);
+                });
+
             modelBuilder.Entity("Contract.Repositories.Entity.Notification", b =>
                 {
                     b.Property<int>("Id")
@@ -684,6 +719,10 @@ namespace Repositories.Migrations.PostgreSql
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("InviteTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<int>("MaxMembers")
                         .HasColumnType("integer");
 
@@ -887,6 +926,16 @@ namespace Repositories.Migrations.PostgreSql
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("PasswordRecoveryExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("PasswordRecoveryFailures")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PasswordRecoveryHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("PhoneNumber")
                         .IsRequired()
@@ -1216,6 +1265,15 @@ namespace Repositories.Migrations.PostgreSql
                     b.Navigation("Group");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Contract.Repositories.Entity.InventoryDaySnapshot", b =>
+                {
+                    b.HasOne("Contract.Repositories.Entity.Branch", null)
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Contract.Repositories.Entity.Notification", b =>

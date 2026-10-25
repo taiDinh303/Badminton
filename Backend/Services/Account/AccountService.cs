@@ -43,7 +43,7 @@ namespace Services
             u.Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim();
             u.AvatarUrl = string.IsNullOrEmpty(avatar) ? null : avatar;
             u.UpdatedAt = DateTime.UtcNow;
-            Repository<User>().Update(u);
+            Repository<User>().UpdateProperties(u, nameof(User.FullName), nameof(User.Email), nameof(User.AvatarUrl), nameof(User.UpdatedAt));
             await SaveAsync();
             return await GetProfileAsync(userId);
         }
@@ -53,7 +53,7 @@ namespace Services
             var repo = Repository<PointLedger>();
             var balance = await repo.SumIntByConditionAsync(
                 p => p.UserId == userId, p => p.Delta);
-            var redeemableVnd = balance * VndPerPointsUnit / PointsPerVndUnit;
+            var redeemableVnd = (long)balance * VndPerPointsUnit / PointsPerVndUnit;
             return new PointSummary(balance, redeemableVnd, VndPerPointsUnit, PointsPerVndUnit);
         }
 
@@ -107,6 +107,7 @@ namespace Services
                 .ToList();
             var nextVoucher = availableVouchers.FirstOrDefault();
 
+            var conversion = (await Repository<PointLedger>().GetByConditionAsync(p => p.LedgerKey == $"unit-v2:{userId}")).SingleOrDefault();
             return new AccountSummary(
                 points.Balance,
                 points.RedeemableVnd,
@@ -115,7 +116,7 @@ namespace Services
                 voucherUsed,
                 usedVoucher,
                 nextVoucher,
-                availableVouchers);
+                availableVouchers, conversion is not null, conversion?.CreatedAt);
         }
 
         private static bool IsAvailable(Voucher v) => v.IsActive && v.ValidFrom <= Badminton.Core.Utils.HanoiTime.HanoiToday()

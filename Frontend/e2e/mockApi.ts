@@ -107,3 +107,5 @@ export async function seedLoggedInCustomer(
     sessionStorage.setItem("bb_user", JSON.stringify(u));
   }, user);
 }
+
+export function paged<T>(items: T[], totalItems = items.length, currentPage = 1) { return ok({ items, totalItems, currentPage, pageSize: 20, totalPages: Math.ceil(totalItems / 20), averageRating: items.length ? 5 : null }); }

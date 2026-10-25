@@ -42,10 +42,12 @@ namespace Services
                 row.CreatedById = actorId; row.UpdatedAt = DateTime.UtcNow;
                 if (existing is null) await repo.AddAsync(row); else repo.Update(row);
                 await SaveAsync();
-            });
             await _audit.LogAsync(actorId, status == CourtDateStatus.Open ? "maintenance.open" : "maintenance.lock",
                 "CourtDateStatus", $"{courtId}@{date:yyyy-MM-dd}", before,
                 new { row.Status, row.Note, row.StartTime, row.EndTime }, note);
+            });
+            await new InventoryHistoryService(Uow).CaptureTodayAsync(court.BranchId);
+
 
             if (status != CourtDateStatus.Open)
             {

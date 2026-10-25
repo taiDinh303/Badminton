@@ -1,9 +1,10 @@
+using Badminton.Core.Utils;
+using Badminton.Core.Enums;
 using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using Contract.Services.Court;
 using Badminton.Core.Base;
-using Badminton.Core.Enums;
 using Badminton.Core.Security;
 using ModelViews.Court;
 
@@ -33,6 +34,17 @@ namespace Services
 
         public async Task<int> CreateAsync(CreateCourtRequest request, int actorId)
         {
+            int result = 0;
+            await Uow.RunInTransactionAsync(async () => {
+                await Uow.LockBookingRequestAsync($"branch-config:{request.BranchId}");
+                result = await CreateCoreAsync(request, actorId);
+                await new InventoryHistoryService(Uow).CaptureTodayAsync(request.BranchId);
+            });
+            return result;
+        }
+
+        private async Task<int> CreateCoreAsync(CreateCourtRequest request, int actorId)
+        {
             Validate(request.Name, request.PriceLowPeak, request.PricePeak, request.WeekendSurcharge, request.Capacity);
             var dupes = await Repo.GetByConditionAsync(
                 c => c.BranchId == request.BranchId && c.Code == request.Code && c.DeletedAt == null);
@@ -57,12 +69,26 @@ namespace Services
             return c.Id;
         }
 
-        public async Task UpdateAsync(int id, UpdateCourtRequest request, int actorId)
+        public Task UpdateAsync(int id, UpdateCourtRequest request, int actorId) => Uow.RunInTransactionAsync(async () => {
+            var branchId = (await MustGetAsync(id)).BranchId;
+            await Uow.LockBookingRequestAsync($"branch-config:{branchId}");
+            await UpdateCoreAsync(id, request, actorId);
+            await new InventoryHistoryService(Uow).CaptureTodayAsync(branchId);
+        });
+
+        private async Task UpdateCoreAsync(int id, UpdateCourtRequest request, int actorId)
         {
             var c = await MustGetAsync(id);
             Validate(request.Name ?? c.Name, request.PriceLowPeak ?? c.PriceLowPeak,
                 request.PricePeak ?? c.PricePeak, request.WeekendSurcharge ?? c.WeekendSurcharge,
                 request.Capacity ?? c.Capacity);
+            if (request.IsActive == false && (await GetImpactAsync(id)).Count > 0)
+                throw new ConflictException("Sân còn đơn đang hoạt động. Xử lý đơn hoặc dùng lịch bảo trì trước khi vô hiệu.");
+            var today = HanoiTime.HanoiToday();
+            if (request.Capacity is { } capacity && await Repository<Booking>().CountByConditionAsync(b => b.CourtId == id
+                && b.Date >= today && b.DeletedAt == null && b.PlayerCount > capacity
+                && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed)) > 0)
+                throw new ConflictException("Sức chứa mới thấp hơn số khách của đơn đang hoạt động. Xử lý đơn trước khi giảm sức chứa.");
             var before = AuditCopy(c);
             if (request.Name is not null) c.Name = request.Name;
             if (request.PriceLowPeak.HasValue) c.PriceLowPeak = request.PriceLowPeak.Value;
@@ -73,22 +99,42 @@ namespace Services
             if (request.Amenities is not null) c.Amenities = request.Amenities;
             if (request.IsActive.HasValue) c.IsActive = request.IsActive.Value;
             c.UpdatedAt = DateTime.UtcNow;
-            Repo.Update(c);
+            Repo.UpdateProperties(c, nameof(Court.Name), nameof(Court.PriceLowPeak), nameof(Court.PricePeak),
+                nameof(Court.WeekendSurcharge), nameof(Court.Capacity), nameof(Court.Surface), nameof(Court.Amenities), nameof(Court.IsActive), nameof(Court.UpdatedAt));
             await SaveAsync();
             await _audit.LogAsync(actorId, "court.update", "Court", id.ToString(), before, c,
                 "Chỉnh giá/cấu hình sân (phi-phiên bản, giữ snapshot booking đã xác nhận)");
         }
 
-        public async Task DeleteAsync(int id, int actorId)
+        public Task DeleteAsync(int id, int actorId) => Uow.RunInTransactionAsync(async () => {
+            var branchId = (await MustGetAsync(id)).BranchId;
+            await Uow.LockBookingRequestAsync($"branch-config:{branchId}");
+            await DeleteCoreAsync(id, actorId);
+            await new InventoryHistoryService(Uow).CaptureTodayAsync(branchId);
+        });
+
+        private async Task DeleteCoreAsync(int id, int actorId)
         {
             var c = await MustGetAsync(id);
+            if ((await GetImpactAsync(id)).Count > 0)
+                throw new ConflictException("Sân còn đơn đang hoạt động. Xử lý đơn hoặc dùng lịch bảo trì trước khi xóa.");
             var before = AuditCopy(c);
             c.IsActive = false;
             c.DeletedAt = DateTime.UtcNow;
             c.UpdatedAt = DateTime.UtcNow;
-            Repo.Update(c);
+            Repo.UpdateProperties(c, nameof(Court.IsActive), nameof(Court.DeletedAt), nameof(Court.UpdatedAt));
             await SaveAsync();
             await _audit.LogAsync(actorId, "court.delete", "Court", id.ToString(), before, c);
+        }
+
+        public async Task<ModelViews.Booking.ConfigurationImpact> GetImpactAsync(int id)
+        {
+            var court = await MustGetAsync(id);
+            await AuthorizeStaffBranchAsync(court.BranchId, _currentUser.Id);
+            var today = HanoiTime.HanoiToday();
+            var rows = await Repository<Booking>().GetByConditionAsync(b => b.CourtId == id && b.Date >= today && b.DeletedAt == null
+                && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed));
+            return new(rows.Count, rows.OrderBy(b => b.Date).Take(10).Select(b => b.BookingCode).ToList());
         }
 
         private async Task<Court> MustGetAsync(int id)

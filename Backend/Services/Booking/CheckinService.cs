@@ -38,6 +38,9 @@ namespace Services
 
         private async Task<Booking> ApplyCheckinAsync(Booking b)
         {
+            if (b.DeletedAt.HasValue) throw new NotFoundException("Booking", b.Id);
+            if (b.Status == BookingStatus.Pending && (b.PendingExpiresAt is null || b.PendingExpiresAt <= DateTime.UtcNow))
+                throw new ConflictException("Đơn đã hết thời gian giữ chỗ, không thể check-in.");
             if (b.Status is not (BookingStatus.Confirmed or BookingStatus.Pending))
                 throw new ConflictException(
                     $"Đơn {b.BookingCode} ở trạng thái {b.Status}, không thể check-in.");
@@ -46,8 +49,15 @@ namespace Services
             if (b.CheckedInAt is { } already)
                 return b;
 
+            var slot = await Repository<TimeSlot>().GetByIdAsync(b.SlotId)
+                ?? throw new NotFoundException("Slot", b.SlotId);
+            var businessNow = Badminton.Core.Utils.HanoiTime.HanoiNow();
+            if (businessNow < Badminton.Core.Utils.HanoiTime.SlotStart(b.Date, slot.StartTime).AddMinutes(-30)
+                || businessNow > Badminton.Core.Utils.HanoiTime.SlotEnd(b.Date, slot.EndTime))
+                throw new ConflictException("Chỉ check-in từ 30 phút trước giờ bắt đầu đến hết khung giờ chơi.");
+
             var now = DateTime.UtcNow;
-            int claimed = await Uow.Bookings.CheckinAsync(b.Id, now);
+            int claimed = await Uow.Bookings.CheckinAsync(b.Id, now, businessNow);
             if (claimed == 0)
                 throw new ConflictException(
                     $"Đơn {b.BookingCode} vừa được check-in bởi thao tác khác.");

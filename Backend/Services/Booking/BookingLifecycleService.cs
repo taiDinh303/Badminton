@@ -56,6 +56,8 @@ public sealed class BookingLifecycleService(IUnitOfWork uow, ICurrentUser curren
         await AuthorizeStaffBranchAsync(b.BranchId, actorId);
         if (b.Status is not BookingStatus.Confirmed)
             throw new ConflictException($"Chi duoc gan co no-show don o trang thai Confirmed (hien tai: {b.Status}).");
+        if (b.CheckedInAt.HasValue)
+            throw new ConflictException("Khách đã check-in, không thể ghi nhận vắng mặt.");
 
         var slot = await Repository<TimeSlot>().GetByIdAsync(b.SlotId);
         if (slot is not null)
@@ -68,7 +70,7 @@ public sealed class BookingLifecycleService(IUnitOfWork uow, ICurrentUser curren
         }
 
         int claimed = await Uow.Bookings.MarkNoShowAsync(bookingId,
-            "No-show: khach khong den san" + (string.IsNullOrWhiteSpace(note) ? "" : " - " + note), DateTime.UtcNow);
+            "No-show: khach khong den san" + (string.IsNullOrWhiteSpace(note) ? "" : " - " + note), DateTime.UtcNow, HanoiTime.HanoiNow());
         if (claimed == 0)
         {
             var nowStatus = await Repo.GetByIdAsync(bookingId);
@@ -103,7 +105,8 @@ public sealed class BookingLifecycleService(IUnitOfWork uow, ICurrentUser curren
                 user.NoShowLimited = true;
                 user.NoShowLimitedPeriod = monthStart.AddMonths(1);
             }
-            Repository<User>().Update(user);
+            Repository<User>().UpdateProperties(user, nameof(User.NoShowPeriod), nameof(User.NoShowCount),
+                nameof(User.NoShowLimited), nameof(User.NoShowLimitedPeriod));
         }
 
         await SaveAsync();

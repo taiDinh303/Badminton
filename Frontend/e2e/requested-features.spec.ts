@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mockApi, ok } from "./mockApi";
+import { mockApi, ok, paged } from "./mockApi";
 
 async function identity(page: Page, role = "Customer") {
   await page.addInitScript((r) => {
@@ -13,9 +13,10 @@ test("all reviews loads reviews from every court", async ({ page }) => {
   await identity(page);
   await mockApi(page, [
     { pattern: /\/courts$/, respond: () => ok([court, { ...court, id: 2, name: "Sân 2" }]) },
-    { pattern: /\/reviews\?courtId=/, respond: (_r, u) => {
-      const id = Number(u.searchParams.get("courtId"));
-      return ok([{ id, courtId: id, courtName: `Sân ${id}`, userName: `Khách ${id}`, rating: 5, createdAt: "2026-10-20T10:00:00Z", comment: `Nhận xét ${id}` }]);
+    { pattern: /\/reviews\/paged\?/, respond: (_r, u) => {
+      const selected = u.searchParams.get("courtId");
+      const ids = selected ? [Number(selected)] : [1, 2];
+      return paged(ids.map(id => ({ id, courtId: id, courtName: `Sân ${id}`, userName: `Khách ${id}`, rating: 5, createdAt: "2026-10-20T10:00:00Z", comment: `Nhận xét ${id}` })));
     } },
   ]);
   await page.goto("/reviews");
@@ -130,7 +131,7 @@ test("empty reviews direct customers to completed bookings", async ({ page }) =>
   await identity(page);
   await mockApi(page, [
     { pattern: /\/courts$/, respond: () => ok([court]) },
-    { pattern: /\/reviews\?/, respond: () => ok([]) },
+    { pattern: /\/reviews\/paged\?/, respond: () => paged([]) },
   ]);
   await page.goto("/reviews");
   await expect(page.getByRole("link", { name: "Đánh giá đơn đã hoàn thành" })).toHaveAttribute("href", "/bookings");

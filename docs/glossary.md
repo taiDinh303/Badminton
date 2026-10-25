@@ -23,7 +23,7 @@
 | Cancel | Hủy booking/giải phóng slot | CURRENT cancel đơn đã trả gọi CancelRefundAsync; vẫn cần đối soát gateway |
 | No-show | Khách không đến theo mốc nghiệp vụ | Cờ giới hạn tháng kế; mốc và cạnh tranh job cần vận hành xác nhận |
 | HanoiTime | Helper giờ Việt Nam fixed UTC+7 | Timestamp UTC; date/slot theo lịch địa phương; không phải mọi code đã dùng helper |
-| Điểm / Points | Đơn vị loyalty, khác đơn vị VND | 1 VND thu = 1 điểm; 1.000 điểm đổi 20.000 VND; earn ở Completed; membership có thể nhân hệ số |
+| Điểm / Points | Đơn vị loyalty, khác đơn vị VND | 1.000 VND = 1 điểm cơ bản; 1.000 điểm đổi 20.000 VND; earn sau check-in và hết giờ; số dư cũ quy 1/1.000 theo quyết định 25/10 |
 | Ledger | Sổ giao dịch điểm | earn/restore dương, redeem/clawback âm; balance=sum Delta |
 | LedgerKey | Khóa thao tác điểm một lần | earn/redeem/restore/clawback theo booking; không tự chống race balance giữa nhiều đơn |
 | Voucher redemption | Lượt voucher giữ/dùng bởi user/booking | Unique voucher/user; release hiện có xóa record và giảm UsedQty |

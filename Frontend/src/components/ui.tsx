@@ -26,7 +26,7 @@ import type {
   HTMLAttributes,
   SelectHTMLAttributes,
 } from "react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 /*
  * Design system components — docs 07 §2/§6.
@@ -512,20 +512,41 @@ export function Modal({
   footer?: ReactNode;
   width?: string;
 }) {
+  const dialog = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const oldOverflow = document.body.style.overflow;
+    const root = dialog.current!;
+    const focusables = () => Array.from(root.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
+    )).filter((element) => element.getClientRects().length > 0);
+    (focusables()[0] ?? root).focus();
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close.current(); }
+      if (e.key === "Tab") {
+        const elements = focusables();
+        const first = elements[0]; const last = elements[elements.length - 1];
+        if (!first) { e.preventDefault(); root.focus(); }
+        else if (e.shiftKey && (document.activeElement === first || !root.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && (document.activeElement === last || !root.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+      }
     }
-    document.addEventListener("keydown", onKey);
+    function keepFocus(e: FocusEvent) { if (!root.contains(e.target as Node)) (focusables()[0] ?? root).focus(); }
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("focusin", keepFocus);
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("focusin", keepFocus);
+      document.body.style.overflow = oldOverflow;
+      if (previous?.isConnected) previous.focus();
     };
-  }, [onClose]);
+  }, []);
 
   return (
-    <div
+    <div ref={dialog} tabIndex={-1}
       className="modal-overlay fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
       role="dialog"

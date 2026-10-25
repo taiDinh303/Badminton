@@ -19,6 +19,13 @@ namespace Services
 
         public async Task<int> CreateAsync(StaffCreateRequest request, int actorId)
         {
+            int id = 0;
+            await Uow.RunInTransactionAsync(async () => id = await CreateCoreAsync(request, actorId));
+            return id;
+        }
+
+        private async Task<int> CreateCoreAsync(StaffCreateRequest request, int actorId)
+        {
             if (string.IsNullOrWhiteSpace(request.PhoneNumber))
                 throw new BadRequestException("Số điện thoại là bắt buộc.");
             AuthInput.Password(request.Password);
@@ -82,8 +89,9 @@ namespace Services
             var before = new { u.Status, u.Role };
             u.Status = status;
             u.SecurityStamp = Guid.NewGuid().ToString("N");
+            u.PasswordRecoveryHash = null; u.PasswordRecoveryExpiresAt = null;
             u.UpdatedAt = DateTime.UtcNow;
-            Repo.Update(u);
+            Repo.UpdateProperties(u, nameof(User.Status), nameof(User.SecurityStamp), nameof(User.PasswordRecoveryHash), nameof(User.PasswordRecoveryExpiresAt), nameof(User.UpdatedAt));
             await SaveAsync();
             await _audit.LogAsync(actorId, status == UserStatus.Locked ? "staff.lock" : "staff.unlock",
                 "User", userId.ToString(), before, new { u.Status, u.Role },
@@ -116,8 +124,9 @@ namespace Services
             var before = new { u.Role, u.BranchId };
             u.Role = role;
             u.SecurityStamp = Guid.NewGuid().ToString("N");
+            u.PasswordRecoveryHash = null; u.PasswordRecoveryExpiresAt = null;
             u.UpdatedAt = DateTime.UtcNow;
-            Repo.Update(u);
+            Repo.UpdateProperties(u, nameof(User.Role), nameof(User.SecurityStamp), nameof(User.PasswordRecoveryHash), nameof(User.PasswordRecoveryExpiresAt), nameof(User.UpdatedAt));
             await SaveAsync();
             await _audit.LogAsync(actorId, "staff.role", "User", userId.ToString(),
                 before, new { u.Role, u.BranchId }, $"Đổi role thành {role}");
@@ -140,11 +149,12 @@ namespace Services
             if (branch is null || !branch.IsActive)
                 throw new NotFoundException("Branch", branchId);
 
-            var branchSnapshot = branch.Id;
+            var branchSnapshot = u.BranchId;
             u.BranchId = branchId;
             u.SecurityStamp = Guid.NewGuid().ToString("N");
+            u.PasswordRecoveryHash = null; u.PasswordRecoveryExpiresAt = null;
             u.UpdatedAt = DateTime.UtcNow;
-            Repo.Update(u);
+            Repo.UpdateProperties(u, nameof(User.BranchId), nameof(User.SecurityStamp), nameof(User.PasswordRecoveryHash), nameof(User.PasswordRecoveryExpiresAt), nameof(User.UpdatedAt));
             await SaveAsync();
             await _audit.LogAsync(actorId, "staff.assign-branch", "User", userId.ToString(),
                 new { BranchId = branchSnapshot }, new { NewBranchId = branchId },

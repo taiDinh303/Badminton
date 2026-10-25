@@ -152,6 +152,7 @@ namespace Badminton.API.Jobs
                 var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
                 var bookingRepo = uow.GetRepository<Booking>();
                 var completion = scope.ServiceProvider.GetRequiredService<Services.BookingCompletionService>();
+                await new Services.InventoryHistoryService(uow).CaptureTodayAsync();
                 var bookings = await bookingRepo.GetByConditionAsync(b => b.Status == BookingStatus.Confirmed);
                 var slotIds = bookings.Select(b => b.SlotId).Distinct().ToList();
                 var slots = (await uow.GetRepository<TimeSlot>().GetByConditionAsync(s => slotIds.Contains(s.Id)))
@@ -304,21 +305,25 @@ namespace Badminton.API.Jobs
                     u.NoShowLimited && u.NoShowLimitedPeriod != null);
 
                 int reset = 0;
-                foreach (var u in users)
+                foreach (var candidate in users)
                 {
-                    if (u.NoShowLimitedPeriod is { } period && currentMonthStart > period)
+                    await uow.RunInTransactionAsync(async () =>
                     {
+                        await uow.LockPointsUserAsync(candidate.Id);
+                        var u = (await uow.GetRepository<User>().GetByConditionAsync(x => x.Id == candidate.Id)).SingleOrDefault();
+                        if (u is null || !u.NoShowLimited || u.NoShowLimitedPeriod is not { } period || currentMonthStart <= period)
+                            return;
                         u.NoShowLimited = false;
                         u.NoShowLimitedPeriod = null;
                         u.UpdatedAt = DateTime.UtcNow;
-                        uow.GetRepository<User>().Update(u);
+                        uow.GetRepository<User>().UpdateProperties(u, nameof(User.NoShowLimited), nameof(User.NoShowLimitedPeriod), nameof(User.UpdatedAt));
+                        await uow.SaveChangesAsync();
                         reset++;
-                    }
+                    });
                 }
 
                 if (reset > 0)
                 {
-                    await uow.SaveChangesAsync();
                     _logger.LogInformation("Unblocked {Count} user(s) whose no-show limit period ended.", reset);
                 }
             }

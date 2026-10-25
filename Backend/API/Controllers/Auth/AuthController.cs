@@ -23,6 +23,14 @@ namespace Badminton.API.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> Login(LoginRequest request) =>
             Resp(await _auth.LoginAsync(request), "Đăng nhập thành công.");
+        [HttpPost("recovery-code/{userId:int}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> IssueRecovery(int userId, RecoveryCodeRequest request) => Resp(await _auth.IssueRecoveryCodeAsync(userId, request));
+
+        [HttpPost("reset-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ResetPassword(ResetPasswordRequest request) { await _auth.ResetPasswordAsync(request); return Resp("Đã đặt lại mật khẩu. Đăng nhập bằng mật khẩu mới."); }
+
         [HttpPost("change-password")]
         [Authorize]
         public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)

@@ -66,7 +66,7 @@ function renderEntityId(
 function tsToVi(iso: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return `${d.toLocaleDateString("vi-VN")} ${d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}`;
+  return `${d.toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })} ${d.toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit" })}`;
 }
 
 /**

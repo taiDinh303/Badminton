@@ -1,5 +1,7 @@
 namespace ModelViews.Booking
 {
+    public record ConfigurationImpact(int Count, IReadOnlyList<string> BookingCodes);
+
     public record CreateBookingRequest(int CourtId, string Date, int SlotId,
         int PlayerCount = 1, int? GroupId = null, string? VoucherCode = null,
         string? IdempotencyKey = null, string? Note = null, int? PointsToRedeem = null);
@@ -12,7 +14,8 @@ namespace ModelViews.Booking
         int TotalAmount, int DiscountAmount, int PayableAmount, int PointsEarned,
         int PointsRedeemed, int? GroupId, int? VoucherRedemptionId, DateTime CreatedAt,
         string? UserName, BookingPriceBreakdown Price, string? CancelReason,
-        string? QrToken = null, DateTime? CheckedInAt = null, int UserId = 0);
+        string? QrToken = null, DateTime? CheckedInAt = null, int UserId = 0, DateTime? PendingExpiresAt = null,
+        DateTime? ServerTimeUtc = null, DateTime? SlotStartAtUtc = null, DateTime? SlotEndAtUtc = null);
 
     public record CourtAvailabilityView(int CourtId, string CourtCode, string CourtName,
         int PriceLowPeak, int PricePeak, List<SlotView> Slots, int Capacity = 10);

@@ -15,6 +15,7 @@ test("maintenance defaults to the Vietnam day at midnight", async ({ page }) => 
   await page.clock.install({ time: new Date("2026-10-24T18:00:00Z") });
   await seedLoggedInCustomer(page, { id: 1, fullName: "Admin", role: "Admin", phone: "0900000001" });
   await mockApi(page, [
+    { pattern: /\/maintenance\/.+\/schedule$/, respond: () => ok({ status: "Open", startTime: null, endTime: null }) },
     { pattern: /\/branches$/, respond: () => ok([{ id: 1, name: "Branch", isActive: true }]) },
     { pattern: /\/courts(?:\?|$)/, respond: () => ok([{ id: 1, branchId: 1, code: "C1", name: "Court", isActive: true, priceLowPeak: 100000, pricePeak: 150000, weekendSurcharge: 0.2, capacity: 2, surface: "Sindalo", ratingCount: 0 }]) },
   ]);

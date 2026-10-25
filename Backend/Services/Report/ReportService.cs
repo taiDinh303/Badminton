@@ -22,6 +22,7 @@ public sealed class ReportService(IUnitOfWork uow, ICurrentUser currentUser) : B
     {
         var branch = await ResolveStaffBranchAsync(branchId);
         var today = HanoiTime.HanoiToday();
+        var now = TimeOnly.FromDateTime(HanoiTime.HanoiNow());
         var (start, end) = Range(today, today);
         var revenue = await LoadRevenueAsync(today, today, branch);
         var occupancy = await LoadOccupancyAsync(today, today, branch);
@@ -42,7 +43,10 @@ public sealed class ReportService(IUnitOfWork uow, ICurrentUser currentUser) : B
                 && (u.Tier == MembershipTier.Gold || u.Tier == MembershipTier.Silver)
                 && u.MembershipExpiresAt > DateTime.UtcNow && (branch == null || u.BranchId == branch)),
             await Repository<WaitlistEntry>().CountByConditionAsync(w => w.DeletedAt == null && w.Status == WaitlistStatus.Waiting
-                && (branch == null || w.BranchId == branch)));
+                && (branch == null || w.BranchId == branch)),
+            await bookings.CountByConditionAsync(b => b.DeletedAt == null && b.Status == BookingStatus.Confirmed && b.CheckedInAt == null
+                && (branch == null || b.BranchId == branch) && b.Slot != null
+                && (b.Date < today || (b.Date == today && b.Slot.EndTime <= now))));
     }
 
     public async Task<IReadOnlyList<RevenueByDay>> GetRevenueAsync(DateOnly from, DateOnly to, int? branchId = null) =>
@@ -83,34 +87,42 @@ public sealed class ReportService(IUnitOfWork uow, ICurrentUser currentUser) : B
     private async Task<IReadOnlyList<OccupancyByDay>> LoadOccupancyAsync(DateOnly from, DateOnly to, int? branch)
     {
         Range(from, to);
-        var branches = (await Repository<Branch>().GetByConditionAsync(b => b.IsActive && b.DeletedAt == null
-            && b.Status == BranchStatus.Active && (branch == null || b.Id == branch))).ToDictionary(b => b.Id);
-        var courts = await Repository<Court>().GetByConditionAsync(c => c.IsActive && c.DeletedAt == null && (branch == null || c.BranchId == branch));
-        var slots = await Repository<TimeSlot>().GetByConditionAsync(s => s.IsActive && s.DeletedAt == null);
-        var courtIds = courts.Select(c => c.Id).ToList();
-        var schedules = await Repository<CourtDateStatusEntry>().GetByConditionAsync(s => courtIds.Contains(s.CourtId) && s.Date >= from && s.Date <= to);
+        var branches = (await Repository<Branch>().GetByConditionAsync(b => branch == null || b.Id == branch)).ToDictionary(b => b.Id);
+        var snapshots = await Repository<InventoryDaySnapshot>().GetByConditionAsync(x => x.Date >= from && x.Date <= to && (branch == null || x.BranchId == branch));
+        var snapshotMap = snapshots.ToDictionary(x => (x.BranchId, x.Date));
         var bookings = await Repository<Booking>().GetByConditionAsync(b => b.DeletedAt == null && b.Date >= from && b.Date <= to
-            && courtIds.Contains(b.CourtId) && (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Completed));
-        var scheduleMap = schedules.ToDictionary(s => (s.CourtId, s.Date));
-        var peakIds = slots.Where(s => s.IsPeak).Select(s => s.Id).ToHashSet();
+            && (branch == null || b.BranchId == branch) && (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Completed));
+        var courts = await Repository<Court>().GetByConditionAsync(c => c.IsActive && c.DeletedAt == null && (branch == null || c.BranchId == branch));
+        var courtIds = courts.Select(c => c.Id).ToList();
+        var slots = await Repository<TimeSlot>().GetByConditionAsync(s => s.IsActive && s.DeletedAt == null);
+        var schedules = (await Repository<CourtDateStatusEntry>().GetByConditionAsync(s => courtIds.Contains(s.CourtId) && s.Date >= from && s.Date <= to))
+            .ToDictionary(s => (s.CourtId, s.Date));
         var rows = new List<OccupancyByDay>();
         for (var day = from; day <= to; day = day.AddDays(1))
         {
-            var available = new HashSet<(int Court, int Slot)>();
-            foreach (var court in courts)
+            var available = new List<InventorySlot>();
+            var estimated = false;
+            foreach (var owner in branches.Values)
             {
-                if (!branches.TryGetValue(court.BranchId, out var owner)) continue;
-                scheduleMap.TryGetValue((court.Id, day), out var schedule);
-                foreach (var slot in slots)
-                    if (slot.StartTime >= owner.OpenTime && slot.EndTime <= owner.CloseTime
-                        && schedule?.Blocks(slot.StartTime, slot.EndTime) != true) available.Add((court.Id, slot.Id));
+                if (day < HanoiTime.HanoiToday() && snapshotMap.TryGetValue((owner.Id, day), out var snapshot))
+                    available.AddRange(System.Text.Json.JsonSerializer.Deserialize<List<InventorySlot>>(snapshot.CapacityJson) ?? []);
+                else {
+                    if (owner.IsActive && owner.DeletedAt == null && owner.Status == BranchStatus.Active)
+                        foreach (var court in courts.Where(c => c.BranchId == owner.Id)) {
+                            schedules.TryGetValue((court.Id, day), out var schedule);
+                            available.AddRange(slots.Where(s => s.StartTime >= owner.OpenTime && s.EndTime <= owner.CloseTime
+                                && schedule?.Blocks(s.StartTime, s.EndTime) != true).Select(s => new InventorySlot(court.Id, s.Id, s.IsPeak)));
+                        }
+                    if (day < HanoiTime.HanoiToday()) estimated = true;
+                }
             }
-            var occupied = bookings.Where(b => b.Date == day && available.Contains((b.CourtId, b.SlotId)))
+            var capacity = available.Select(x => (x.Court, x.Slot)).ToHashSet();
+            var peak = available.Where(x => x.Peak).Select(x => (x.Court, x.Slot)).ToHashSet();
+            var occupied = bookings.Where(b => b.Date == day && capacity.Contains((b.CourtId, b.SlotId)))
                 .Select(b => (Court: b.CourtId, Slot: b.SlotId)).Distinct().ToList();
-            var peakTotal = available.Count(x => peakIds.Contains(x.Slot));
-            var peakOccupied = occupied.Count(x => peakIds.Contains(x.Slot));
+            var peakOccupied = occupied.Count(x => peak.Contains(x));
             rows.Add(new(day, branch, branch is { } id ? branches.GetValueOrDefault(id)?.Name : "Tất cả cơ sở",
-                occupied.Count, available.Count, Percent(occupied.Count, available.Count), peakOccupied, peakTotal, Percent(peakOccupied, peakTotal)));
+                occupied.Count, capacity.Count, Percent(occupied.Count, capacity.Count), peakOccupied, peak.Count, Percent(peakOccupied, peak.Count), estimated));
         }
         return rows;
     }

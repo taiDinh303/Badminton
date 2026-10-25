@@ -111,7 +111,7 @@ public sealed class SecurityFixTests
         await Assert.ThrowsAsync<ConflictException>(() => h.RunScopeAsync(sp => sp.GetRequiredService<IGroupService>().GetMembersAsync(group.Id)));
         h.ActAs(h.Alice, Role.Customer);
         Assert.Single(await h.RunScopeAsync(sp => sp.GetRequiredService<IGroupService>().GetMembersAsync(group.Id)));
-        await h.RunScopeAsync(sp => sp.GetRequiredService<IGroupService>().JoinAsync(group.Id, h.Bob));
+        await h.RunScopeAsync(sp => sp.GetRequiredService<IGroupService>().JoinAsync(group.Id, h.Bob, group.InviteCode));
         h.ActAs(h.Bob, Role.Customer);
         Assert.Equal(2, (await h.RunScopeAsync(sp => sp.GetRequiredService<IGroupService>().GetMembersAsync(group.Id))).Count);
     }

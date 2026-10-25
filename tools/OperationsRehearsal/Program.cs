@@ -53,7 +53,13 @@ if (args.FirstOrDefault() == "--worker")
     var id = int.Parse(args[2], CultureInfo.InvariantCulture);
     try
     {
-        if (args[1] == "complete") await scope.ServiceProvider.GetRequiredService<BookingCompletionService>().CompleteAsync(id);
+        if (args[1] == "complete") {
+            var db = scope.ServiceProvider.GetRequiredService<BadmintonBookingDbContext>();
+            var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == id);
+            var slot = await db.TimeSlots.AsNoTracking().SingleAsync(s => s.Id == booking.SlotId);
+            Badminton.Core.Utils.HanoiTime.NowUtc = () => DateTime.SpecifyKind(Badminton.Core.Utils.HanoiTime.SlotEnd(booking.Date, slot.EndTime).AddHours(-7).AddSeconds(1), DateTimeKind.Utc);
+            await scope.ServiceProvider.GetRequiredService<BookingCompletionService>().CompleteAsync(id);
+        }
         else if (args[1] == "expire") await scope.ServiceProvider.GetRequiredService<BookingExpiryService>().ExpireAsync(id, DateTime.UtcNow);
         else throw new InvalidOperationException("Unknown worker.");
     }
@@ -67,6 +73,7 @@ Guard(fixture.ConnectionString, isPg);
 var directory = Path.GetFullPath(Path.Combine("artifacts", "operations-acceptance", (isPg ? "postgres-" : "sqlserver-") + Guid.NewGuid().ToString("N")));
 Directory.CreateDirectory(directory);
 var completed = await fixture.MakeConfirmedBookingAsync(fixture.Alice, fixture.Court1, fixture.SlotNoon);
+await fixture.RunScopeAsync(sp => sp.GetRequiredService<BadmintonBookingDbContext>().Bookings.Where(b => b.Id == completed.Id).ExecuteUpdateAsync(s => s.SetProperty(b => b.CheckedInAt, DateTime.UtcNow)));
 await RunWorkers("complete", completed.Id, 8);
 Check(await fixture.CountPointRowsAsync(completed.Id) == 1, "Eight completion processes must create exactly one point ledger entry.");
 await fixture.CountPointsIntoAsync(fixture.Bob, 1000, "operations rehearsal fixture");

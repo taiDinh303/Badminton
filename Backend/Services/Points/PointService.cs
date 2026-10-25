@@ -103,6 +103,8 @@ namespace Services
                 p => p.LedgerKey == $"restore:{bookingId}");
             if (already > 0) return;
 
+            var redeemed = (await Repo.GetByConditionAsync(p => p.LedgerKey == $"redeem:{bookingId}")).SingleOrDefault();
+            if (redeemed is not null) pointsRestored = await InCurrentUnitsAsync(userId, pointsRestored, redeemed.CreatedAt);
             await Repo.AddAsync(new PointLedger
             {
                 UserId = userId,
@@ -125,7 +127,8 @@ namespace Services
             // A failed tier lookup must roll back the operation rather than silently underpay points.
             var mult = await _membership.EffectiveMultiplierAsync(userId);
 
-            int earned = (int)Math.Round(amount * mult, MidpointRounding.AwayFromZero);
+            // Owner decision 25/10/2026: 100,000 VND = 100 base points; existing ledger stays immutable.
+            int earned = checked((int)Math.Round(amount * mult / 1_000m, MidpointRounding.AwayFromZero));
 
             await Repo.AddAsync(new PointLedger
             {
@@ -150,8 +153,9 @@ namespace Services
             if (earned is null) return;
             var booking = await Repository<Booking>().GetByIdAsync(bookingId)
                 ?? throw new NotFoundException("Booking", bookingId);
+            var currentEarned = await InCurrentUnitsAsync(userId, earned.Delta, earned.CreatedAt);
             var clawback = booking.PayableAmount <= 0 ? 0 : (int)Math.Round(
-                earned.Delta * Math.Min(1m, (decimal)amount / booking.PayableAmount),
+                currentEarned * Math.Min(1m, (decimal)amount / booking.PayableAmount),
                 MidpointRounding.AwayFromZero);
             await Repo.AddAsync(new PointLedger
             {
@@ -162,6 +166,12 @@ namespace Services
                 LedgerKey = $"clawback:{bookingId}"
             });
             await SaveAsync();
+        }
+
+        private async Task<int> InCurrentUnitsAsync(int userId, int value, DateTime recordedAt)
+        {
+            var conversion = (await Repo.GetByConditionAsync(p => p.LedgerKey == $"unit-v2:{userId}")).SingleOrDefault();
+            return conversion is not null && recordedAt < conversion.CreatedAt ? value / 1_000 : value;
         }
 
         public async Task<(IReadOnlyList<PointEntry> Items, int TotalCount)>

@@ -10,6 +10,7 @@ import {
   Button,
   Field,
   Modal,
+  ConfirmDialog,
   EmptyState,
   PageHeader,
   StatusBadge,
@@ -27,6 +28,17 @@ export default function GroupsPage() {
   const [joinOpen, setJoinOpen] = useState(false);
   const [membersOf, setMembersOf] = useState<GroupView | null>(null);
 
+  const [showJoined, setShowJoined] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const [share, setShare] = useState<{ id: number; code: string } | null>(null);
+  const [rename, setRename] = useState<GroupView | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [action, setAction] = useState<{ title: string; run: () => Promise<unknown> } | null>(null);
+  const joined = useQuery({ queryKey: ["groups", "joined"], queryFn: api.groups.joined, enabled: showJoined });
+  const manage = useMutation({ mutationFn: (run: () => Promise<unknown>) => run(), onSuccess: () => {
+    void qc.invalidateQueries({ queryKey: ["groups"] }); setAction(null); setRename(null); setMembersOf(null);
+  } });
+  const rotate = useMutation({ mutationFn: api.groups.invite, onSuccess: (result, id) => setShare({ id, code: result.code }) });
   const [name, setName] = useState("");
   const [maxMembers, setMaxMembers] = useState(10);
   const [joinId, setJoinId] = useState("");
@@ -43,12 +55,12 @@ export default function GroupsPage() {
   // `mine` is owner-only server-side, so groups created by others never appear.
   const groups = useMemo(() => {
     const seen = new Set<number>();
-    return rawGroups.filter((g) => {
+    return (showJoined ? joined.data ?? [] : rawGroups).filter((g) => {
       if (seen.has(g.id)) return false;
       seen.add(g.id);
       return true;
     });
-  }, [rawGroups]);
+  }, [rawGroups, showJoined, joined.data]);
 
   // Hide the "created" banner once the group is part of the list, so it
   // isn't shown twice (banner + card).
@@ -66,6 +78,7 @@ export default function GroupsPage() {
     onSuccess: (g) => {
       setCreateOpen(false);
       setCreatedGroup(g);
+      if (g.inviteCode) setShare({ id: g.id, code: g.inviteCode });
       setName("");
       setMaxMembers(10);
       qc.invalidateQueries({ queryKey: ["groups", "mine"] });
@@ -84,10 +97,12 @@ export default function GroupsPage() {
   }
 
   const join = useMutation({
-    mutationFn: () => api.groups.join(Number(joinId)),
+    mutationFn: () => api.groups.join(Number(joinId), inviteCode.trim() || undefined),
     onSuccess: () => {
       setJoinOpen(false);
-      setJoinId("");
+      setJoinId(""); setInviteCode("");
+      setShowJoined(true);
+      void qc.invalidateQueries({ queryKey: ["groups", "joined"] });
       qc.invalidateQueries({ queryKey: ["groups", "mine"] });
     },
   });
@@ -112,6 +127,8 @@ export default function GroupsPage() {
         }
       />
 
+      <div className="mt-4 flex gap-2"><Button variant="ghost" size="sm" onClick={() => setShowJoined(false)}>Nhóm tôi tạo</Button><Button variant="ghost" size="sm" onClick={() => setShowJoined(true)}>Nhóm tôi tham gia</Button></div>
+      {(manage.isError || rotate.isError || joined.isError) && <Callout tone="error" className="mt-3">{manage.error?.message ?? rotate.error?.message ?? joined.error?.message}</Callout>}
       {isError && (
         <Callout tone="error" className="mt-4">Không tải được nhóm.</Callout>
       )}
@@ -178,6 +195,11 @@ export default function GroupsPage() {
                 <Button variant="ghost" size="xs" onClick={() => setMembersOf(g)}>
                   Xem thành viên
                 </Button>
+                {g.ownerId === user?.id ? <>
+                  <Button variant="ghost" size="xs" onClick={() => rotate.mutate(g.id)} disabled={rotate.isPending}>Mã mời mới</Button>
+                  <Button variant="ghost" size="xs" onClick={() => { setRename(g); setRenameName(g.name); }}>Đổi tên</Button>
+                  <Button variant="danger" size="xs" onClick={() => setAction({ title: `Giải tán nhóm ${g.name}?`, run: () => api.groups.disband(g.id) })}>Giải tán</Button>
+                </> : <Button variant="ghost" size="xs" onClick={() => setAction({ title: `Rời nhóm ${g.name}?`, run: () => api.groups.leave(g.id) })}>Rời nhóm</Button>}
                 {g.ownerId === user?.id ? (
                   <div className="flex items-center gap-2">
                     <p className="flex items-center gap-1 text-xs text-muted">
@@ -194,6 +216,16 @@ export default function GroupsPage() {
         </div>
       )}
 
+      {share && <Modal title="Chia sẻ lời mời nhóm" onClose={() => setShare(null)}>
+        <p className="mb-3 text-sm text-muted">Chia sẻ ID và mã cho người bạn muốn mời. Mã mới sẽ thu hồi mã cũ.</p>
+        <Field label="ID nhóm" readOnly value={share.id} /><Field label="Mã mời nhóm" readOnly value={share.code} />
+      </Modal>}
+      {rename && <Modal title="Đổi tên nhóm" onClose={() => setRename(null)}>
+        <Field label="Tên nhóm mới" maxLength={100} value={renameName} onChange={(e) => setRenameName(e.target.value)} />
+        {manage.isError && <Callout tone="error">{manage.error.message}</Callout>}
+        <Button className="mt-3" disabled={!renameName.trim() || manage.isPending} onClick={() => manage.mutate(() => api.groups.rename(rename.id, renameName.trim()))}>Lưu tên nhóm</Button>
+      </Modal>}
+      {action && <ConfirmDialog title={action.title} message={manage.isError ? manage.error.message : "Thao tác sẽ thay đổi quyền hoặc thành viên của nhóm."} onCancel={() => setAction(null)} onConfirm={() => manage.mutate(action.run)} busy={manage.isPending} />}
       {/* Create modal */}
       {createOpen && (
         <Modal
@@ -249,7 +281,7 @@ export default function GroupsPage() {
                   </button>
                 ))}
               </div>
-              <p className="mt-1.5 text-[11px] text-muted">Mỗi nhóm tối đa 10 thành viên (docs 03 §7).</p>
+              <p className="mt-1.5 text-[11px] text-muted">Mỗi nhóm tối đa 10 thành viên.</p>
             </div>
             {create.isError && (
               <Callout tone="error">
@@ -294,6 +326,7 @@ export default function GroupsPage() {
               onChange={(e) => setJoinId(e.target.value.replace(/[^0-9]/g, ""))}
               placeholder="VD: 3"
             />
+            <Field label="Mã mời" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="Mã do chủ nhóm chia sẻ" />
             {join.isError && (
               <Callout tone="error">
                 {join.error instanceof Error ? join.error.message : "Không tham gia được."}
@@ -329,8 +362,12 @@ export default function GroupsPage() {
                     </p>
                     <p className="text-[11px] text-muted tnum">{m.phoneNumber}</p>
                   </div>
+                  {membersOf.ownerId === user?.id && !m.isCreator && <div className="flex flex-wrap gap-1">
+                    <Button variant="ghost" size="xs" onClick={() => { const id = membersOf.id; setMembersOf(null); setAction({ title: `Chuyển chủ nhóm cho ${m.fullName}?`, run: () => api.groups.transfer(id, m.userId) }); }}>Chuyển chủ</Button>
+                    <Button variant="danger" size="xs" onClick={() => { const id = membersOf.id; setMembersOf(null); setAction({ title: `Loại ${m.fullName} khỏi nhóm?`, run: () => api.groups.remove(id, m.userId) }); }}>Loại</Button>
+                  </div>}
                   <span className="text-[11px] text-muted">
-                    {new Date(m.joinedAt).toLocaleDateString("vi-VN")}
+                    {new Date(m.joinedAt).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}
                   </span>
                 </div>
               ))}

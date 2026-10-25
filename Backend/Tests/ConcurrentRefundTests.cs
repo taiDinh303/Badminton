@@ -88,9 +88,7 @@ namespace Badminton.Tests
 
             // Complete it first (DEC-01 banks the earn row now).
             _h.ActAs(_h.Manager, Role.Manager);
-            await _h.RunScopeAsync(sp =>
-                sp.GetRequiredService<IBookingService>()
-                 .MarkCompletedAsync(bookingId, _h.Manager, "da choi"));
+            await _h.CompleteAsPlayedAsync(bookingId, _h.Manager, "da choi");
             Assert.Equal(1, await _h.CountPointRowsAsync(bookingId));
 
             // A full refund (≥2h out) claws back the whole credit — once.

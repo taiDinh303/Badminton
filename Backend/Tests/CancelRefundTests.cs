@@ -41,9 +41,7 @@ namespace Badminton.Tests
 
             // Complete the booking → the earn row is banked now.
             _h.ActAs(_h.Manager, Role.Manager);
-            await _h.RunScopeAsync(sp =>
-                sp.GetRequiredService<IBookingService>()
-                 .MarkCompletedAsync(bookingId, _h.Manager, "da choi"));
+            await _h.CompleteAsPlayedAsync(bookingId, _h.Manager, "da choi");
             var balanceAtCompleted = await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<Contract.Services.Points.IPointService>()
                  .GetBalanceAsync(_h.Alice));

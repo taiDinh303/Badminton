@@ -9,6 +9,7 @@ const empty = (): Form => ({ name: "", address: "", openTime: "06:00", closeTime
 export default function BranchesPage() {
   const qc = useQueryClient();
   const [form, setForm] = useState<Form | null>(null);
+  const impact = useQuery({ queryKey: ["branch-impact", form?.id], queryFn: () => api.branches.impact(form!.id!), enabled: form?.id != null });
   const branches = useQuery({ queryKey: ["branches"], queryFn: api.branches.list });
   const save = useMutation({
     mutationFn: async (f: Form) => f.id === undefined
@@ -34,6 +35,8 @@ export default function BranchesPage() {
         onClick={() => save.mutate(form)}>{save.isPending ? "Đang lưu…" : "Lưu cơ sở"}</Button>
     }>
       <div className="grid gap-3">
+        {form.id != null && impact.data && <Callout tone="info">{impact.data.count} đơn đang hoạt động{impact.data.bookingCodes.length > 0 ? `: ${impact.data.bookingCodes.join(", ")}` : ""}. Đóng cơ sở hoặc thu hẹp giờ sẽ bị chặn nếu ảnh hưởng các đơn này.</Callout>}
+        {impact.isError && <Callout tone="error">Không tải được danh sách đơn bị ảnh hưởng. {impact.error.message}</Callout>}
         <Field label="Tên cơ sở" maxLength={100} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
         <Field label="Địa chỉ" maxLength={255} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
         <Field label="Giờ mở cửa" type="time" value={form.openTime} onChange={e => setForm({ ...form, openTime: e.target.value })} />

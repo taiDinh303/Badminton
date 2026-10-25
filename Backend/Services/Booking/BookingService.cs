@@ -105,7 +105,7 @@ namespace Services
         }
 
         public async Task<(IReadOnlyList<BookingView> Items, int TotalCount)>
-            GetAllPagedAsync(string? status, int? branchId, Page page)
+            GetAllPagedAsync(string? status, int? branchId, Page page, string? search = null, DateOnly? date = null, bool needsAttendance = false)
         {
             var bi = await ResolveStaffBranchAsync(branchId);
             bool hasStatus = !string.IsNullOrWhiteSpace(status);
@@ -116,10 +116,19 @@ namespace Services
             if (hasStatus && stEnum is null)
                 throw new BadRequestException($"Trang thai '{status}' khong hop le.");
 
+            var term = search?.Trim().ToLowerInvariant();
+            var today = HanoiTime.HanoiToday(); var now = TimeOnly.FromDateTime(HanoiTime.HanoiNow());
+            if (term?.Length > 100) throw new BadRequestException("Từ khóa tối đa 100 ký tự.");
             System.Linq.Expressions.Expression<Func<Booking, bool>> predicate = b =>
                 b.DeletedAt == null
                 && (stEnum == null || b.Status == stEnum!.Value)
-                && (bi == null || b.BranchId == bi);
+                && (bi == null || b.BranchId == bi)
+                && (date == null || b.Date == date)
+                && (!needsAttendance || (b.Status == BookingStatus.Confirmed && b.CheckedInAt == null && b.Slot != null
+                    && (b.Date < today || (b.Date == today && b.Slot.EndTime <= now))))
+                && (term == null || term == "" || b.BookingCode.ToLower().Contains(term)
+                    || (b.User != null && (b.User.FullName.ToLower().Contains(term) || b.User.PhoneNumber.Contains(term)))
+                    || (b.Court != null && b.Court.Name.ToLower().Contains(term)));
             var (bookings, total) = await Repo.GetPagedAsync(
                 predicate, b => b.CreatedAt, OrderDirection.Desc, page);
             var views = await MapToViewsAsync(bookings.ToList());
@@ -150,7 +159,7 @@ namespace Services
 
                 var basePrice = b.TotalAmount;
                 const int weekendOnly = 0;
-                var pointsVnd = b.PointsRedeemed * 20_000 / 1_000;
+                var pointsVnd = checked((int)((long)b.PointsRedeemed * 20_000 / 1_000));
                 var voucherVnd = b.DiscountAmount - pointsVnd;
                 var breakdown = new BookingPriceBreakdown(
                     basePrice, weekendOnly, voucherVnd, pointsVnd,
@@ -164,7 +173,9 @@ namespace Services
                     b.PlayerCount, b.Status.ToString(), b.TotalAmount, b.DiscountAmount,
                     b.PayableAmount, b.PointsEarned, b.PointsRedeemed,
                     b.GroupId, b.VoucherRedemptionId,
-                    b.CreatedAt, user?.FullName, breakdown, b.CancelReason, b.QrToken, b.CheckedInAt, b.UserId));
+                    b.CreatedAt, user?.FullName, breakdown, b.CancelReason, b.QrToken, b.CheckedInAt, b.UserId, b.PendingExpiresAt, DateTime.UtcNow,
+                    DateTime.SpecifyKind(HanoiTime.SlotStart(b.Date, slot.StartTime).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc),
+                    DateTime.SpecifyKind(HanoiTime.SlotEnd(b.Date, slot.EndTime).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc)));
             }
             return views;
         }
@@ -312,7 +323,7 @@ namespace Services
 
             var basePrice = b.TotalAmount; // Snapshot, inclusive of weekend surcharge.
             const int weekendOnly = 0; // A separate historical split was not persisted.
-            var pointsVnd = b.PointsRedeemed * 20_000 / 1_000;
+            var pointsVnd = checked((int)((long)b.PointsRedeemed * 20_000 / 1_000));
             var voucherVnd = b.DiscountAmount - pointsVnd;
             var breakdown = new BookingPriceBreakdown(
                 basePrice, weekendOnly, voucherVnd, pointsVnd,
@@ -325,7 +336,9 @@ namespace Services
                 b.PlayerCount, b.Status.ToString(), b.TotalAmount, b.DiscountAmount,
                 b.PayableAmount, b.PointsEarned, b.PointsRedeemed,
                 b.GroupId, b.VoucherRedemptionId,
-                b.CreatedAt, user?.FullName, breakdown, b.CancelReason, b.QrToken, b.CheckedInAt, b.UserId);
+                b.CreatedAt, user?.FullName, breakdown, b.CancelReason, b.QrToken, b.CheckedInAt, b.UserId, b.PendingExpiresAt, DateTime.UtcNow,
+                    DateTime.SpecifyKind(HanoiTime.SlotStart(b.Date, slot.StartTime).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc),
+                    DateTime.SpecifyKind(HanoiTime.SlotEnd(b.Date, slot.EndTime).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc));
         }
 
         private async Task<Booking> MustGetActive(int bookingId)

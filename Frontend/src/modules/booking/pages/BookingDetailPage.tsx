@@ -44,6 +44,21 @@ function QrTile({ code }: { code: string }) {
   </div>;
 }
 
+function PendingDeadline({ deadline, serverTime }: { deadline: string; serverTime?: string | null }) {
+  const [clock, setClock] = useState({ now: Date.now(), offset: 0 });
+  useEffect(() => {
+    const offset = serverTime ? new Date(serverTime).getTime() - Date.now() : 0;
+    setClock({ now: Date.now(), offset });
+    const timer = window.setInterval(() => setClock({ now: Date.now(), offset }), 1000);
+    return () => window.clearInterval(timer);
+  }, [serverTime]);
+  const seconds = Math.max(0, Math.ceil((new Date(deadline).getTime() - clock.now - clock.offset) / 1000));
+  return <Callout tone={seconds > 0 ? "info" : "error"} className="mt-4">
+    {seconds > 0 ? <span role="timer" aria-live="off">Giữ chỗ còn {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}</span>
+      : <span role="status">Đã hết thời gian giữ chỗ. Đang kiểm tra trạng thái đơn.</span>}
+  </Callout>;
+}
+
 const PAYMENT_METHODS = ["Cash", "QR", "VnPay", "MoMo", "Zalopay"] as const;
 type Method = (typeof PAYMENT_METHODS)[number];
 const methodLabel = (method: Method) => method === "Cash" ? "Tiền mặt tại sân" : method === "QR" ? "QR tại quầy" : method;
@@ -78,11 +93,11 @@ export default function BookingDetailPage() {
   });
 
   const reviews = useQuery({
-    queryKey: ["reviews", "court", b?.courtId],
-    queryFn: () => api.reviews.forCourt(b!.courtId),
+    queryKey: ["reviews", "booking", bookingId],
+    queryFn: () => api.reviews.forBooking(bookingId),
     enabled: !!b && b.status === "Completed",
   });
-  const existingReview = reviews.data?.find((r) => r.bookingId === bookingId);
+  const existingReview = reviews.data ?? undefined;
 
   const refreshBookings = useBookingRefresh();
   const cancel = useMutation({
@@ -120,7 +135,7 @@ export default function BookingDetailPage() {
   const review = useMutation({
     mutationFn: () => api.reviews.create({ bookingId, rating, comment: comment.trim() || null }),
     onSuccess: (created) => {
-      qc.setQueryData(["reviews", "court", b!.courtId], [...(reviews.data ?? []), created]);
+      qc.setQueryData(["reviews", "booking", bookingId], created);
       void qc.invalidateQueries({ queryKey: ["reviews"] });
       void qc.invalidateQueries({ queryKey: ["courts"] });
     },
@@ -166,6 +181,7 @@ export default function BookingDetailPage() {
         <ArrowLeft className="h-4 w-4" /> Đơn của tôi
       </Link>
 
+      {b.status === "Pending" && b.pendingExpiresAt && <PendingDeadline deadline={b.pendingExpiresAt} serverTime={b.serverTimeUtc} />}
       {/* Status hero */}
       <Card className="mt-4 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-bg/50 p-4">
@@ -196,13 +212,13 @@ export default function BookingDetailPage() {
         </div>
         {showQr && (
           <p className="flex items-center gap-1 border-t border-border bg-bg/40 px-4 py-2.5 text-xs text-muted">
-            <QrCode className="h-3.5 w-3.5" /> Xuất trình mã này để nhân viên check-in.
+            <QrCode className="h-3.5 w-3.5 shrink-0" /> Xuất trình mã này để nhân viên check-in, từ 30 phút trước giờ bắt đầu đến hết khung giờ.
           </p>
         )}
         {b.checkedInAt && (
           <p className="flex items-center gap-1 border-t border-border px-4 py-2.5 text-xs text-state-success">
             <CheckCircle2 className="h-3.5 w-3.5" /> Đã check-in lúc{" "}
-            {new Date(b.checkedInAt).toLocaleString("vi-VN")}
+            {new Date(b.checkedInAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}
           </p>
         )}
       </Card>
@@ -373,7 +389,7 @@ export default function BookingDetailPage() {
                 </div>
                 {(tx.paidAt ?? tx.refundedAt) && (
                   <span className="text-xs text-muted tnum">
-                    {new Date(tx.paidAt ?? tx.refundedAt!).toLocaleString("vi-VN")}
+                    {new Date(tx.paidAt ?? tx.refundedAt!).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}
                   </span>
                 )}
               </div>

@@ -20,9 +20,7 @@ namespace Badminton.Tests
             var view = await _h.MakeConfirmedBookingAsync(_h.Alice, _h.Court1, _h.SlotNoon);
 
             _h.ActAs(_h.Manager, Role.Manager);
-            var completed = await _h.RunScopeAsync(sp =>
-                sp.GetRequiredService<IBookingService>()
-                 .MarkCompletedAsync(view!.Id, _h.Manager, "da choi"));
+            var completed = await _h.CompleteAsPlayedAsync(view!.Id, _h.Manager, "da choi");
             Assert.Equal("Completed", completed.Status);
 
             // DEC-01: completing the booking banks its points.
@@ -35,9 +33,7 @@ namespace Badminton.Tests
             Exception? err = null;
             try
             {
-                await _h.RunScopeAsync(sp =>
-                    sp.GetRequiredService<IBookingService>()
-                     .MarkCompletedAsync(view!.Id, _h.Manager));
+                await _h.CompleteAsPlayedAsync(view!.Id, _h.Manager);
             }
             catch (Exception e) { err = e; }
             Assert.IsType<Badminton.Core.Base.ConflictException>(err);

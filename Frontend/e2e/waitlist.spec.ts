@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { mockApi, ok, err } from "./mockApi";
+import { mockApi, ok, err, paged } from "./mockApi";
 
 /**
  * docs 04 §7 — waitlist flow (FEAT 2). In BookPage a slot cell is only
@@ -85,12 +85,12 @@ test.describe("waitlist", () => {
         },
       },
       {
-        pattern: /\/waitlist\/mine$/,
+        pattern: /\/waitlist\/mine\/paged\?/,
         method: "GET",
         respond: () =>
           left
-            ? ok([])
-            : ok([
+            ? paged([])
+            : paged([
                 {
                   id: 501,
                   courtId: 11,

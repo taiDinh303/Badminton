@@ -70,6 +70,7 @@ namespace Badminton.Tests
             Assert.NotNull(booking.QrToken);
             Assert.Null(booking.CheckedInAt);
 
+            Badminton.Core.Utils.HanoiTime.NowUtc = () => _h.HanoiNowUtc.AddHours(3);
             // Staff scans the QR.
             _h.ActAs(_h.Manager, Role.Manager);
             var checkedIn = await _h.RunScopeAsync(sp =>
@@ -92,6 +93,7 @@ namespace Badminton.Tests
             var view = await _h.BookAsync(_h.Bob, _h.Court2, _h.SlotPeak,
                 _h.FutureDate.ToString("yyyy-MM-dd"));
 
+            Badminton.Core.Utils.HanoiTime.NowUtc = () => _h.HanoiNowUtc.AddHours(9);
             _h.ActAs(_h.Manager, Role.Manager);
             var checkedIn = await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<ICheckinService>()
@@ -115,16 +117,14 @@ namespace Badminton.Tests
 
             // Complete it → points banked at 2x multiplier.
             _h.ActAs(_h.Manager, Role.Manager);
-            await _h.RunScopeAsync(sp =>
-                sp.GetRequiredService<IBookingService>()
-                 .MarkCompletedAsync(view!.Id, _h.Manager));
+            await _h.CompleteAsPlayedAsync(view!.Id, _h.Manager);
 
             var balance = await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<Contract.Services.Points.IPointService>()
                  .GetBalanceAsync(_h.Carol));
 
             var payable = view.PayableAmount;
-            Assert.Equal(payable * 2, balance); // 2x Gold multiplier
+            Assert.Equal(payable * 2 / 1000, balance); // 2x Gold multiplier
         }
 
         [Fact(DisplayName = "Silver member earns 1.5x points on a completed booking")]
@@ -138,16 +138,14 @@ namespace Badminton.Tests
             var view = await _h.MakeConfirmedBookingAsync(_h.Bob, _h.Court2, _h.SlotPeak);
 
             _h.ActAs(_h.Manager, Role.Manager);
-            await _h.RunScopeAsync(sp =>
-                sp.GetRequiredService<IBookingService>()
-                 .MarkCompletedAsync(view!.Id, _h.Manager));
+            await _h.CompleteAsPlayedAsync(view!.Id, _h.Manager);
 
             var balance = await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<Contract.Services.Points.IPointService>()
                  .GetBalanceAsync(_h.Bob));
 
             var payable = view.PayableAmount;
-            Assert.Equal((int)Math.Round(payable * 1.5m), balance);
+            Assert.Equal((int)Math.Round(payable * 1.5m / 1000m), balance);
         }
 
         [Fact(DisplayName = "Non-member (None tier) earns 1x points")]
@@ -156,15 +154,13 @@ namespace Badminton.Tests
             var view = await _h.MakeConfirmedBookingAsync(_h.Alice, _h.Court1, _h.SlotNoon);
 
             _h.ActAs(_h.Manager, Role.Manager);
-            await _h.RunScopeAsync(sp =>
-                sp.GetRequiredService<IBookingService>()
-                 .MarkCompletedAsync(view!.Id, _h.Manager));
+            await _h.CompleteAsPlayedAsync(view!.Id, _h.Manager);
 
             var balance = await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<Contract.Services.Points.IPointService>()
                  .GetBalanceAsync(_h.Alice));
 
-            Assert.Equal(view.PayableAmount, balance);
+            Assert.Equal(view.PayableAmount / 1000, balance);
         }
 
         // ── FEAT 2: Waitlist join + promote ──────────────────────────────

@@ -40,8 +40,17 @@ namespace Services
             return u is null ? 1.0m : EffectiveMultiplier(u);
         }
 
-        public async Task<User> AssignTierAsync(int userId, MembershipTier tier,
-            int actorId)
+        public async Task<User> AssignTierAsync(int userId, MembershipTier tier, int actorId)
+        {
+            User result = null!;
+            await Uow.RunInTransactionAsync(async () => {
+                await Uow.LockPointsUserAsync(userId);
+                result = await AssignTierCoreAsync(userId, tier, actorId);
+            });
+            return result;
+        }
+
+        private async Task<User> AssignTierCoreAsync(int userId, MembershipTier tier, int actorId)
         {
             var u = await Repository<User>().GetByIdAsync(userId);
             if (u is null) throw new NotFoundException("User", userId);
@@ -50,6 +59,7 @@ namespace Services
             if (u.Role != Role.Customer)
                 throw new ConflictException("Chỉ khách (Customer) mới được gán membership.");
 
+            var before = new { u.Tier, u.MembershipExpiresAt };
             u.Tier = tier;
             u.MembershipExpiresAt = tier switch
             {
@@ -60,7 +70,8 @@ namespace Services
                 _ => null
             };
             u.UpdatedAt = DateTime.UtcNow;
-            Repository<User>().Update(u);
+            Repository<User>().UpdateProperties(u, nameof(User.Tier), nameof(User.MembershipExpiresAt), nameof(User.UpdatedAt));
+            await Repository<AuditLog>().AddAsync(new AuditLog { ActorId = actorId, Action = "membership.assign", EntityType = "User", EntityId = userId.ToString(), BeforeJson = Contract.Services.Audit.AuditJson.Serialize(before), AfterJson = Contract.Services.Audit.AuditJson.Serialize(new { u.Tier, u.MembershipExpiresAt }) });
             await SaveAsync();
             return u;
         }

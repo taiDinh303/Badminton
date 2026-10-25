@@ -143,10 +143,12 @@ jobs:
       # prior build (dist/). Without this the preview server has nothing to
       # serve and Playwright's config.webServer times out after 120s.
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox webkit
       - run: npx playwright test
         env:
           E2E_BASE_URL: 'http://localhost:4173'
+      - name: Firefox and WebKit workflow smoke
+        run: npx playwright test --config playwright.cross-browser.config.ts --workers=2
 
       - uses: actions/upload-artifact@v4
         if: always()
