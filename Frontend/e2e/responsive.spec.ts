@@ -1,6 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { mockApi, ok, seedLoggedInCustomer } from "./mockApi";
+import { mockApi, ok, paged as pagedResponse, seedLoggedInCustomer } from "./mockApi";
+
+// Each case visits up to 17 routes and captures multiple screenshots; individual assertions keep their own timeout.
+test.setTimeout(90_000);
 
 const branch = { id: 1, name: "Cơ sở cầu lông Nguyễn Văn Linh", address: "123 Nguyễn Văn Linh", isActive: true, openTime: "06:00", closeTime: "23:00", courtCount: 2 };
 const court = { id: 1, branchId: 1, name: "Sân cầu lông số 1", code: "S01", isActive: true, priceLowPeak: 100000, pricePeak: 150000, weekendSurcharge: 0, capacity: 10, surface: "Sindalo", ratingAvg: 5, ratingCount: 1 };
@@ -30,8 +33,8 @@ async function setup(page: Page, populated = false) {
     { pattern: /\/admin\/staff$/, respond: () => ok([{ id: 2, fullName: "Nhân viên cơ sở", phoneNumber: "0900000002", role: "Manager", isActive: true, branchId: 1, branchName: branch.name }]) },
     { pattern: /\/payments\/methods$/, respond: () => ok(["Cash", "QR"]) },
     { pattern: /\/groups\/mine$/, respond: () => ok(populated ? [{ id: 1, ownerId: 1, name: "Nhóm cầu lông cuối tuần Nguyễn Văn Linh", memberCount: 4, maxMembers: 10 }] : []) },
-    { pattern: /\/reviews\?/, respond: () => ok(populated ? [{ id: 1, courtId: 1, courtName: court.name, userName: "Nguyễn Văn Khách Hàng", rating: 5, createdAt: "2026-10-22T08:00:00Z", comment: "Sân sạch sẽ, rộng rãi và thuận tiện cho nhóm bạn." }] : []) },
-    { pattern: /\/waitlist\/mine$/, respond: () => ok(populated ? [{ id: 1, courtName: court.name, slotLabel: "18:00–19:00", date: "2026-10-24", playerCount: 4, status: "Promoted", promotedBookingId: 1 }] : []) },
+    { pattern: /\/reviews\/paged\?/, respond: () => pagedResponse(populated ? [{ id: 1, courtId: 1, courtName: court.name, userName: "Nguyễn Văn Khách Hàng", rating: 5, createdAt: "2026-10-22T08:00:00Z", comment: "Sân sạch sẽ, rộng rãi và thuận tiện cho nhóm bạn." }] : []) },
+    { pattern: /\/waitlist\/mine\/paged\?/, respond: () => pagedResponse(populated ? [{ id: 1, courtName: court.name, slotLabel: "18:00–19:00", date: "2026-10-24", playerCount: 4, status: "Promoted", promotedBookingId: 1 }] : []) },
     { pattern: /./, respond: () => ok([]) },
   ]);
 }

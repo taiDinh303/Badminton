@@ -274,6 +274,21 @@ namespace Badminton.Tests
             return view!;
         }
 
+        // Exercise completion through a real check-in and the end-of-slot business clock.
+        public async Task<ModelViews.Booking.BookingView> CompleteAsPlayedAsync(int id, int actorId, string? note = null)
+        {
+            var original = HanoiTime.NowUtc;
+            try {
+                var booking = await GetBookingAsync(id);
+                var slot = await RunScopeAsync(sp => sp.GetRequiredService<BadmintonBookingDbContext>().TimeSlots.SingleAsync(s => s.Id == booking.SlotId));
+                HanoiTime.NowUtc = () => DateTime.SpecifyKind(HanoiTime.SlotStart(booking.Date, slot.StartTime).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc);
+                await RunScopeAsync(sp => sp.GetRequiredService<ICheckinService>().CheckinByCodeAsync(booking.BookingCode, actorId));
+                HanoiTime.NowUtc = () => DateTime.SpecifyKind(HanoiTime.SlotEnd(booking.Date, slot.EndTime).Add(-HanoiTime.FixedOffset).AddSeconds(1), DateTimeKind.Utc);
+                return await RunScopeAsync(sp => sp.GetRequiredService<IBookingService>().MarkCompletedAsync(id, actorId, note));
+            }
+            finally { HanoiTime.NowUtc = original; }
+        }
+
         public int BranchManager => Manager;
 
         public async Task<Voucher> AddVoucherAsync(string code, int totalQty, int maxPerUser,

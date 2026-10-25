@@ -27,34 +27,22 @@ export function warmSession(client: QueryClient, user: AuthUser) {
     // The booking page opens the first branch; other dates/branches load on demand.
     if (branches?.[0]) await load(["availability", branches[0].id, day], () => api.booking.availability(branches[0].id, day));
   });
-  tasks.push(async () => {
-    const courts = await load(["courts"], () => api.courts.list());
-    if (!courts || stopped) return;
-    const ids = courts.map((c) => c.id);
-    await load(["reviews", null, ids], async () => {
-      const all = [];
-      for (const court of courts) {
-        if (stopped) throw new Error("Session changed");
-        const reviews = await load(["reviews", "court", court.id], () => api.reviews.forCourt(court.id));
-        all.push(...(reviews ?? []));
-      }
-      return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    });
-  });
+  add(["reviews", "paged", null, 1], () => api.reviews.paged(null, 1));
   tasks.push(async () => {
     const mine = await load(["my-bookings", "", 1], () => api.booking.mine(undefined, 1));
     for (const b of mine?.items.slice(0, 3) ?? []) {
       await load(["booking", b.id], () => api.booking.getById(b.id));
       await load(["payments", b.id], () => api.payments.forBooking(b.id));
+      if (b.status === "Completed") await load(["reviews", "booking", b.id], () => api.reviews.forBooking(b.id));
     }
   });
   add(["account", "summary"], api.account.summary);
   add(["account", "profile", user.id], api.account.profile);
   add(["payment-methods"], api.payments.methods);
   add(["groups", "mine"], api.groups.mine);
-  add(["waitlist", "mine"], api.waitlist.mine);
+  add(["waitlist", "mine", 1], () => api.waitlist.paged(1));
   if (staff) {
-    add(["admin-bookings", "", "", 1], () => api.booking.all(undefined, undefined, 1, 10));
+    add(["admin-bookings", "", "", 1, "", "", false], () => api.booking.all(undefined, undefined, 1, 10));
     add(["report", "summary"], () => api.admin.report.summary());
     add(["time-slots", user.role === "Admin"], () => api.timeSlots.list(user.role === "Admin"));
     add(["vouchers"], () => api.vouchers.list(false));

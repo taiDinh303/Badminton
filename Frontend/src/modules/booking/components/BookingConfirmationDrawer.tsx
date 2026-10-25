@@ -150,6 +150,7 @@ export default function BookingConfirmationDrawer({ selection: sel, date, weekda
               </div>
 
               <p className="mt-2 text-xs text-muted">Sức chứa tối đa {capacity} người. Số người không làm thay đổi giá sân.</p>
+              <p className="mt-2 text-xs text-muted">Mang mã đặt/QR đến sân để nhân viên check-in, từ 30 phút trước giờ bắt đầu đến hết khung giờ.</p>
               {price.voucherDiscount > 0 && <p className="mt-1 text-xs">Voucher: −{formatVnd(price.voucherDiscount)}</p>}
               {price.pointsDiscount > 0 && <p className="mt-1 text-xs">Điểm đổi: −{formatVnd(price.pointsDiscount)}</p>}
               {quote.isError && <Callout tone="error" className="mt-2">{quote.error.message}</Callout>}

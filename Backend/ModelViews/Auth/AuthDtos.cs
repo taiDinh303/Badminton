@@ -14,6 +14,11 @@ namespace ModelViews.Auth
     public record ChangePasswordRequest([Required] string CurrentPassword,
         [Required, StringLength(72, MinimumLength = 8)] string NewPassword);
 
+    public record RecoveryCodeRequest([Required] string CurrentPassword, [Required, StringLength(500, MinimumLength = 5)] string Reason);
+    public record RecoveryCodeResponse(string Code, DateTime ExpiresAt);
+    public record ResetPasswordRequest([Required] string PhoneNumber, [Required, StringLength(64, MinimumLength = 64)] string Code,
+        [Required, StringLength(72, MinimumLength = 8)] string NewPassword);
+
     public record LoginResponse(int UserId, string FullName, string PhoneNumber,
         string Role, string AccessToken, int ExpiresInMinutes);
 }

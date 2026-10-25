@@ -31,6 +31,12 @@ namespace Repositories.Context
 
         protected override void OnModelCreating(ModelBuilder mb)
         {
+            mb.Entity<InventoryDaySnapshot>(e => {
+                e.ToTable("InventoryDaySnapshots"); e.HasKey(x => x.Id);
+                e.Property(x => x.CapacityJson).IsRequired();
+                e.HasIndex(x => new { x.BranchId, x.Date }).IsUnique();
+                e.HasOne<Branch>().WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);
+            });
             mb.Entity<ContactInquiry>(e =>
             {
                 e.ToTable("ContactInquiries");
@@ -46,6 +52,7 @@ namespace Repositories.Context
             mb.Entity<User>(e =>
             {
                 e.Property(x => x.SecurityStamp).HasMaxLength(32);
+                e.Property(x => x.PasswordRecoveryHash).HasMaxLength(64);
                 e.ToTable("Users");
                 e.HasKey(x => x.Id);
                 e.Property(x => x.Id).ValueGeneratedOnAdd();
@@ -187,6 +194,7 @@ namespace Repositories.Context
             // ---- PlayGroups / GroupMembers ----
             mb.Entity<PlayGroup>(e =>
             {
+                e.Property(x => x.InviteTokenHash).HasMaxLength(64);
                 e.ToTable("PlayGroups");
                 e.HasKey(x => x.Id);
                 e.Property(x => x.Id).ValueGeneratedOnAdd();

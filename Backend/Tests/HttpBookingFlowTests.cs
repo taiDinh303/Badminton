@@ -5,6 +5,7 @@ using System.Text.Json;
 using Badminton.API.Configuration;
 using Badminton.API.Middleware;
 using Badminton.Core.Store;
+using Badminton.Core.Utils;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -122,12 +123,15 @@ public sealed class HttpBookingFlowTests : IAsyncLifetime
         ActAs(_fixture.Alice, "Customer");
         var created = await _client.PostAsJsonAsync("/api/v1/groups", new { name = "Private", maxMembers = 2 });
         Assert.Equal(HttpStatusCode.OK, created.StatusCode);
-        var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetProperty("id").GetInt32();
+        var groupData = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+        var id = groupData.GetProperty("id").GetInt32();
+        var inviteCode = groupData.GetProperty("inviteCode").GetString();
         ActAs(_fixture.Carol, "Customer");
         var denied = await _client.GetAsync($"/api/v1/groups/{id}/members");
         Assert.Equal(HttpStatusCode.Conflict, denied.StatusCode);
         Assert.DoesNotContain("0900000001", await denied.Content.ReadAsStringAsync());
-        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"/api/v1/groups/{id}/join", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"/api/v1/groups/{id}/join", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync($"/api/v1/groups/{id}/join", new { inviteCode })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync($"/api/v1/groups/{id}/members")).StatusCode);
     }
 
@@ -439,6 +443,7 @@ public sealed class HttpBookingFlowTests : IAsyncLifetime
         ActAs(_fixture.ManagerOtherBranch, "Manager");
         Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync("/api/v1/checkin/token", new { token })).StatusCode);
         ActAs(_fixture.Manager, "Manager");
+        Badminton.Core.Utils.HanoiTime.NowUtc = () => _fixture.HanoiNowUtc.AddHours(3);
         var response = await _client.PostAsJsonAsync("/api/v1/checkin/token", new { token });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -466,6 +471,24 @@ public sealed class HttpBookingFlowTests : IAsyncLifetime
         await first.ReleaseAsync("test-worker");
         Assert.True(await second.AcquireAsync("test-worker", 0));
         await second.ReleaseAsync("test-worker");
+    }
+
+    [Fact]
+    public async Task No_show_reset_preserves_current_and_future_restrictions()
+    {
+        var month = Badminton.Core.Utils.HanoiTime.HanoiToday().MonthStart();
+        await _fixture.RunScopeAsync(async sp => {
+            var db = sp.GetRequiredService<BadmintonBookingDbContext>();
+            await db.Users.Where(u => u.Id == _fixture.Alice).ExecuteUpdateAsync(s => s.SetProperty(u => u.NoShowLimited, true).SetProperty(u => u.NoShowLimitedPeriod, month.AddMonths(-1)));
+            await db.Users.Where(u => u.Id == _fixture.Bob).ExecuteUpdateAsync(s => s.SetProperty(u => u.NoShowLimited, true).SetProperty(u => u.NoShowLimitedPeriod, month));
+            await db.Users.Where(u => u.Id == _fixture.Manager).ExecuteUpdateAsync(s => s.SetProperty(u => u.NoShowLimited, true).SetProperty(u => u.NoShowLimitedPeriod, month.AddMonths(1)));
+        });
+        using var worker = ActivatorUtilities.CreateInstance<Badminton.API.Jobs.NoShowResetJob>(_app.Services);
+        var tick = typeof(Badminton.API.Jobs.NoShowResetJob).GetMethod("RunOnceAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        await (Task)tick.Invoke(worker, null)!;
+        Assert.False((await _fixture.GetUserAsync(_fixture.Alice)).NoShowLimited);
+        Assert.True((await _fixture.GetUserAsync(_fixture.Bob)).NoShowLimited);
+        Assert.True((await _fixture.GetUserAsync(_fixture.Manager)).NoShowLimited);
     }
 
     [Fact]
@@ -505,6 +528,71 @@ public sealed class HttpBookingFlowTests : IAsyncLifetime
         ActAs(adminId, "Admin");
         foreach (var body in new object[] { new { capacity = 0 }, new { priceLowPeak = -1 }, new { pricePeak = 0 }, new { weekendSurcharge = -1m } })
             Assert.Equal(HttpStatusCode.BadRequest, (await _client.PatchAsJsonAsync($"/api/v1/courts/{_fixture.Court1}", body)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Http_presence_deadline_and_completion_contracts_are_enforced()
+    {
+        var id = await CreateBooking();
+        var initial = await _client.GetFromJsonAsync<JsonElement>($"/api/v1/bookings/{id}");
+        Assert.Equal(JsonValueKind.String, initial.GetProperty("data").GetProperty("pendingExpiresAt").ValueKind);
+        Assert.Equal(JsonValueKind.String, initial.GetProperty("data").GetProperty("serverTimeUtc").ValueKind);
+        await _fixture.RunScopeAsync(sp => sp.GetRequiredService<BadmintonBookingDbContext>().Bookings.Where(b => b.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(b => b.Status, BookingStatus.Confirmed)));
+        ActAs(_fixture.Manager, "Manager");
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"/api/v1/bookings/{id}/complete", null)).StatusCode);
+        var code = (await _fixture.GetBookingAsync(id)).BookingCode;
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"/api/v1/checkin/code/{code}", null)).StatusCode);
+        Badminton.Core.Utils.HanoiTime.NowUtc = () => _fixture.HanoiNowUtc.AddHours(3);
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"/api/v1/checkin/code/{code}", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"/api/v1/bookings/{id}/no-show", null)).StatusCode);
+        Badminton.Core.Utils.HanoiTime.NowUtc = () => _fixture.HanoiNowUtc.AddHours(4);
+        var completed = await _client.PostAsync($"/api/v1/bookings/{id}/complete", null);
+        Assert.Equal(HttpStatusCode.OK, completed.StatusCode);
+        Assert.Equal(100, (await completed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetProperty("pointsEarned").GetInt32());
+    }
+
+    [Fact]
+    public async Task Http_password_recovery_requires_admin_reauthentication_and_invalidates_old_jwt()
+    {
+        const string adminPassword = "SyntheticRecoveryAdmin123";
+        var adminId = await _fixture.RunScopeAsync(async sp => {
+            var db = sp.GetRequiredService<BadmintonBookingDbContext>(); var admin = await db.Users.SingleAsync(u => u.Role == Role.Admin);
+            admin.PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword); await db.SaveChangesAsync(); return admin.Id;
+        });
+        ActAs(_fixture.Alice, "Customer");
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.PostAsJsonAsync($"/api/v1/auth/recovery-code/{_fixture.Alice}", new { currentPassword = adminPassword, reason = "verified customer" })).StatusCode);
+        ActAs(adminId, "Admin");
+        var issued = await _client.PostAsJsonAsync($"/api/v1/auth/recovery-code/{_fixture.Alice}", new { currentPassword = adminPassword, reason = "verified customer at desk" });
+        Assert.Equal(HttpStatusCode.OK, issued.StatusCode);
+        var code = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetProperty("code").GetString();
+        _client.DefaultRequestHeaders.Authorization = null;
+        var request = new { phoneNumber = "0900000001", code, newPassword = "NewSyntheticPassword123" };
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync("/api/v1/auth/reset-password", request)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/v1/auth/reset-password", request)).StatusCode);
+        ActAs(_fixture.Alice, "Customer");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.GetAsync("/api/v1/account/profile")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Bounded_availability_read_load_stays_read_only_and_returns_no_errors()
+    {
+        var samples = new System.Collections.Concurrent.ConcurrentBag<double>();
+        using var concurrency = new SemaphoreSlim(4);
+        var before = await _fixture.RunScopeAsync(sp => sp.GetRequiredService<BadmintonBookingDbContext>().Bookings.CountAsync());
+        await Task.WhenAll(Enumerable.Range(0, 40).Select(async _ => {
+            await concurrency.WaitAsync();
+            try {
+                var timer = System.Diagnostics.Stopwatch.StartNew();
+                var response = await _client.GetAsync($"/api/v1/bookings/availability/{_fixture.BranchId}/{_fixture.FutureDate:yyyy-MM-dd}");
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                samples.Add(timer.Elapsed.TotalMilliseconds);
+            }
+            finally { concurrency.Release(); }
+        }));
+        Assert.Equal(before, await _fixture.RunScopeAsync(sp => sp.GetRequiredService<BadmintonBookingDbContext>().Bookings.CountAsync()));
+        var ordered = samples.Order().ToArray();
+        Console.WriteLine($"BOUNDED_READ_LOAD requests=40 concurrency=4 errors=0 p50ms={ordered[19]:F1} p95ms={ordered[37]:F1} maxms={ordered[^1]:F1}");
     }
 
     public async Task DisposeAsync()

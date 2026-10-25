@@ -45,10 +45,11 @@ namespace Badminton.API.Controllers
             [FromQuery] string? status,
             [FromQuery] int? branchId,
             [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 100)
+            [FromQuery] int pageSize = 100,
+            [FromQuery] string? search = null, [FromQuery] DateOnly? date = null, [FromQuery] bool needsAttendance = false)
         {
             var (items, total) = await _svc.GetAllPagedAsync(
-                status, branchId, new Page(page, pageSize));
+                status, branchId, new Page(page, pageSize), search, date, needsAttendance);
             var paged = new BasePaginatedList<BookingView>(items, total, page, pageSize);
             return Resp(paged);
         }

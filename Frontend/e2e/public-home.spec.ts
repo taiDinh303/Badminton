@@ -60,13 +60,13 @@ test("branch shortcut selects that branch on mobile", async ({ page }) => {
 });
 
 test("customer clock, avatar keyboard/outside dismissal and logout", async ({ page }) => {
-  await page.clock.install({ time: new Date("2026-10-23T05:00:00Z") });
+  await page.clock.setFixedTime(new Date("2026-10-23T05:00:00Z"));
   await seedLoggedInCustomer(page, { id: 7, fullName: "Khách đặt", role: "Customer", phone: "0900000007" });
   await mockApi(page, [{ pattern: /\/branches$/, respond: () => ok([]) }]);
   await page.goto("/dashboard");
   const clock = page.getByLabel("Giờ Việt Nam");
   await expect(clock).toHaveText("12:00:00");
-  await page.clock.runFor(2000);
+  await page.clock.setFixedTime(new Date("2026-10-23T05:00:02Z"));
   await expect(clock).toHaveText("12:00:02");
   const avatar = page.getByRole("button", { name: "Menu tài khoản" });
   expect(await avatar.evaluate(el => getComputedStyle(el).cursor)).toBe("pointer");

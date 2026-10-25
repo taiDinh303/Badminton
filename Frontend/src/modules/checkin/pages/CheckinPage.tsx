@@ -1,3 +1,4 @@
+import { vietnamDate } from "../../../utils/format";
 import TokenScanner from "../components/TokenScanner";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -39,7 +40,7 @@ export default function CheckinPage() {
   const [done, setDone] = useState<string | null>(null);
 
   const [courtId, setCourtId] = useState<number | "">("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => vietnamDate());
   const [slotLabel, setSlotLabel] = useState("");
 
   const byCode = useMutation({
@@ -220,7 +221,7 @@ export default function CheckinPage() {
             <input
               type="date"
               value={date}
-              min={new Date().toISOString().slice(0, 10)}
+              min={vietnamDate()}
               onChange={(e) => setDate(e.target.value)}
               aria-label="Chọn ngày"
               className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-fg outline-none focus:border-primary"

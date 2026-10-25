@@ -17,7 +17,7 @@ Ngày sân theo UTC+7, timestamp UTC, tiền nguyên VND. Browser hiển thị k
 | Giữ | Booking Pending, expiry UTC +10 phút | Giữ voucher/trừ điểm nếu có; trả mã đơn |
 | Tiếp tục | Init online hoặc staff xác nhận tại quầy | Đọc lại trạng thái, không kết luận từ returnUrl |
 
-Key hiện chưa là hash toàn payload. Voucher/points/note thay đổi phải dùng ý định mới; phần này còn cần hardening. Double booking bị DB từ chối, repository map lỗi unique sang domain conflict; không đè đơn khác.
+Key có fingerprint toàn payload. Voucher/points/note thay đổi phải dùng ý định mới. Double booking bị DB từ chối, repository map lỗi unique sang domain conflict; không đè đơn khác.
 
 ## 3. Thanh toán và vòng đời
 
@@ -88,3 +88,7 @@ Voucher có hiệu lực đến hết ValidUntil theo ngày Việt Nam; job khó
 | Gateway/notify lỗi | Trạng thái chưa hoàn tất, log truy vết; không báo đã thu/đã gửi nếu chưa xác nhận |
 
 Xem [04 API](04-system-architecture.md), [05 kiểm thử](05-testing-strategy.md), [08 backlog](08-plan.md).
+
+## 9. Quy tắc chốt ngày 25/10/2026
+
+Check-in từ 30 phút trước giờ bắt đầu đến hết slot, Pending phải còn TTL. Đã check-in không no-show; chỉ Completed sau check-in và hết giờ. Đơn Confirmed chưa check-in giữ để staff xác minh; dashboard có bộ lọc hiện diện. Điểm cơ bản 100.000đ=100 điểm; số dư cũ quy 1/1.000 bằng migration append-only. Chi tiết source, HTTP mới, nhóm, recovery và giới hạn snapshot tại [16](16-nonpayment-hardening.md).

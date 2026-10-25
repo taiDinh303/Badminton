@@ -34,6 +34,8 @@ public sealed class BookingCreationService(IUnitOfWork uow, ICurrentUser current
         await Uow.RunInTransactionAsync(async () =>
         {
             if (request.IdempotencyKey is { } key) await Uow.LockBookingRequestAsync(key);
+            var target = (await Repository<Court>().GetByConditionAsync(c => c.Id == request.CourtId)).SingleOrDefault();
+            if (target is not null) await Uow.LockBookingRequestAsync($"branch-config:{target.BranchId}");
             result = await CreateCoreAsync(request, userId);
         });
         return result;
@@ -92,6 +94,7 @@ public sealed class BookingCreationService(IUnitOfWork uow, ICurrentUser current
 
         if (request.GroupId is { } groupId)
         {
+            await Uow.LockGroupAsync(groupId);
             if (!await _groups.CanBookForGroupAsync(groupId, userId))
                 throw new ConflictException("Chi nguoi tao nhom duoc dat cho nhom.");
             if (await CountActiveBookings(userId, groupId, date) >= 8)
@@ -204,7 +207,7 @@ public sealed class BookingCreationService(IUnitOfWork uow, ICurrentUser current
     {
         var u = userId; var g = groupId;
         return await Repo.CountByConditionAsync(b =>
-            b.Date == date && b.UserId == u &&
+            b.Date == date && (g != null || b.UserId == u) &&
             ((b.GroupId == null && g == null) || b.GroupId == g) &&
             (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed));
     }

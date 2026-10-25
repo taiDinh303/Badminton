@@ -114,6 +114,7 @@ export default function AccountPage() {
         </div>}
       </Card>
 
+      {summary?.legacyPointsConverted && <Callout tone="info" className="mt-4">Số dư điểm cũ đã được quy đổi về 1/1.000. Thông tin điểm của các đơn cũ được giữ theo thời điểm phát sinh.</Callout>}
       {/* Loyalty strip — real points balance + voucher usage (GET /account/summary) */}
       <div className="mt-4 grid grid-cols-2 gap-3">
         <Card className="p-4">

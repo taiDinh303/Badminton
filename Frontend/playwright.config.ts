@@ -19,13 +19,13 @@ export default defineConfig({
     ? "../artifacts/responsive-desktop-baseline/{arg}{ext}"
     : undefined,
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:4173",
+    baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:4173",
     trace: "on-first-retry",
     ...devices["Desktop Chrome"],
   },
   webServer: {
-    command: "npm run preview -- --port 4173 --strictPort",
-    url: "http://localhost:4173",
+    command: "npm run preview -- --host 127.0.0.1 --port 4173 --strictPort",
+    url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

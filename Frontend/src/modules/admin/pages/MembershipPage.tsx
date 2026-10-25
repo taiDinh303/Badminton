@@ -1,3 +1,4 @@
+import { IssueRecoveryCode } from "../../auth/components/PasswordRecovery";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Crown, Medal, RefreshCw } from "lucide-react";
@@ -24,6 +25,7 @@ const TIER_META: Record<string, { label: string; mult: string; tone: string }> =
  */
 export default function MembershipPage() {
   const qc = useQueryClient();
+  const [recovery, setRecovery] = useState<MembershipView | null>(null);
   const [search, setSearch] = useState("");
   const customersQuery = useQuery({ queryKey: ["membership", "customers"], queryFn: api.admin.membership.customers });
   const customers = customersQuery.data ?? [];
@@ -89,11 +91,12 @@ export default function MembershipPage() {
       render: (m) =>
         <span className={m.lapsed ? "text-state-danger" : "text-primary"}>{m.lapsed ? "Đã hết hạn" : m.tier === "None" ? "Khách thường" : "Còn hiệu lực"}</span>,
     },
-    { key: "actions", label: "", width: 120, render: (m) => <Button size="xs" variant="ghost" onClick={() => { setTargetUser(String(m.id)); setTier(m.tier); setAssignOpen(true); assign.reset(); }}>Đổi / gia hạn</Button> },
+    { key: "actions", label: "", width: 220, render: (m) => <div className="flex gap-1"><Button size="xs" variant="ghost" onClick={() => { setTargetUser(String(m.id)); setTier(m.tier); setAssignOpen(true); assign.reset(); }}>Đổi / gia hạn</Button><Button size="xs" variant="ghost" onClick={() => setRecovery(m)}>Khôi phục</Button></div> },
   ];
 
   return (
     <div>
+      {recovery && <IssueRecoveryCode userId={recovery.id} name={recovery.fullName} onClose={() => setRecovery(null)} />}
       <Toolbar
         title="Membership"
         subtitle="Quản lý hạng thành viên, gia hạn và hệ số tích điểm"

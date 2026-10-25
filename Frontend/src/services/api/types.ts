@@ -92,6 +92,10 @@ export interface Booking {
   /** FEAT check-in: server-generated 64-hex token shown as the QR (docs 03 Â§3). */
   qrToken?: string | null;
   checkedInAt?: string | null;
+  pendingExpiresAt?: string | null;
+  serverTimeUtc?: string | null;
+  slotStartAtUtc?: string | null;
+  slotEndAtUtc?: string | null;
   cancelledAt?: string | null;
 }
 
@@ -164,6 +168,7 @@ export interface AuditEntry {
 }
 
 export interface ReportSummary {
+  attendanceToReview?: number;
   todayBookings: number;
   pendingCount: number;
   noShowCount30d: number;
@@ -194,6 +199,7 @@ export interface MembershipView {
 
 // â”€â”€ FEAT 2: Waitlist â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface WaitlistEntryView {
+  declineReason?: string | null;
   id: number;
   courtId: number;
   courtName: string;
@@ -207,6 +213,7 @@ export interface WaitlistEntryView {
 
 // â”€â”€ FEAT 7: Groups (docs 03 Â§7) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface GroupView {
+  inviteCode?: string | null;
   id: number;
   name: string;
   ownerId: number;
@@ -268,6 +275,8 @@ export interface MyVoucher {
 }
 
 export interface AccountSummary {
+  legacyPointsConverted?: boolean;
+  pointsConvertedAt?: string | null;
   pointsBalance: number;
   pointsRedeemableVnd: number;
   vndPer1000Points: number;
@@ -287,6 +296,7 @@ export interface RevenueByDay {
 }
 
 export interface OccupancyByDay {
+  historicalEstimate?: boolean;
   date: string;
   branchId: number | null;
   branchName: string | null;

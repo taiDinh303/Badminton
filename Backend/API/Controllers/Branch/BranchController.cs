@@ -20,6 +20,10 @@ namespace Badminton.API.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> GetById(int id) => Resp(await _svc.GetByIdAsync(id));
 
+        [HttpGet("{id:int}/impact")]
+        [Authorize(Roles = "Admin,Manager")]
+        public async Task<IActionResult> Impact(int id) => Resp(await _svc.GetImpactAsync(id));
+
         [HttpPost]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Create(CreateBranchRequest request) =>

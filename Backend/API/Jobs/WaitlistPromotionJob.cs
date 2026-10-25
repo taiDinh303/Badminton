@@ -62,6 +62,7 @@ namespace Badminton.API.Jobs
                 var waitlist = sp.GetRequiredService<IWaitlistService>();
                 var uow = sp.GetRequiredService<IUnitOfWork>();
                 var today = HanoiTime.HanoiToday();
+                await waitlist.ExpirePastEntriesAsync();
 
                 // Distinct full-tuples with waiting candidates.
                 var entries = await uow.GetRepository<WaitlistEntry>()

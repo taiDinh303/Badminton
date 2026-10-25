@@ -25,12 +25,12 @@ namespace Contract.Services.Report
         int ActiveBranches,
         // FEAT KPIs (default 0 so older call sites keep compiling).
         int ActiveMembers = 0,
-        int WaitingListCount = 0);
+        int WaitingListCount = 0, int AttendanceToReview = 0);
 
     public record RevenueByDay(DateOnly Date, int Bookings, int Revenue, int Refunds);
 
     public record OccupancyByDay(
         DateOnly Date, int? BranchId, string? BranchName,
         int BookedSlots, int TotalSlots, decimal FillRatePct,
-        int PeakBooked, int PeakTotal, decimal PeakFillRatePct);
+        int PeakBooked, int PeakTotal, decimal PeakFillRatePct, bool HistoricalEstimate = false);
 }

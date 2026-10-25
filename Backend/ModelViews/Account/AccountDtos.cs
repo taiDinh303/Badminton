@@ -2,7 +2,7 @@ namespace ModelViews.Account
 {
     public sealed record PointSummary(
         int Balance,          // total accumulated points
-        int RedeemableVnd,   // how much VND those points can currently offset
+        long RedeemableVnd,   // how much VND those points can currently offset
         int VndPer1000Points, // 20.000đ
         int PointsPerVndUnit); // 1.000 điểm
 
@@ -11,13 +11,13 @@ namespace ModelViews.Account
 
     public sealed record AccountSummary(
         int PointsBalance,           // total accumulated points
-        int PointsRedeemableVnd,    // how much VND those points can offset now
+        long PointsRedeemableVnd,    // how much VND those points can offset now
         int VndPer1000Points,       // 20.000đ
         int PointsPerVndUnit,       // 1.000 điểm
         bool VoucherUsed,
         MyVoucher? UsedVoucher,
         MyVoucher? NextVoucher,
-        IReadOnlyList<MyVoucher> AvailableVouchers);
+        IReadOnlyList<MyVoucher> AvailableVouchers, bool LegacyPointsConverted = false, DateTime? PointsConvertedAt = null);
 }
 
 namespace ModelViews.Account

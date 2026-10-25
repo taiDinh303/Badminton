@@ -19,6 +19,13 @@ namespace Services
 
         public async Task<ReviewView> CreateAsync(CreateReviewRequest request, int userId)
         {
+            ReviewView result = null!;
+            await Uow.RunInTransactionAsync(async () => result = await CreateCoreAsync(request, userId));
+            return result;
+        }
+
+        private async Task<ReviewView> CreateCoreAsync(CreateReviewRequest request, int userId)
+        {
             if (request.Rating is < 1 or > 5)
                 throw new BadRequestException("Điểm đánh giá phải từ 1 đến 5 sao.");
             if (request.Comment?.Length > 2000)
@@ -30,6 +37,8 @@ namespace Services
                 throw new ConflictException("Chỉ đánh giá được đơn đã hoàn thành.");
             if (booking.UserId != userId)
                 throw new ConflictException("Chỉ người đặt mới được đánh giá đơn này.");
+
+            await Uow.LockBookingRequestAsync($"court-reviews:{booking.CourtId}");
 
             var dupes = await Repo.GetByConditionAsync(r => r.BookingId == request.BookingId);
             if (dupes.Count > 0)
@@ -49,15 +58,14 @@ namespace Services
             };
             await Repo.AddAsync(review);
 
-            // Rolling average: new_avg = (old_avg * count + new_rating) / (count+1).
+            // Rebuild from source rows under the court lock; no accumulated rounding or lost updates.
             if (court is not null)
             {
-                var newCount = court.RatingCount + 1;
-                var newAvg = (court.RatingAvg ?? 0.0) * court.RatingCount + request.Rating;
-                court.RatingAvg = Math.Round(newAvg / newCount, 2);
-                court.RatingCount = newCount;
+                var ratings = await Repo.GetByConditionAsync(r => r.CourtId == court.Id);
+                court.RatingCount = ratings.Count + 1;
+                court.RatingAvg = Math.Round((ratings.Sum(r => (double)r.Rating) + request.Rating) / court.RatingCount, 2);
                 court.UpdatedAt = DateTime.UtcNow;
-                Repository<Court>().Update(court);
+                Repository<Court>().UpdateProperties(court, nameof(Court.RatingAvg), nameof(Court.RatingCount), nameof(Court.UpdatedAt));
             }
 
             await SaveAsync();
@@ -83,6 +91,26 @@ namespace Services
                 views.Add(ToView(r, court?.Name ?? "?", user?.FullName ?? "?"));
             }
             return views;
+        }
+
+        public async Task<ReviewView?> GetByBookingAsync(int bookingId)
+        {
+            var booking = await Repository<Booking>().GetByIdAsync(bookingId) ?? throw new NotFoundException("Booking", bookingId);
+            if (booking.UserId != _currentUser.Id) await AuthorizeStaffBranchAsync(booking.BranchId, _currentUser.Id);
+            var row = (await Repo.GetByConditionAsync(r => r.BookingId == bookingId)).SingleOrDefault();
+            return row is null ? null : await ToView(row);
+        }
+
+        public async Task<(IReadOnlyList<ReviewView> Items, int Total, double? Average)> GetPagedAsync(int? courtId, Page page)
+        {
+            System.Linq.Expressions.Expression<Func<Review, bool>> predicate = r => courtId == null || r.CourtId == courtId;
+            var (items, count) = await Repo.GetPagedAsync(predicate, r => r.CreatedAt, OrderDirection.Desc, page);
+            var totalStars = await Repo.SumIntByConditionAsync(predicate, r => r.Rating);
+            var courtIds = items.Select(r => r.CourtId).Distinct().ToList(); var userIds = items.Select(r => r.UserId).Distinct().ToList();
+            var courts = (await Repository<Court>().GetByConditionAsync(c => courtIds.Contains(c.Id))).ToDictionary(c => c.Id);
+            var users = (await Repository<User>().GetByConditionAsync(u => userIds.Contains(u.Id))).ToDictionary(u => u.Id);
+            return (items.Select(r => ToView(r, courts.GetValueOrDefault(r.CourtId)?.Name ?? "?", users.GetValueOrDefault(r.UserId)?.FullName ?? "?")).ToList(),
+                count, count == 0 ? null : Math.Round((double)totalStars / count, 2));
         }
 
         private async Task<ReviewView> ToView(Review r)

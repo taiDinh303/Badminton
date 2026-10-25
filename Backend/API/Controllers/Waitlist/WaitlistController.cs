@@ -23,6 +23,14 @@ namespace Badminton.API.Controllers
         public async Task<IActionResult> Leave(int id)
             => Resp(await _svc.LeaveAsync(id, CurrentUserId), "Đã rời danh sách chờ.");
 
+        [HttpGet("mine/paged")]
+        public async Task<IActionResult> MinePaged([FromQuery] int page = 1)
+        {
+            var paging = new Contract.Repositories.UnitOfWork.Page(Math.Clamp(page, 1, 100000), 20);
+            var (items, total) = await _svc.GetMinePagedAsync(CurrentUserId, paging);
+            return Resp(new BasePaginatedList<WaitlistEntryView>(items, total, paging.Number, paging.Size));
+        }
+
         [HttpGet("mine")]
         public async Task<IActionResult> Mine()
             => Resp(await _svc.GetMineAsync(CurrentUserId));

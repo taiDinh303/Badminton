@@ -1,3 +1,4 @@
+import { PasswordRecovery } from "../components/PasswordRecovery";
 import { useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -21,6 +22,7 @@ export default function AuthPage() {
   const [params] = useSearchParams();
   const location = useLocation();
   const [mode, setMode] = useState<"login" | "register">(params.get("mode") === "register" ? "register" : "login");
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -53,6 +55,8 @@ export default function AuthPage() {
     "h-11 w-full rounded-lg border border-border bg-bg/60 px-3 text-sm text-fg outline-none transition-colors focus:border-primary";
 
   return (
+    <>
+    {recoveryOpen && <PasswordRecovery onClose={() => setRecoveryOpen(false)} />}
     <div className="auth-screen flex min-h-dvh items-center justify-center bg-bg p-4">
       <div className="grid w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card shadow-sm shadow-black/[0.04] md:grid-cols-2">
         {/* Brand panel (desktop) */}
@@ -210,6 +214,7 @@ export default function AuthPage() {
               {!busy && <ArrowRight className="h-4 w-4" />}
             </Button>
           </form>
+          {mode === "login" && <button type="button" className="mt-3 text-sm text-primary" onClick={() => setRecoveryOpen(true)}>Quên mật khẩu?</button>}
 
           <button
             type="button"
@@ -223,5 +228,6 @@ export default function AuthPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

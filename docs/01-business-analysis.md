@@ -82,7 +82,7 @@ TARGET không tính lại ở UI; refund đọc PayableAmount snapshot. CURRENT 
 - `VoucherExpiryJob` (mỗi giờ) vô hiệu voucher qua hạn.
 
 **Điểm tích lũy**
-- **1 đồng thanh toán thành công = 1 điểm**, tính trên đơn `Completed` hợp lệ.
+- **100.000đ = 100 điểm cơ bản** (1.000đ = 1 điểm), tính trên đơn `Completed` hợp lệ đã check-in và hết giờ. Chủ dự án chốt 25/10/2026; membership giữ hệ số. Số dư cũ quy đổi 1/1.000 bằng bút toán điều chỉnh, xem [16](16-nonpayment-hardening.md).
 - **1.000 điểm quy thành 20.000đ** giảm một đơn (redeem qua `PointService.RedeemAsync`, idempotent theo `LedgerKey`). Hoàn tiền full → `RestoreAsync` trả điểm.
 - Sổ điểm append-only trong `PointLedger`: earn/restore = delta dương, redeem/clawback = delta âm. Không xóa giao dịch đã ghi. Số dư = tổng delta theo user.
 

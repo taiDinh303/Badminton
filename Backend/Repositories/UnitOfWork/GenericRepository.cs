@@ -79,6 +79,13 @@ namespace Repositories.UnitOfWork
             _context.Entry(entity).State = EntityState.Modified;
         }
 
+        public void UpdateProperties(T entity, params string[] properties)
+        {
+            var entry = _context.Entry(entity);
+            if (entry.State == EntityState.Detached) _dbSet.Attach(entity);
+            foreach (var property in properties) entry.Property(property).IsModified = true;
+        }
+
         public Task RemoveAsync(T entity, CancellationToken ct = default)
         {
             _dbSet.Remove(entity);

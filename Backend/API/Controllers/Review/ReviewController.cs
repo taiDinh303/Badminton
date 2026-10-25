@@ -17,6 +17,20 @@ namespace Badminton.API.Controllers
         public async Task<IActionResult> GetByCourt([FromQuery] int courtId) =>
             Resp(await _svc.GetByCourtAsync(courtId));
 
+        [HttpGet("booking/{bookingId:int}")]
+        [Authorize]
+        public async Task<IActionResult> ForBooking(int bookingId) => Resp(await _svc.GetByBookingAsync(bookingId));
+
+        [HttpGet("paged")]
+        [AllowAnonymous]
+        public async Task<IActionResult> Paged([FromQuery] int? courtId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            var paging = new Contract.Repositories.UnitOfWork.Page(page, Math.Min(pageSize, 100));
+            var (items, total, average) = await _svc.GetPagedAsync(courtId, paging);
+            return Resp(new { Items = items, TotalItems = total, CurrentPage = paging.Number, PageSize = paging.Size,
+                TotalPages = (int)Math.Ceiling((double)total / paging.Size), AverageRating = average });
+        }
+
         [HttpPost]
         [Authorize]
         public async Task<IActionResult> Create(CreateReviewRequest request) =>

@@ -5,6 +5,8 @@ export { ApiError, TOKEN_KEY } from "../http";
 
 export const api = {
   auth: {
+    resetPassword: (b: { phoneNumber: string; code: string; newPassword: string }) => request<string>("POST", "/auth/reset-password", b),
+    recoveryCode: (id: number, b: { currentPassword: string; reason: string }) => request<{ code: string; expiresAt: string }>("POST", `/auth/recovery-code/${id}`, b),
     changePassword: (b: { currentPassword: string; newPassword: string }) => request<string>("POST", "/auth/change-password", b),
     revokeSessions: () => request<string>("POST", "/auth/logout"),
     register: (b: {
@@ -18,6 +20,7 @@ export const api = {
       request<LoginResponse>("POST", "/auth/login", b),
   },
   branches: {
+    impact: (id: number) => request<{ count: number; bookingCodes: string[] }>("GET", `/branches/${id}/impact`),
     list: () => request<Branch[]>("GET", "/branches"),
     get: (id: number) => request<Branch>("GET", `/branches/${id}`),
     create: (b: {
@@ -41,6 +44,7 @@ export const api = {
     delete: (id: number) => request<unknown>("DELETE", `/branches/${id}`),
   },
   courts: {
+    impact: (id: number) => request<{ count: number; bookingCodes: string[] }>("GET", `/courts/${id}/impact`),
     list: (branchId?: number) =>
       request<Court[]>("GET", "/courts", undefined, { branchId }),
     create: (b: {
@@ -103,12 +107,13 @@ export const api = {
       branchId?: number,
       page = 1,
       pageSize = 100,
+      search?: string, date?: string, needsAttendance?: boolean,
     ) =>
       request<Paged<Booking>>("GET", "/bookings/all", undefined, {
         status,
         branchId,
         page,
-        pageSize,
+        pageSize, search, date, needsAttendance,
       }),
     // Staff (Manager/Admin) lifecycle:
     complete: (id: number, note?: string) =>
@@ -263,6 +268,7 @@ export const api = {
 
   // ── FEAT 2: Waitlist (customer joins a full slot's queue) ─────────
   waitlist: {
+    paged: (page = 1) => request<Paged<WaitlistEntryView>>("GET", "/waitlist/mine/paged", undefined, { page }),
     join: (b: {
       courtId: number;
       slotId: number;
@@ -279,13 +285,22 @@ export const api = {
     mine: () => request<GroupView[]>("GET", "/groups/mine"),
     create: (name: string, maxMembers = 10) =>
       request<GroupView>("POST", "/groups", { name, maxMembers }),
-    join: (id: number) => request<unknown>("POST", `/groups/${id}/join`),
+    join: (id: number, inviteCode?: string) => request<unknown>("POST", `/groups/${id}/join`, { inviteCode }),
+    joined: () => request<GroupView[]>("GET", "/groups/joined"),
+    leave: (id: number) => request<unknown>("POST", `/groups/${id}/leave`),
+    rename: (id: number, name: string) => request<unknown>("PATCH", `/groups/${id}`, { name }),
+    disband: (id: number) => request<unknown>("DELETE", `/groups/${id}`),
+    remove: (id: number, userId: number) => request<unknown>("DELETE", `/groups/${id}/members/${userId}`),
+    transfer: (id: number, userId: number) => request<unknown>("POST", `/groups/${id}/transfer`, { userId }),
+    invite: (id: number) => request<{ code: string }>("POST", `/groups/${id}/invite`),
     members: (id: number) =>
       request<GroupMemberView[]>("GET", `/groups/${id}/members`),
   },
 
   // ── FEAT 8: Reviews (docs 03 §7) ──────────────────────────────────
   reviews: {
+    forBooking: (id: number) => request<ReviewView | null>("GET", `/reviews/booking/${id}`),
+    paged: (courtId: number | null, page = 1) => request<Paged<ReviewView> & { averageRating: number | null }>("GET", "/reviews/paged", undefined, { courtId, page, pageSize: 20 }),
     forCourt: (courtId: number) =>
       request<ReviewView[]>("GET", "/reviews", undefined, { courtId }),
     create: (b: { bookingId: number; rating: number; comment?: string | null }) =>

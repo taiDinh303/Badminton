@@ -113,12 +113,12 @@ public sealed class ProjectQualityTests
         var group = await h.RunScopeAsync(sp => sp.GetRequiredService<IGroupService>().CreateAsync("Capacity", h.Alice, 2));
         async Task<bool> Join(int user)
         {
-            try { await h.RunScopeAsync(sp => sp.GetRequiredService<IGroupService>().JoinAsync(group.Id, user)); return true; }
+            try { await h.RunScopeAsync(sp => sp.GetRequiredService<IGroupService>().JoinAsync(group.Id, user, group.InviteCode)); return true; }
             catch (ConflictException) { return false; }
         }
         var results = await Task.WhenAll(Join(h.Bob), Join(h.Carol));
         Assert.Single(results, x => x);
-        await h.RunScopeAsync(sp => sp.GetRequiredService<IGroupService>().JoinAsync(group.Id, h.Alice));
+        await h.RunScopeAsync(sp => sp.GetRequiredService<IGroupService>().JoinAsync(group.Id, h.Alice, group.InviteCode));
         Assert.Equal(2, await h.RunScopeAsync(sp => sp.GetRequiredService<BadmintonBookingDbContext>().Set<GroupMember>().CountAsync(m => m.GroupId == group.Id)));
     }
 

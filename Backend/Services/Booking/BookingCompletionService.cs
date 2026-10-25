@@ -18,12 +18,13 @@ public sealed class BookingCompletionService(IUnitOfWork uow, IPointService poin
             var booking = await repo.GetByIdAsync(bookingId)
                 ?? throw new NotFoundException("Booking", bookingId);
             if (booking.DeletedAt.HasValue) throw new NotFoundException("Booking", bookingId);
-            if (onlyIfDue)
+            var slot = await uow.GetRepository<TimeSlot>().GetByIdAsync(booking.SlotId);
+            if (slot is null || HanoiTime.SlotEnd(booking.Date, slot.EndTime) > HanoiTime.HanoiNow() || booking.CheckedInAt is null)
             {
-                var slot = await uow.GetRepository<TimeSlot>().GetByIdAsync(booking.SlotId);
-                if (slot is null || HanoiTime.SlotEnd(booking.Date, slot.EndTime) > HanoiTime.HanoiNow()) return;
+                if (onlyIfDue) return;
+                throw new ConflictException("Chỉ hoàn thành đơn đã check-in và kết thúc khung giờ chơi.");
             }
-            if (await uow.Bookings.CompleteAsync(bookingId, 0, DateTime.UtcNow) == 0)
+            if (await uow.Bookings.CompleteAsync(bookingId, 0, DateTime.UtcNow, HanoiTime.HanoiNow()) == 0)
             {
                 if (onlyIfDue) return;
                 throw new ConflictException("Chỉ hoàn thành đơn đã xác nhận và chưa được xử lý.");

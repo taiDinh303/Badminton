@@ -37,7 +37,7 @@ export async function request<T>(
           .map(([k, v]) => [k, String(v)]),
       ).toString()}`
     : "";
-  const session = beginRequest(path === "/auth/login" || path === "/auth/register");
+  const session = beginRequest(path === "/auth/login" || path === "/auth/register" || path === "/auth/reset-password");
   try {
     const res = await fetch(`${BASE}${path}${qs}`, {
       method,

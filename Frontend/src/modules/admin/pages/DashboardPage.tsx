@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   TrendingUp,
@@ -74,7 +75,9 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {occ.some(day => day.historicalEstimate) && <Callout tone="info" className="mt-4">Một số ngày cũ chưa có bản ghi cấu hình lịch sử; tỷ lệ lấp đầy được ước tính theo cấu hình hiện tại.</Callout>}
       {(revenueError || occupancyError) && <Callout tone="error" className="mt-4">Không tải được biểu đồ. Vui lòng thử lại.</Callout>}
+      {!!s?.attendanceToReview && <Callout tone="info" className="mt-4">Có {s.attendanceToReview} đơn đã hết giờ chưa ghi nhận khách đến. <Link className="underline" to="/admin/bookings?needsAttendance=true">Xác minh hiện diện</Link></Callout>}
       {s && (
         <>
           {/* KPI grid */}

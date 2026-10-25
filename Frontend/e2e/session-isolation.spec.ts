@@ -1,4 +1,5 @@
-import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import type { BrowserContext, Page } from "@playwright/test";
 import { ok } from "./mockApi";
 
 async function mockSessions(context: BrowserContext) {

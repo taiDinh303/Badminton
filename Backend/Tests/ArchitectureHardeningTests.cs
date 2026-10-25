@@ -98,10 +98,13 @@ public sealed class ArchitectureHardeningTests
         var originalClock = Badminton.Core.Utils.HanoiTime.NowUtc;
         try
         {
+            Badminton.Core.Utils.HanoiTime.NowUtc = () => h.HanoiNowUtc.AddHours(3);
+            h.ActAs(h.Manager, Role.Manager);
+            await h.RunScopeAsync(sp => sp.GetRequiredService<ICheckinService>().CheckinByCodeAsync(booking.BookingCode, h.Manager));
             Badminton.Core.Utils.HanoiTime.NowUtc = () => h.HanoiNowUtc.AddHours(5);
             var completed = await h.RunScopeAsync(sp => sp.GetRequiredService<BookingCompletionService>()
                 .CompleteAsync(booking.Id, onlyIfDue: true));
-            Assert.Equal(booking.PayableAmount * 2, completed!.PointsEarned);
+            Assert.Equal(booking.PayableAmount * 2 / 1000, completed!.PointsEarned);
             Assert.Null(await h.RunScopeAsync(sp => sp.GetRequiredService<BookingCompletionService>()
                 .CompleteAsync(booking.Id, onlyIfDue: true)));
             Assert.Equal(1, await h.CountPointRowsAsync(booking.Id));
@@ -136,7 +139,7 @@ public sealed class ArchitectureHardeningTests
         });
         var booking = await h.MakeConfirmedBookingAsync(h.Alice, h.Court1, h.SlotNoon);
         if (completed)
-            await h.RunScopeAsync(sp => sp.GetRequiredService<IBookingService>().MarkCompletedAsync(booking.Id, h.Manager));
+            await h.CompleteAsPlayedAsync(booking.Id, h.Manager);
         var balance = await h.RunScopeAsync(sp => sp.GetRequiredService<IPointService>().GetBalanceAsync(h.Alice));
         await Assert.ThrowsAsync<ConflictException>(() => h.RunScopeAsync(sp =>
             sp.GetRequiredService<Contract.Services.Payment.IPaymentService>().RefundForMaintenanceAsync(booking.Id, h.Manager)));
@@ -215,12 +218,11 @@ public sealed class ArchitectureHardeningTests
             services.AddSingleton<IInterceptor>(failure));
         var booking = await h.MakeConfirmedBookingAsync(h.Alice, h.Court1, h.SlotNoon);
         failure.Enabled = true;
-        await Assert.ThrowsAsync<InvalidOperationException>(() => h.RunScopeAsync(sp =>
-            sp.GetRequiredService<IBookingService>().MarkCompletedAsync(booking.Id, h.Manager)));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => h.CompleteAsPlayedAsync(booking.Id, h.Manager));
         failure.Enabled = false;
         Assert.Equal(BookingStatus.Confirmed, (await h.GetBookingAsync(booking.Id)).Status);
         Assert.Equal(0, await h.CountPointRowsAsync(booking.Id));
-        await h.RunScopeAsync(sp => sp.GetRequiredService<IBookingService>().MarkCompletedAsync(booking.Id, h.Manager));
+        await h.CompleteAsPlayedAsync(booking.Id, h.Manager);
         Assert.Equal(1, await h.CountPointRowsAsync(booking.Id));
     }
 
@@ -250,9 +252,8 @@ public sealed class ArchitectureHardeningTests
             await db.SaveChangesAsync();
         });
         var booking = await h.MakeConfirmedBookingAsync(h.Alice, h.Court1, h.SlotNoon);
-        var completed = await h.RunScopeAsync(sp => sp.GetRequiredService<IBookingService>()
-            .MarkCompletedAsync(booking.Id, h.Manager));
-        Assert.Equal(booking.PayableAmount * 2, completed.PointsEarned);
+        var completed = await h.CompleteAsPlayedAsync(booking.Id, h.Manager);
+        Assert.Equal(booking.PayableAmount * 2 / 1000, completed.PointsEarned);
         await h.RunScopeAsync(sp => sp.GetRequiredService<Contract.Services.Payment.IPaymentService>()
             .RefundForMaintenanceAsync(booking.Id, h.Manager));
         Assert.Equal(0, await h.RunScopeAsync(sp => sp.GetRequiredService<IPointService>().GetBalanceAsync(h.Alice)));

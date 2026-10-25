@@ -57,3 +57,7 @@ Mỗi việc đóng bằng ID/source/lệnh/kết quả/giới hạn trong [work
 - CURRENT local: SQL Server và PostgreSQL có bằng chứng full suite, native backup/restore, nhiều process completion/expiry và phục hồi DB job lock sau kill. Công cụ lặp lại ở tools/OperationsRehearsal, lệnh/kết quả/giới hạn ở worklog. Không đồng nhất diễn tập18 process với endurance production hoặc toàn bộ5worker.
 - NOT VERIFIED / phụ thuộc bên ngoài: người dùng xác nhận chưa có merchant sandbox. Giữ Payment:OnlineRefunds:Enabled=false; P0 nghiệm thu init/charge/refund/query với provider còn mở. Không mua merchant/hosting, không áp migration hoặc restore vào live trong nhiệm vụ này.
 - TARGET vận hành: nghiệm thu merchant, release migration mới theo backup/restore rehearsal, xác minh remote CI/Linux/Docker, tải dài và chốt RPO/RTO/retention. Không tuyên bố dự án hết lỗi hoặc mọi P0/P1 đã đóng chỉ từ local tests.
+
+## 6. Nhiệm vụ hoàn thiện ngoài thanh toán — 25/10/2026
+
+Owner chốt điểm cơ bản 100.000đ=100 điểm, số dư cũ quy 1/1.000, cửa sổ check-in trước 30 phút đến hết slot, hoàn thành sau check-in/hết giờ; thiếu hiện diện chờ staff. CURRENT source và migration riêng: [16](16-nonpayment-hardening.md). Chỉ ghi DONE theo bằng chứng trong worklog; chưa áp DB ứng dụng/live. Smoke Firefox/WebKit local đã có bằng chứng; TARGET bên ngoài còn thiết bị thật/endurance, vận hành cloud và các gate thanh toán đã tách.

@@ -33,8 +33,6 @@ namespace Badminton.Tests
         [Fact(DisplayName = "Each account can use voucher A and then voucher B")]
         public async Task SecondDifferentVoucher_IsAllowed()
         {
-            // Two different active vouchers, both with per-user cap 1 (so the
-            // per-voucher rule alone would let each be used once).
             await _h.AddVoucherAsync("USEA", totalQty: 10, maxPerUser: 1, value: 5_000);
             await _h.AddVoucherAsync("USEB", totalQty: 10, maxPerUser: 1, value: 5_000);
 
@@ -81,9 +79,7 @@ namespace Badminton.Tests
             // Confirm on-site first (Completed only transitions from Confirmed).
             await _h.ConfirmOnSiteAsync(view!.Id, _h.Manager);
             _h.ActAs(_h.Manager, Role.Manager);
-            await _h.RunScopeAsync(sp =>
-                sp.GetRequiredService<IBookingService>()
-                 .MarkCompletedAsync(view!.Id, _h.Manager, "da choi"));
+            await _h.CompleteAsPlayedAsync(view!.Id, _h.Manager, "da choi");
 
             // Balance = 3_000 seeded + earned on completion (> 3_000).
             var summary = await _h.RunScopeAsync(sp =>

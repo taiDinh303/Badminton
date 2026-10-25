@@ -1,5 +1,6 @@
+import { useSearchParams } from "react-router-dom";
 import { useBookingRefresh } from "../../booking/hooks/useBookingRefresh";
-import { useMemo, useState, type ReactNode } from "react";
+import { useDeferredValue, useState, type ReactNode } from "react";
 import { useMutation, useQuery, type UseMutationResult } from "@tanstack/react-query";
 import {
   CalendarDays,
@@ -42,10 +43,14 @@ const STATUS_TABS: { key: string; label: string }[] = [
  */
 export default function BookingsPage() {
   const refreshBookings = useBookingRefresh();
+  const [params] = useSearchParams();
+  const [needsAttendance, setNeedsAttendance] = useState(params.get("needsAttendance") === "true");
   const [status, setStatus] = useState("");
   const [branchId, setBranchId] = useState<number | "">("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  const [date, setDate] = useState("");
+  const search = useDeferredValue(q.trim());
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
@@ -53,13 +58,13 @@ export default function BookingsPage() {
   });
 
   const { data, isLoading, refetch, error: loadError } = useQuery({
-    queryKey: ["admin-bookings", status, branchId, page],
+    queryKey: ["admin-bookings", status, branchId, page, search, date, needsAttendance],
     queryFn: () =>
       api.booking.all(
         status || undefined,
         branchId === "" ? undefined : branchId,
         page,
-        PAGE_SIZE,
+        PAGE_SIZE, search || undefined, date || undefined, needsAttendance || undefined,
       ),
     placeholderData: (prev) => prev,
   });
@@ -91,16 +96,7 @@ export default function BookingsPage() {
     (refund.error as Error | undefined)?.message ??
     null;
 
-  const items = useMemo(() => {
-    const list = data?.items ?? [];
-    if (!q.trim()) return list;
-    const t = q.trim().toLowerCase();
-    return list.filter((b) =>
-      [b.bookingCode, b.userName, b.courtName, b.slotLabel]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(t)),
-    );
-  }, [data, q]);
+  const items = data?.items ?? [];
 
   const totalPages = data?.totalPages ?? 1;
 
@@ -111,11 +107,13 @@ export default function BookingsPage() {
         subtitle="Tất cả đơn của mọi khách (quản trị)"
         search={{
           value: q,
-          onChange: setQ,
-          placeholder: "Tìm mã đơn, khách, sân…",
+          onChange: (value) => { setQ(value); setPage(1); },
+          placeholder: "Tìm mã đơn, tên, SĐT, sân…",
         }}
         actions={
           <>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={needsAttendance} onChange={(e) => { setNeedsAttendance(e.target.checked); setPage(1); }} />Chưa xác minh hiện diện</label>
+            <input type="date" aria-label="Lọc theo ngày chơi" value={date} onChange={(e) => { setDate(e.target.value); setPage(1); }} className="h-9 rounded-lg border border-border bg-card px-3 text-sm" />
             <select
               value={branchId}
               onChange={(e) => {
@@ -349,7 +347,7 @@ function BookingCard({
             variant="ghost"
             size="xs"
             onClick={() => complete.mutate(b.id)}
-            disabled={busy}
+            disabled={busy || !b.checkedInAt || (!!b.slotEndAtUtc && new Date(b.slotEndAtUtc).getTime() > Date.now())}
           >
             Hoàn thành
           </Button>
@@ -357,7 +355,7 @@ function BookingCard({
             variant="ghost"
             size="xs"
             onClick={() => noShow.mutate(b.id)}
-            disabled={busy}
+            disabled={busy || !!b.checkedInAt || (!!b.slotStartAtUtc && new Date(b.slotStartAtUtc).getTime() > Date.now())}
           >
             No-show
           </Button>
