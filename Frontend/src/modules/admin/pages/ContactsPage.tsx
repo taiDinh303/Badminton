@@ -1,3 +1,4 @@
+import FeatureHeading from "../../../components/FeatureHeading";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronLeft, ChevronRight, Inbox, Mail, Phone, RefreshCw } from "lucide-react";
@@ -12,7 +13,7 @@ export default function ContactsPage() {
   const query = useQuery({ queryKey: ["contacts", page], queryFn: () => request<{ items: Inquiry[]; totalCount: number }>("GET", "/contacts", undefined, { page }) });
   const handle = useMutation({ mutationFn: (id: number) => request("PATCH", `/contacts/${id}/handled`), onSuccess: () => cache.invalidateQueries({ queryKey: ["contacts"] }) });
   return <div className="space-y-5">
-    <div className="flex items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Liên hệ</h1><p className="mt-1 text-sm text-muted">Lời nhắn từ trang Home · {query.data?.totalCount ?? 0} yêu cầu</p></div><Button variant="ghost" onClick={() => query.refetch()} aria-label="Tải lại"><RefreshCw size={18} /></Button></div>
+    <FeatureHeading icon={Inbox} title="Liên hệ" subtitle={`${query.data?.totalCount ?? 0} lời nhắn`} actions={<Button variant="ghost" onClick={() => query.refetch()} aria-label="Tải lại"><RefreshCw size={18} /></Button>} />
     {(query.isError || handle.isError) && <Callout tone="error">Không thể xử lý dữ liệu. Vui lòng thử lại.</Callout>}
     {query.isPending && <p role="status" className="p-6 text-muted">Đang tải liên hệ…</p>}
     {query.data?.items.length === 0 && <Card className="flex flex-col items-center gap-3 p-12 text-muted"><Inbox size={36} /><p>Chưa có lời nhắn.</p></Card>}

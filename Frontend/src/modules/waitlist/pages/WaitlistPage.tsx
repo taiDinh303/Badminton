@@ -1,3 +1,4 @@
+import FeatureHeading from "../../../components/FeatureHeading";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -9,8 +10,9 @@ import {
   Callout,
   Card,
   Button,
+  EmptyState,
 } from "../../../components/ui";
-import { ListChecks, X } from "lucide-react";
+import { ListChecks, X, Hourglass, CalendarDays } from "lucide-react";
 
 /**
  * FEAT 2 — My waitlist (customer view). Shows every slot the customer has
@@ -44,21 +46,15 @@ export default function WaitlistPage() {
     );
 
   return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold tracking-tight">Danh sách chờ</h1>
-      <p className="mt-1 text-sm text-muted">
-        Khi slot được trả về, bạn sẽ được ưu tiên (FIFO) với đơn Pending mới.
-      </p>
+    <div className="feature-page">
+      <FeatureHeading icon={Hourglass} title="Danh sách chờ" subtitle="Ưu tiên theo thứ tự khi có sân trống" actions={<Link className="action-link" to="/book"><CalendarDays size={17} />Lịch sân</Link>} />
 
-      <div className="mt-3 flex items-center gap-3"><Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Trang trước</Button><span className="text-sm">Trang {page}/{Math.max(1, result?.totalPages ?? 1)}</span><Button size="sm" variant="ghost" disabled={page >= (result?.totalPages ?? 1)} onClick={() => setPage(p => p + 1)}>Trang sau</Button></div>
+      {(result?.totalPages ?? 0) > 1 && <div className="pagination mt-3 flex items-center gap-3"><Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Trang trước</Button><span className="text-sm">Trang {page}/{Math.max(1, result?.totalPages ?? 1)}</span><Button size="sm" variant="ghost" disabled={page >= (result?.totalPages ?? 1)} onClick={() => setPage(p => p + 1)}>Trang sau</Button></div>}
       {leave.isError && <Callout tone="error" className="mt-3">{leave.error.message}</Callout>}
       {entries.length === 0 ? (
-        <Card className="mt-5 p-8 text-center text-sm text-muted">
-          {page === 1 ? "Bạn chưa nằm trong danh sách chờ nào." : "Không có mục chờ trên trang này."}
-          <Link to="/book" className="mt-3 block font-semibold text-primary">Chọn khung giờ đã đặt để tham gia chờ</Link>
-        </Card>
+        <Card className="mt-5"><EmptyState icon={<Hourglass size={24} />} title={page === 1 ? "Bạn chưa nằm trong danh sách chờ nào." : "Không có mục chờ trên trang này."} hint="Chọn giờ đã kín để nhận lượt trống tiếp theo."><Link to="/book" className="action-link mt-2"><CalendarDays size={17} />Chọn khung giờ đã đặt để tham gia chờ</Link></EmptyState></Card>
       ) : (
-        <div className="mt-5 space-y-3">
+        <div className="waitlist-grid mt-5">
           {entries.map((e: WaitlistEntryView) => (
             <Card key={e.id} className="p-4">
               <div className="flex items-center justify-between gap-3">

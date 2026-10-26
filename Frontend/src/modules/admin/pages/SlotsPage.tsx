@@ -146,7 +146,7 @@ export default function SlotsPage() {
 
   return (
     <div>
-      <Toolbar
+      <Toolbar icon={Clock}
         title="Khung giờ"
         subtitle="Tạo / chỉnh sửa khung giờ cho cả cơ sở"
         actions={

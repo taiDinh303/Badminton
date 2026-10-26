@@ -44,5 +44,5 @@ test("warm customer navigation reuses data, stays within permissions and leaves 
   await expect(page.getByText(/T[2-7] · \d{2}\/\d{2}\/\d{4}/)).toHaveCount(0);
   await page.getByRole("button", { name: /18:00 Trống/ }).click();
   await expect(page.getByLabel("Mã voucher")).toBeEnabled();
-  await expect(page.getByText(/Mỗi mã voucher chỉ dùng một lần/)).toBeVisible();
+  await expect(page.getByText("Mỗi mã dùng một lần / tài khoản.")).toBeVisible();
 });

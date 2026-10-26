@@ -1,3 +1,4 @@
+import FeatureHeading from "../../../components/FeatureHeading";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -9,7 +10,6 @@ import {
   Callout,
   Busy,
   Button,
-  PageHeader,
   EmptyState,
 } from "../../../components/ui";
 
@@ -49,11 +49,8 @@ export default function ReviewsPage() {
   const selectedCourt = courts.find((c) => c.id === courtId);
 
   return (
-    <div className="mx-auto max-w-3xl p-4 md:p-6">
-      <PageHeader
-        title="Đánh giá sân"
-        subtitle="Xem đánh giá từ khách đã tập tại từng sân"
-      />
+    <div className="feature-page">
+      <FeatureHeading icon={Star} title="Đánh giá sân" subtitle="Trải nghiệm từ người chơi" />
 
       {/* Court selector */}
       <div className="mt-5 flex flex-wrap gap-2">
@@ -95,7 +92,7 @@ export default function ReviewsPage() {
           )}
 
           <div className="mt-4">
-            <div className="mb-3 flex items-center gap-3"><Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Trang trước</Button><span className="text-sm">Trang {page}/{Math.max(1, result?.totalPages ?? 1)}</span><Button size="sm" variant="ghost" disabled={page >= (result?.totalPages ?? 1)} onClick={() => setPage(p => p + 1)}>Trang sau</Button></div>
+            {(result?.totalPages ?? 0) > 1 && <div className="pagination mb-3 flex items-center gap-3"><Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Trang trước</Button><span className="text-sm">Trang {page}/{Math.max(1, result?.totalPages ?? 1)}</span><Button size="sm" variant="ghost" disabled={page >= (result?.totalPages ?? 1)} onClick={() => setPage(p => p + 1)}>Trang sau</Button></div>}
             {(isError || courtsError) && <Callout tone="error">Không tải được đánh giá. {(error ?? courtsError)?.message}</Callout>}
             {fetchingReviews && !reviews.length && (
               <Busy label="Đang tải đánh giá…" />
@@ -110,10 +107,10 @@ export default function ReviewsPage() {
               </EmptyState>
             )}
 
-            <div className="space-y-3">
+            <div className="review-grid">
               {reviews.map((r: ReviewView) => (
                 <Card key={r.id} className="p-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
                       <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
                         {r.userName.charAt(0).toUpperCase()}

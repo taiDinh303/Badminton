@@ -71,7 +71,7 @@ test("already booked slots offer waitlist without booking submission", async ({ 
   await page.getByRole("button", { name: "18:00 Đã đặt", exact: true }).click();
   await expect(page.getByRole("button", { name: "Xác nhận đặt sân" })).toBeDisabled();
   await page.getByRole("button", { name: "Tham gia danh sách chờ" }).click();
-  await expect(page.getByText("Đã xếp bạn vào danh sách chờ (FIFO).")).toBeVisible();
+  await expect(page.getByText("Đã tham gia danh sách chờ.")).toBeVisible();
   expect(joined).toBe(true);
 });
 

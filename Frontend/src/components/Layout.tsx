@@ -32,7 +32,9 @@ export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const location = useLocation();
-  const title = [...adminItems, ...customerItems].find(item => item.to === location.pathname)?.label ?? "Chi tiết đặt sân";
+  const currentItem = [...adminItems, ...customerItems].find(item => item.to === location.pathname);
+  const title = currentItem?.label ?? "Chi tiết đặt sân";
+  const TitleIcon = currentItem?.icon ?? Feather;
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
   const nav = useNavigate();
@@ -128,11 +130,11 @@ export default function Layout() {
                 onClick={() => setMenuOpen(!menuOpen)} className="flex h-11 w-11 items-center justify-center rounded-lg border border-border md:hidden">
                 {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
-              <div><p className="text-sm font-semibold">{title}</p><p className="text-xs text-muted">Đặt sân cầu lông · {staff ? "Vận hành cơ sở" : "Sẵn sàng cho trận đấu"}</p></div>
+              <div className="header-title"><TitleIcon size={20} aria-hidden="true" /><p className="text-sm font-semibold">{title}</p></div>
             </div>
             <AccountMenu />
           </div>
-          {menuOpen && <nav id="mobile-menu" aria-label="Menu di động" className="mt-3 max-h-[65dvh] overflow-y-auto border-t border-border pt-3 md:hidden"
+          {menuOpen && <nav id="mobile-menu" aria-label="Menu di động" className="mobile-menu-grid mt-3 max-h-[65dvh] overflow-y-auto border-t border-border pt-3 md:hidden"
             onKeyDown={event => { if (event.key === "Escape") { setMenuOpen(false); menuButton.current?.focus(); } }}>
             {[...(staff ? items : []), ...customerItems].map(item => (
               <NavLink key={item.to} to={item.to} end={item.end} className={navClass} onClick={() => setMenuOpen(false)}>

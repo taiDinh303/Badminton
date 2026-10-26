@@ -137,7 +137,7 @@ test.describe("waitlist", () => {
     await page.getByRole("button", { name: /Xác nhận đặt sân/ }).click();
     await expect(page.getByText(/đã được đặt hết/)).toBeVisible();
     await page.getByRole("button", { name: /Tham gia danh sách chờ/ }).click();
-    await expect(page.getByText(/Đã xếp bạn vào danh sách chờ/)).toBeVisible();
+    await expect(page.getByText("Đã tham gia danh sách chờ.")).toBeVisible();
     expect(typeof (joinBody as { playerCount?: number } | null)?.playerCount).toBe(
       "number",
     );

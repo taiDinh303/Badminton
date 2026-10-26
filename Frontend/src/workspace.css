@@ -1,0 +1,118 @@
+/* One content inset, fluid feature pages and readable controls at every size. */
+.app-content { max-width: none; margin: 0; padding: 24px; min-width: 0; }
+.feature-page { width: 100%; min-width: 0; padding: 0; margin: 0; }
+.app-header { padding-block: 13px; }
+.header-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.header-title > svg { color: var(--primary); flex-shrink: 0; }
+.app-header .header-title > p:last-child { display: block; font-size: 14px; }
+.app-header .account-menu { flex: 0 0 auto; }
+.app-shell > aside > a:first-of-type { padding-block: 22px; }
+.feature-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.feature-heading-copy { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.feature-icon { display: grid; place-items: center; width: 48px; height: 48px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 14px; color: var(--primary); background: var(--card); }
+.feature-heading h1 { font-size: 24px; line-height: 1.25; font-weight: 750; letter-spacing: -.04em; }
+.feature-heading p { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.feature-heading-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.action-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; border-radius: 12px; background: var(--primary); color: white; font-size: 13px; font-weight: 600; }
+.action-link:hover { filter: brightness(1.1); }
+.app-content :is(.grid, .flex) > * { min-width: 0; }
+.app-content :is(.page-toolbar, .page-header) { flex-wrap: wrap; }
+.app-content .data-table { background: var(--card); }
+.app-content [role="tab"] { min-height: 40px; }
+.app-content .empty-state { min-height: 260px; padding-block: 36px; }
+.empty-state > span { width: 60px; height: 60px; border-radius: 18px; background: color-mix(in srgb, var(--primary) 9%, var(--card)); color: var(--primary); }
+.empty-panel { grid-column: 1 / -1; border: 1px dashed var(--border); background: var(--card); border-radius: 18px; }
+.booking-list, .group-grid, .review-grid, .waitlist-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 16px; align-items: start; }
+.court-grid { display: grid; gap: 16px; align-items: start; }
+.slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
+.slot-grid .slot-cell { min-height: 76px; height: auto; padding: 9px 5px; border-radius: 11px; }
+.slot-grid .slot-cell > span:first-child { font-size: 14px; }
+.slot-grid .slot-cell:disabled { cursor: not-allowed; opacity: .7; box-shadow: none; }
+.slot-cell[aria-pressed="true"] { outline: 2px solid var(--primary); outline-offset: 2px; }
+.booking-controls select { text-overflow: ellipsis; }
+.booking-controls input[type="date"] { background: var(--bg); padding-inline: 8px; }
+.dashboard-page .customer-welcome { margin-bottom: 16px; padding: 22px 24px; }
+.dashboard-hero > div { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 22px 24px; }
+.dashboard-hero > div > p:first-child { display: none; }
+.dashboard-hero h2 { margin: 0; font-size: 25px; }
+.dashboard-hero > div > p { margin: 0; }
+.dashboard-hero > div > a { margin: 0 0 0 auto; }
+.dashboard-page .quick-actions { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-block: 16px; gap: 12px; }
+.dashboard-page .quick-actions a { min-height: 108px; padding: 18px; font-size: 13px; }
+.dashboard-page .quick-actions svg { width: 27px; height: 27px; }
+.dashboard-page .branch-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.account-overview { display: grid; grid-template-columns: minmax(280px, .85fr) minmax(0, 1.5fr); gap: 20px; align-items: start; margin-top: 20px; }
+.account-benefits > .grid:first-of-type { margin-top: 0; }
+.account-shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.account-shortcuts > a, .account-shortcuts > a > div { height: 100%; }
+.account-shortcuts > a > div { flex-wrap: wrap; }
+.account-shortcuts > a > div > div > p:last-child { white-space: normal; }
+.account-security { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .85fr); gap: 20px; align-items: start; margin-top: 20px; }
+.account-security form { max-width: 680px; }
+.account-page > div:last-child { display: flex; justify-content: flex-end; }
+.account-page > div:last-child > button { width: auto; }
+.detail-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.detail-grid > section { min-width: 0; }
+.detail-grid > section > .rounded-xl { padding: 20px; }
+.detail-grid > section > .detail-hero { padding: 0; }
+.checkin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+/* Auth uses the viewport while keeping the input column easy to scan. */
+.auth-screen { padding: 24px; }
+.auth-screen > div { max-width: none; min-height: calc(100dvh - 48px); border-radius: 24px; grid-template-columns: 1.15fr 1fr; }
+.auth-screen > div > div:first-child { padding: clamp(32px, 5vw, 88px); }
+.auth-screen > div > div:first-child h2 { font-size: clamp(30px, 3.4vw, 56px); letter-spacing: -.045em; line-height: 1.2; }
+.auth-screen > div > div:last-child { width: 100%; max-width: 560px; align-self: center; justify-self: center; padding: 40px; }
+.auth-screen input { font-size: 16px; }
+/* Public content shares the same fluid gutters as the signed-in workspace. */
+@media (min-width: 768px) {
+  .booking-drawer { width: 360px; }
+  .booking-drawer > [role="dialog"] { max-height: calc(100dvh - 100px); overflow-y: auto; }
+  .public-header-inner { max-width: none; padding-inline: 32px; }
+  :is(.landing-hero, .experience-strip, .landing-steps, .landing-invite, .public-footer, .contact-section) { max-width: none; margin-left: 24px; margin-right: 24px; }
+}
+@media (min-width: 1600px) {
+  .court-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .court-grid > :only-child { grid-column: 1 / -1; }
+}
+@media (min-width: 768px) and (max-width: 1100px) {
+  .app-content { padding: 20px; }
+  .dashboard-page .quick-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .account-overview, .account-security { grid-template-columns: minmax(0, 1fr); }
+  .detail-grid, .checkin-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px), (hover: none) and (pointer: coarse) and (height < 32rem) and (width < 64rem) {
+  .app-content { padding: 18px max(12px, env(safe-area-inset-right)) calc(88px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  .feature-heading { gap: 12px; }
+  .feature-heading h1 { font-size: 21px; }
+  .feature-heading p { font-size: 12px; }
+  .feature-icon { width: 42px; height: 42px; border-radius: 12px; }
+  .feature-heading-actions { flex: 1 0 100%; }
+  .feature-heading-actions > * { flex: 1; }
+  .feature-heading-actions > div { display: flex; gap: 8px; }
+  .feature-heading-actions button { flex: 1; }
+  .dashboard-page .customer-welcome { padding: 16px; }
+  .dashboard-hero > div { padding: 18px; gap: 12px; }
+  .dashboard-hero h2 { font-size: 23px; width: 100%; }
+  .dashboard-hero > div > a { margin-left: 0; }
+  .dashboard-page .quick-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .dashboard-page .quick-actions a { padding: 13px 10px; min-height: 94px; font-size: 11px; }
+  .dashboard-page .quick-actions svg { width: 23px; height: 23px; }
+  .account-overview, .account-security { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .account-shortcuts { gap: 8px; }
+  .account-shortcuts > a > div { padding: 13px; gap: 9px; }
+  .account-shortcuts > a > div > div { flex-basis: 100%; order: 1; }
+  .slot-grid { grid-template-columns: repeat(auto-fill, minmax(82px, 1fr)); gap: 7px; }
+  .slot-grid .slot-cell { min-height: 76px; }
+  .booking-controls > div:first-child { grid-template-columns: minmax(0, 1fr); }
+  .booking-controls > div:first-child > div { justify-self: stretch; }
+  .booking-controls > div:first-child > div > div > div { flex: 1; }
+  .booking-list, .group-grid, .review-grid, .waitlist-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .detail-grid, .checkin-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .mobile-menu-grid { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .mobile-menu-grid > a { background: var(--bg); min-height: 48px; }
+  .mobile-menu-grid > a[aria-current="page"] { background: var(--accent); color: var(--fg); }
+  .mobile-menu-grid > button { grid-column: 1 / -1; }
+  .auth-screen { padding: 12px; }
+  .auth-screen > div { grid-template-columns: minmax(0, 1fr); min-height: calc(100dvh - 24px); border-radius: 20px; }
+  .auth-screen > div > div:last-child { padding: 24px 18px; }
+}

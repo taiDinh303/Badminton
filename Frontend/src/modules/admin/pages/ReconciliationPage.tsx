@@ -1,3 +1,5 @@
+import FeatureHeading from "../../../components/FeatureHeading";
+import { ReceiptText, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,16 +21,14 @@ export default function ReconciliationPage() {
       void client.invalidateQueries({ queryKey: [key] });
   } });
   const query = useQuery({ queryKey: ["payment-reconciliation", page], queryFn: () => api.payments.reconciliation(page) });
-  return <div className="mx-auto max-w-4xl p-4">
-    <h1 className="text-xl font-bold">Đối soát thanh toán</h1>
-    <p className="mt-2 text-sm text-muted">Các giao dịch cần kiểm tra với cổng thanh toán trước khi xác nhận hoặc hoàn tiền. Danh sách giới hạn theo quyền cơ sở.</p>
-    <Button className="my-4" disabled={query.isFetching} onClick={() => query.refetch()}>Tải lại</Button>
+  return <div className="feature-page">
+    <FeatureHeading icon={ReceiptText} title="Đối soát thanh toán" subtitle="Kiểm tra giao dịch theo cơ sở" actions={<Button variant="ghost" disabled={query.isFetching} onClick={() => query.refetch()}><RefreshCw size={16} />Tải lại</Button>} />
     {query.isLoading && <Busy />}
     {query.isError && <Callout tone="error">{query.error.message}</Callout>}
     {refund.isError && <Callout tone="error">{refund.error.message}</Callout>}
     {refund.isSuccess && <Callout tone="success">Đã xác nhận hoàn tiền với provider.</Callout>}
     {query.data?.items.length === 0 && <Card className="p-5">Không có giao dịch cần đối soát.</Card>}
-    <div className="space-y-3">{query.data?.items.map(({ payment: p, reason, createdAt }) => <Card key={p.id} className="min-w-0 p-4">
+    <div className="review-grid mt-4">{query.data?.items.map(({ payment: p, reason, createdAt }) => <Card key={p.id} className="min-w-0 p-4">
       <Link className="font-semibold underline" to={`/bookings/${p.bookingId}`}>Đơn #{p.bookingId}</Link>
       <p className="mt-2 text-sm">{p.method} · {formatVnd(p.amount)} · {p.status} · {formatDay(createdAt)}</p>
       <p className="mt-1 break-all text-sm text-muted">Mã giao dịch: {p.gatewayRef ?? "—"}</p>

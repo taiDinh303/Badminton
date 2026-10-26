@@ -140,7 +140,7 @@ export default function AuditPage() {
 
   return (
     <div>
-      <Toolbar
+      <Toolbar icon={ScrollText}
         title="Nhật ký"
         subtitle="Toàn bộ thao tác quản trị (audit log)"
         actions={

@@ -1,3 +1,4 @@
+import FeatureHeading from "../../../components/FeatureHeading";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
@@ -12,7 +13,6 @@ import {
   Modal,
   ConfirmDialog,
   EmptyState,
-  PageHeader,
   StatusBadge,
 } from "../../../components/ui";
 import { useAuth } from "../../../store/auth";
@@ -111,11 +111,11 @@ export default function GroupsPage() {
     return <div className="p-4"><Busy label="Đang tải nhóm…" /></div>;
 
   return (
-    <div className="mx-auto max-w-3xl p-4 md:p-6">
-      <PageHeader
+    <div className="feature-page">
+      <FeatureHeading icon={Users}
         title="Nhóm chơi"
-        subtitle="Tạo nhóm, mời bạn và đặt sân chung (tối đa 10 thành viên)"
-        right={
+        subtitle="Cùng bạn bè lên lịch · Tối đa 10 người"
+        actions={
           <div className="flex gap-2">
             <Button variant="ghost" size="sm" onClick={() => setJoinOpen(true)}>
               <UserPlus className="h-4 w-4" /> Tham gia
@@ -162,7 +162,7 @@ export default function GroupsPage() {
       )}
 
       {groups.length === 0 ? (
-        <div className="mt-6">
+        <div className="empty-panel mt-6">
           <EmptyState
             icon={<Users className="h-5 w-5" />}
             title="Chưa có nhóm nào"
@@ -174,10 +174,10 @@ export default function GroupsPage() {
           </EmptyState>
         </div>
       ) : (
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <div className="group-grid mt-5">
           {groups.map((g) => (
-            <Card key={g.id} className="cursor-pointer transition-colors hover:border-primary">
-              <div className="flex items-start justify-between">
+            <Card key={g.id} className="p-5 transition-colors hover:border-primary">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <Users className="h-5 w-5" />

@@ -1,11 +1,12 @@
+import FeatureHeading from "../../../components/FeatureHeading";
 import { useBookingRefresh } from "../hooks/useBookingRefresh";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Ticket } from "lucide-react";
+import { Ticket, CalendarDays, ArrowRight } from "lucide-react";
 import { api } from "../../../services/api";
 import { formatDay, formatVnd } from "../../../utils/format";
-import { Busy, Button, Callout, Card, StatusBadge } from "../../../components/ui";
+import { Busy, Button, Callout, Card, StatusBadge, EmptyState } from "../../../components/ui";
 import { isStaff } from "../../../store/auth";
 import { useAuth } from "../../../store/auth";
 import { clsx } from "clsx";
@@ -64,8 +65,8 @@ export default function MyBookingsPage() {
   if (isLoading && !data) return <div className="p-4"><Busy /></div>;
 
   return (
-    <div className="mx-auto max-w-3xl p-4 md:p-6">
-      <h1 className="text-2xl font-bold">Đơn của tôi</h1>
+    <div className="feature-page">
+      <FeatureHeading icon={Ticket} title="Đơn của tôi" actions={<Link to="/book" className="action-link"><CalendarDays size={17} />Đặt sân</Link>} />
 
       <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Lọc đơn">
         {TABS.map((t) => (
@@ -86,9 +87,10 @@ export default function MyBookingsPage() {
         ))}
       </div>
 
-      <div className="mt-4 space-y-3">
+      {loadError && <Callout tone="error" className="mt-4">{loadError.message}</Callout>}
+      <div className="booking-list mt-4">
         {data?.items.length === 0 && (
-          <Callout tone="info">Chưa có đơn đặt sân nào.</Callout>
+          <div className="empty-panel"><EmptyState icon={<Ticket size={24} />} title={tab ? "Chưa có đơn ở trạng thái này" : "Chưa có đơn đặt sân nào."} hint="Chọn sân yêu thích và lên lịch trận tiếp theo."><Link to="/book" className="action-link mt-2">Tìm giờ trống<ArrowRight size={16} /></Link></EmptyState></div>
         )}
 
         {data?.items.map((b) => (

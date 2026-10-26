@@ -10,6 +10,8 @@ import {
   ListChecks,
   Users,
   Hourglass,
+  Star,
+  UserRound,
 } from "lucide-react";
 import { api } from "../../../services/api";
 import LiveClock from "../../../components/LiveClock";
@@ -39,13 +41,13 @@ export default function HomePage() {
     : 0;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="feature-page dashboard-page">
       <div className="customer-welcome"><div><p>Xin chào, sẵn sàng ra sân?</p><h1>{user?.fullName ?? "Chào bạn"}</h1></div><LiveClock /></div>
       {/* Hero */}
-      <Card className="overflow-hidden">
+      <Card className="dashboard-hero overflow-hidden">
         <div className="bg-primary p-5 text-white">
           <p className="text-xs tracking-widest text-white/80">LÊN LỊCH. RA SÂN.</p>
-          <h2 className="mt-2 text-2xl font-bold">Một trận hay đang chờ bạn.</h2>
+          <h2 className="mt-2 text-2xl font-bold">Chọn giờ. Ra sân.</h2>
           <p className="mt-2 text-sm text-white/80">
             Chọn cơ sở và giờ chơi phù hợp.
           </p>
@@ -60,6 +62,8 @@ export default function HomePage() {
         <Link to="/bookings"><ListChecks size={23} />Đơn của tôi</Link>
         <Link to="/groups"><Users size={23} />Nhóm của tôi</Link>
         <Link to="/waitlist"><Hourglass size={23} />Hàng chờ</Link>
+        <Link to="/reviews"><Star size={23} />Đánh giá sân</Link>
+        <Link to="/account"><UserRound size={23} />Tài khoản</Link>
       </nav>
       {/* Quick stats */}
       <div className="mt-4 grid grid-cols-3 gap-3">
@@ -95,7 +99,7 @@ export default function HomePage() {
       {isLoading && <p className="text-sm text-muted">Đang tải…</p>}
       {isError && <Callout tone="error">Không tải được danh sách cơ sở.</Callout>}
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="branch-grid grid gap-3 sm:grid-cols-2">
         {active.map((b) => (
           <Card key={b.id} className="p-5 transition-colors hover:border-primary">
             <p className="font-semibold">{b.name}</p>
