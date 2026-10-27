@@ -29,7 +29,7 @@ namespace Badminton.API.Middleware
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unhandled on {Method} {Path}",
-                    context.Request.Method, context.Request.Path);
+                    context.Request.Method, RequestLogPath.Sanitized(context.Request.Path));
                 await WriteAsync(context, (int)StatusCodeHelper.ServerError,
                     ResponseCodeConstants.INTERNAL_SERVER_ERROR,
                     "Có lỗi xảy ra, vui lòng thử lại.");

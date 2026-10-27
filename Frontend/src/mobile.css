@@ -1,5 +1,3 @@
-/* Phone layout only: narrow viewports and short, touch-only landscape phones.
-   Desktop styles stay unchanged. Load after Tailwind to keep overrides here. */
 @media (width < 48rem), (hover: none) and (pointer: coarse) and (height < 32rem) and (width < 64rem) {
   .app-shell > aside {
     display: none;
@@ -53,8 +51,6 @@
     padding-bottom: calc(6rem + env(safe-area-inset-bottom));
   }
 
-  /* Feature pages already have their own desktop inset. On phones the shell
-     supplies the inset once, leaving room for the actual content. */
   .app-content > .mx-auto.p-4 {
     padding: 0;
   }

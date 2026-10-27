@@ -24,13 +24,6 @@ import {
 } from "../../../components/ui";
 import { isStaff, useAuth } from "../../../store/auth";
 
-/**
- * FEAT 9 — Staff check-in (docs 03 §3). Two ways to mark a guest in:
- *   1. Type the booking code (shown on the customer's "Đơn của tôi").
- *   2. Scan/paste the QR token.
- * Plus a slot roster: pick court + date + slot to see every unconfirmed
- * booking and check them in one by one.
- */
 export default function CheckinPage() {
   const user = useAuth((s) => s.user);
   const qc = useQueryClient();

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 import { useParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import BookingTools from "../../experience/components/BookingTools";
 import {
   ArrowLeft,
   CreditCard,
@@ -80,8 +81,6 @@ export default function BookingDetailPage() {
     queryFn: () => api.booking.getById(bookingId),
     enabled: !Number.isNaN(bookingId),
     staleTime: 0,
-    // While the order is Pending we poll so a successful gateway callback is
-    // picked up without the user refreshing (docs 03 §3).
     refetchInterval: (q) =>
       q.state.data?.status === "Pending" && !staff ? 5000 : false,
   });
@@ -89,8 +88,15 @@ export default function BookingDetailPage() {
   const { data: pays } = useQuery({
     queryKey: ["payments", bookingId],
     queryFn: () => api.payments.forBooking(bookingId),
-    enabled: !Number.isNaN(bookingId),
+    enabled: !!b && (staff || b.userId === user?.id),
   });
+
+  const ownedGroups = useQuery({
+    queryKey: ["groups", "mine"],
+    queryFn: api.groups.mine,
+    enabled: !!b?.groupId && b.userId !== user?.id,
+  });
+  const canCancel = !!b && (b.userId === user?.id || ownedGroups.data?.some(g => g.id === b.groupId) === true);
 
   const reviews = useQuery({
     queryKey: ["reviews", "booking", bookingId],
@@ -120,9 +126,7 @@ export default function BookingDetailPage() {
         returnUrl: window.location.href,
       }),
     onSuccess: (res) => {
-      // Online gateways hand back a checkout URL to open. The mock gateway in
-      // dev returns https://mock-gateway.local/... which we surface (and, when a
-      // real URL exists, the browser follows it).
+
       if (res.gatewayUrl) {
         window.open(res.gatewayUrl, "_blank", "noopener,noreferrer");
       }
@@ -146,7 +150,7 @@ export default function BookingDetailPage() {
   useEffect(() => { setRating(0); setComment(""); }, [bookingId]);
 
   const showQr = b?.status === "Confirmed" || b?.status === "Completed";
-  const canPay = b?.status === "Pending" && !staff;
+  const canPay = b?.status === "Pending" && !staff && b.userId === user?.id;
   const p = b?.price;
 
   const paid = useMemo(
@@ -173,7 +177,8 @@ export default function BookingDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-4 md:p-6">
+      <div className="mx-auto max-w-2xl p-4 md:p-6">
+        <BookingTools booking={b} />
       <Link
         to="/bookings"
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-fg"
@@ -223,7 +228,7 @@ export default function BookingDetailPage() {
         )}
       </Card>
 
-      {/* Price breakdown (docs 07 §4: show every line clearly) */}
+      {/* Price breakdown */}
       {p && (
         <Card className="mt-4">
           <p className="mb-2 flex items-center gap-1 text-sm font-semibold">
@@ -239,7 +244,7 @@ export default function BookingDetailPage() {
         </Card>
       )}
 
-      {/* ── Payment panel (docs 03 §3: init → gateway → poll) ── */}
+      {/* ── Payment panel ── */}
       {canPay && (
         <Card className="mt-4">
           <p className="mb-1 flex items-center gap-1 text-sm font-semibold">
@@ -297,7 +302,7 @@ export default function BookingDetailPage() {
         </Card>
       )}
 
-      {/* ── Review: only after Completed + one per booking (docs 03 §7) ── */}
+      {/* ── Review: only after Completed + one per booking ── */}
       {b.status === "Completed" && (
         <Card className="mt-4">
           <p className="mb-2 flex items-center gap-1 text-sm font-semibold">
@@ -348,7 +353,7 @@ export default function BookingDetailPage() {
       )}
 
       {/* ── Cancel / staff lifecycle ── */}
-      {["Pending", "Confirmed"].includes(b.status) && b.userId === user?.id && (
+      {["Pending", "Confirmed"].includes(b.status) && canCancel && (
         <div className="mt-4">
           <Button
             variant="danger"
@@ -371,7 +376,7 @@ export default function BookingDetailPage() {
         <Callout tone="info" className="mt-4">Lý do hủy: {b.cancelReason}</Callout>
       )}
 
-      {/* ── Payment history (docs 07 §4: show every line clearly) ── */}
+      {/* ── Payment history ── */}
       {pays && pays.length > 0 && (
         <Card className="mt-4">
           <p className="mb-2 text-sm font-semibold">Giao dịch</p>

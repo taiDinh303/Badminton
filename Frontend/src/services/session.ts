@@ -1,8 +1,6 @@
 export const TOKEN_KEY = "bb_token";
 const BOUND_TOKEN_KEY = "bb_session_token";
 
-// Bind this tab's identity to its token, including across reloads. Existing
-// sessions without a binding are upgraded once without changing their identity.
 let token = sessionStorage.getItem("bb_user")
   ? sessionStorage.getItem(BOUND_TOKEN_KEY) ?? localStorage.getItem(TOKEN_KEY)
   : null;

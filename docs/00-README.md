@@ -25,6 +25,9 @@
 | Chuẩn cấu hình, dry-run và khởi tạo | [13-configuration.md](13-configuration.md) |
 | Gate phát hành và bàn giao | [14-release-checklist.md](14-release-checklist.md) |
 | Hoàn thiện ngoài thanh toán và quy đổi điểm 25/10 | [16-nonpayment-hardening.md](16-nonpayment-hardening.md) |
+| Tiện ích đặt sân, vận hành và tiêu chí thiết kế 26/10 | [17-booking-experience.md](17-booking-experience.md) |
+| Tìm bạn, chia tiền, dụng cụ, HLV, giải nhỏ, lịch tự đồng bộ 27/10 | [18-club-features.md](18-club-features.md) |
+| Hoàn thiện CLB theo mốc chất lượng 8/10 | [19-club-hardening.md](19-club-hardening.md) |
 | Ma trận chức năng, bằng chứng, lịch sử | [worklog.md](worklog.md) |
 
 ## 2. Nguồn chuẩn và trạng thái
@@ -46,7 +49,7 @@ Nguồn nghiệp vụ là [01](01-business-analysis.md), quyết định/backlog
 | --- | --- | --- |
 | Backend | ASP.NET Core .NET 8, EF Core, service/repository, REST `/api/v1` | Hoàn thiện quyền và nhất quán trước dùng thật |
 | Frontend | React 19, Vite 8, TypeScript, Tailwind 4, Router 7, React Query, zustand | Kiểm thử browser, hoàn thiện trải nghiệm |
-| DB | SQL Server local và PostgreSQL/Supabase; source mới 19 bảng gồm OnlineRefundOperations và InventoryDaySnapshots, đa số PK int | Cloud baseline17 bảng; migration mới chưa áp live. Giữ bộ migration riêng theo provider |
+| DB | SQL Server local và PostgreSQL/Supabase; source49bảng (34baseline +15CLB gồm2bảng audit/biên bản), đa số PK int | Cloud baseline17bảng; migration mới chưa áp live. Giữ bộ migration riêng theo provider |
 | Danh tính | SĐT + BCrypt + JWT .NET | Phone OTP qua Supabase Auth là hướng cũ, chưa tích hợp |
 | Thanh toán | Mock/real adapter + Cash/QR tại quầy | Sandbox thật và đối soát, chưa nghiệm thu live |
 | Jobs | 5 BackgroundService, SQL applock/heartbeat | Nghiệm thu tải/restart nhiều instance |

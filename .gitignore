@@ -29,5 +29,6 @@ dist/
 
 # Verification outputs and private deployment artifacts
 artifacts/
+private-media/
 playwright-report/
 test-results/

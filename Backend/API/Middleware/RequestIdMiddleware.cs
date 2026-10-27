@@ -20,7 +20,8 @@ namespace Badminton.API.Middleware
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var p1 = LogContext.PushProperty("RequestId", requestId);
             var p2 = LogContext.PushProperty("HttpMethod", context.Request.Method);
-            var p3 = LogContext.PushProperty("HttpPath", context.Request.Path.Value ?? "");
+            var logPath = RequestLogPath.Sanitized(context.Request.Path);
+            var p3 = LogContext.PushProperty("HttpPath", logPath);
             try
             {
                 await _next(context);
@@ -34,7 +35,7 @@ namespace Badminton.API.Middleware
                     "HTTP {Status} {Method} {Path} {ElapsedMs}ms",
                     context.Response.StatusCode,
                     context.Request.Method,
-                    context.Request.Path,
+                    logPath,
                     sw.ElapsedMilliseconds);
             }
         }

@@ -34,27 +34,23 @@ namespace Services
         public async Task<WaitlistEntryView> JoinAsync(int userId, int courtId,
             int slotId, DateOnly date, int playerCount, string? note)
         {
-            var active = await Repository<Booking>()
-                .CountByConditionAsync(b =>
-                    b.CourtId == courtId && b.SlotId == slotId && b.Date == date
-                    && (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Pending));
-            if (active == 0)
-                throw new Badminton.Core.Base.BadRequestException(
-                    "Slot còn trống, không cần danh sách chờ — hãy đặt trực tiếp.");
-
             var court = await Repository<Court>().GetByIdAsync(courtId);
             var slot = await Repository<TimeSlot>().GetByIdAsync(slotId);
             if (court is null || slot is null)
                 throw new Badminton.Core.Base.NotFoundException("Court or Slot", courtId);
 
             if (playerCount < 1 || playerCount > court.Capacity) throw new Badminton.Core.Base.BadRequestException($"Số khách phải từ 1 đến {court.Capacity} (sức chứa sân).");
-            if (!court.IsActive || !slot.IsActive) throw new Badminton.Core.Base.BadRequestException("Sân/khung giờ không hoạt động.");
+            if (!court.IsActive || court.DeletedAt.HasValue || !slot.IsActive || slot.DeletedAt.HasValue) throw new Badminton.Core.Base.BadRequestException("Sân/khung giờ không hoạt động.");
 
             // The slot must still be in the future (Hanoi business clock).
             var startHanoi = Badminton.Core.Utils.HanoiTime.SlotStart(date, slot.StartTime);
             if (startHanoi < Badminton.Core.Utils.HanoiTime.HanoiNow().AddMinutes(30))
                 throw new Badminton.Core.Base.BadRequestException(
                     "Slot này đã qua giờ bắt đầu, không thể chờ.");
+
+            if (await CountOverlappingBookingsAsync(courtId, date, slot) == 0)
+                throw new Badminton.Core.Base.BadRequestException(
+                    "Slot còn trống, không cần danh sách chờ — hãy đặt trực tiếp.");
 
             var dup = await WRepo.CountByConditionAsync(w =>
                 w.UserId == userId && w.CourtId == courtId &&
@@ -181,8 +177,9 @@ namespace Services
                     if (user is null || user.DeletedAt.HasValue || user.Status != UserStatus.Active || !user.IsVerified
                         || (user.NoShowLimited && user.NoShowLimitedPeriod == month))
                         return; // Preserve their place if eligibility is restored; do not block eligible followers.
-                    var active = await Repository<Booking>().CountByConditionAsync(b => b.CourtId == courtId && b.SlotId == slotId && b.Date == date
-                        && (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Pending));
+                    var slot = await Repository<TimeSlot>().GetByIdAsync(slotId)
+                        ?? throw new Badminton.Core.Base.NotFoundException("TimeSlot", slotId);
+                    var active = await CountOverlappingBookingsAsync(courtId, date, slot);
                     if (active > 0) return;
                     var created = await _booking.CreateAsync(new CreateBookingRequest(courtId, date.ToString("yyyy-MM-dd"), slotId,
                         winner.PlayerCount, IdempotencyKey: $"waitlist:{winner.Id}", Note: winner.Note), winner.UserId);
@@ -202,6 +199,12 @@ namespace Services
             }
             return null;
         }
+
+        // Same strict interval intersection as availability/create: adjacent slots are free.
+        private Task<int> CountOverlappingBookingsAsync(int courtId, DateOnly date, TimeSlot slot) =>
+            Repository<Booking>().CountByConditionAsync(b => b.CourtId == courtId && b.Date == date
+                && (b.Status == BookingStatus.Pending || b.Status == BookingStatus.Confirmed)
+                && b.Slot != null && b.Slot.StartTime < slot.EndTime && slot.StartTime < b.Slot.EndTime);
 
         private async Task<Booking?> FinishPromotionAsync(int entryId, int bookingId)
         {

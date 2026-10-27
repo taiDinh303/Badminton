@@ -1,6 +1,21 @@
 # 13 — Chuẩn cấu hình và khởi tạo an toàn
 
+## CLB — bổ sung 27/10/2026
+
+Hoàn thiện CLB thêm HardenClubWorkflows (SQL Server20261027130036/PG20261027130113), sau AddClubFeatures, model49bảng. BackgroundJobs phải bật để WaitlistPromotionJob chạy expiry/nhắc trả/đối soát sân lớp; tối đa100bản ghi mỗi nhóm/tick2phút. Hết TTL30phút nhả hold ngay trên kiểm availability dù job chậm; hàng đã giao không tự trả. Lớp chưa gắn sân Confirmed không nhận đặt. Không thêm credential/auto-migrate/fee gateway. Chi tiết ở [19](19-club-hardening.md).
+
+AddClubFeatures có migration SQL Server `20261027115559` / PostgreSQL `20261027115721`, 13 bảng mới sau AddBookingExperience; review/backup/apply riêng, Production không auto-migrate/seed. Không thêm credential/provider cho lịch điện thoại: subscription URL riêng tư 256 bit, DB chỉ SHA-256, xoay/thu hồi qua JWT. API log che token; reverse proxy/APM phải redact `/api/v1/club/calendar/feed/<token>.ics`, không log body trả token. Feed private/no-store; client quyết định chu kỳ cập nhật, không cam kết push. HLV/dụng cụ chốt phí tại cơ sở, không bật thêm gateway. Chi tiết CURRENT/TARGET/NOT VERIFIED ở [18](18-club-features.md).
+
 > Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **21/10/2026**. CURRENT cho SQL Server/PostgreSQL/.NET và React; không chứa secret live.
+
+## Tiện ích vận hành — bổ sung 26/10/2026
+
+- `Media:Directory` (`Media__Directory`): đường dẫn lưu ảnh private ngoài wwwroot, cần volume bền vững, quyền đọc/ghi cho API và backup cùng metadata StoredMedia. Development mặc định `private-media/` (Git ignored); Production thiếu cấu hình sẽ từ chối upload. Không có credential cloud/storage mới. Chưa có job retention/orphan cleanup; không xóa file theo suy đoán chính sách lưu giữ.
+- Ảnh chỉ PNG/JPEG ≤2 MB, kích thước ≤8192 mỗi chiều/32 megapixel; kiểm header/frame, không tuyên bố reencode/xóa EXIF hoặc quét virus. Quota 100 ảnh/user, 6 ảnh/review. Avatar công khai khi user chọn; ảnh riêng đọc bằng bearer, response no-store/nosniff. Reverse proxy phải cho multipart tối thiểu 2.2 MB, không mở static thư mục private.
+- Reminder dùng WaitlistPromotionJob hiện hữu khi BackgroundJobs bật; inbox mặc định, preferences mỗi user điều khiển bật/tắt và phút nhắc. Kênh email/sms/zalo chỉ enqueue khi được chọn và có adapter đã cấu hình; relay success là chấp nhận gửi, không phải người nhận đọc. Retry tự động giữ giới hạn cũ; thao tác staff cách nhau ít nhất 30 giây, có audit/Attempts/LastError sanitized.
+- Schema mới: AddBookingExperience đúng provider, sau migration hardening trước đó. Review SQL/backfill RSVP/RLS, backup trước phát hành; không downgrade khi bảng workflow có dữ liệu. Không có auto-migrate/seed Production mới.
+
+CURRENT source và fixture local được ghi tại [17](17-booking-experience.md)/worklog. NOT VERIFIED lưu file/relay/DB live và phục hồi toàn hệ thống bao gồm filesystem; diễn tập DB đơn lẻ không thay backup file ảnh.
 
 ## 1. Nguồn cấu hình
 
@@ -80,6 +95,8 @@ Native callback: VNPAY GET `/api/v1/payments/callback/vnpay` (response giữ ngu
 Production real cần thêm `Payment:Momo:AccessKey` (khóa do merchant được cấp, không phải khóa suy ra từ requestId) và `Payment:Zalopay:CallbackKey` (key2/callback key). Không ghi giá trị vào repo. MoMo HMAC-SHA256 ký toàn bộ IPN theo thứ tự tài liệu; ZaloPay HMAC-SHA256 ký nguyên chuỗi data. Tham khảo [VNPAY IPN](https://sandbox.vnpayment.vn/apis/docs/thanh-toan-pay/pay.html), [MoMo notification](https://developers.momo.vn/v3/docs/payment/api/result-handling/notification/), [ZaloPay callback](https://docs.zalopay.vn/docs/specs/callback-api/).
 
 CURRENT: `OnlineRefundService` lưu intent trước IO vào `OnlineRefundOperations`, `HttpOnlineRefundClient` có transport refund/query VNPAY/MoMo/ZaloPay. `Payment:OnlineRefunds:Enabled=false` mặc định; chỉ bật sau nghiệm thu merchant sandbox. API legacy `IPaymentGateway.RefundAsync` vẫn từ chối `ONLINE_REFUND_UNAVAILABLE` vì thiếu metadata/idempotency bền vững; payment service đi qua coordinator mới cho online thật. Chỉ khi provider xác nhận hoàn xong mới đổi booking/ghi refund ledger/trả điểm-voucher trong transaction. Timeout/crash giữ `refund_uncertain`; lần gọi sau chỉ query cùng intent, không gửi lại lệnh refund. Cash/QR tại quầy giữ nghiệp vụ xác nhận của nhân viên. NOT VERIFIED: provider sandbox/tiền thật/callback ingress; người dùng xác nhận chưa có merchant sandbox trong lượt này. Test synthetic không thay chứng nhận gateway.
+
+CURRENT source bổ sung 26/10: intent hoàn đơn chưa xác định giữ trạng thái booking hiện hữu nhưng chặn đổi lịch/check-in/no-show/completion qua transaction guard và typed conditional commands. Worker completion bỏ qua đơn đang đối soát, không ghi điểm. Hoàn khoản thu late/additional riêng không chặn sử dụng đơn hợp lệ. Giữ nguyên flag mặc định false và điều kiện nghiệm thu merchant; không tự giải phóng intent hoặc gửi lại lệnh hoàn chỉ vì timeout.
 
 JWT kiểm lại user active, verified, chưa xóa, role và SecurityStamp khớp DB mỗi request có xác thực. Đổi mật khẩu/thu hồi phiên đổi stamp, token cũ bị từ chối. TARGET còn lại: refresh/reset/OTP và nghiệm thu vận hành.
 

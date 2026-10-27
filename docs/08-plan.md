@@ -1,5 +1,19 @@
 # 08 — Quyết định, hiện trạng và kế hoạch
 
+## Nhiệm vụ bổ sung 27/10/2026 — CURRENT source / TARGET release
+
+### Thứ tự ưu tiên owner chốt sau đợt hoàn thiện
+
+1. **Dụng cụ — job tự hết hạn:** ưu tiên trước vì ảnh hưởng trực tiếp tồn khả dụng/trải nghiệm khách. CURRENT đã có source và kiểm thử local; phát hành phải kiểm migration, BackgroundJobs, heartbeat, nhả hold và không nhả hàng đã giao trên môi trường được duyệt.
+2. **Giải — ledger chỉnh điểm:** ưu tiên thứ hai. CURRENT đã có TournamentScoreRevisions, lý do, phiên bản và kiểm thử local; phát hành phải kiểm quyền, lịch sử trước/sau và stale-version trên schema đã nâng cấp.
+3. **ICS — cảnh báo UI và nghiệm thu hạ tầng:** cảnh báo polling/cache và trạng thái đọc feed đã có source/browser evidence. Hạ tầng/thiết bị thật vẫn NOT VERIFIED; đóng bằng quy trình và bằng chứng tại [checklist phát hành](14-release-checklist.md), không thay bằng sửa code hoặc điểm đánh giá cao hơn.
+
+Thứ tự này chi phối việc kiểm tra và phát hành tiếp theo; không tạo lại chức năng đã có, không tự cấp quyền deploy/migrate hoặc dùng dữ liệu live.
+
+Đợt owner yêu cầu nâng6chức năng lên mốc8/10: CURRENT source bổ sung worker expiry, chia theo phút, biên bản hư/mất, sân học có booking xác nhận, audit/CAS sửa điểm và trạng thái đọc calendar. Hành vi/giới hạn và migration49bảng ở [19](19-club-hardening.md); bằng chứng worklog. TARGET release giữ riêng, không gán production đạt8/10 khi chưa có thiết bị/ingress và deploy thực.
+
+Owner giao sáu chức năng CLB: tìm bạn theo trình độ/khu vực/giờ; chia chi phí nhóm; thuê dụng cụ/mua cầu/tồn kho/trả; lịch HLV cá nhân/nhóm; giải nhỏ; lịch điện thoại đăng ký tự lấy thay đổi. Source/API/UI và quy tắc mặc định ở [18](18-club-features.md), lệnh/bằng chứng ở worklog. Thêm 13 bảng với migration hai provider, giữ toàn bộ lịch sử và contracts cũ. TARGET release: backup/review/apply migration riêng, catalogue và lịch thực, kiểm thiết bị/ingress. NOT VERIFIED ứng dụng/live; không suy ra quyền deploy từ nhiệm vụ viết chức năng.
+
 > Chủ tài liệu: **Đinh Văn Tài**. Cập nhật: **20/10/2026**. CURRENT theo source; kết quả kiểm tra ở worklog.
 
 ## 1. Nền được giữ
@@ -31,7 +45,7 @@ Cấu trúc tham khảo Marixa: contracts độc lập persistence, repository D
 | P0 | Migration sạch/nâng cấp/backup restore | DB test riêng, kiểm index/ledger/tổng tiền |
 | P1 | Worker multi-instance/restart/crash giữa claim và ledger | Không mất/nhân đôi nghiệp vụ, load evidence |
 | P1 | QR chuẩn quét/server verify; camera UX nếu cần | Scan thiết bị thật, đúng trạng thái/branch |
-| P1 | Upload ảnh/retention/RPO/RTO/metrics ingress | Quyết định owner và test quyền/vận hành |
+| CURRENT upload local / P1 vận hành | Upload PNG/JPEG đã có source/API/UI (mục 7); retention/RPO/RTO/metrics ingress còn mở | Cấu hình volume và backup tệp thực, quyết định retention/RPO/RTO, nghiệm thu vận hành |
 | P2 | Offline retry, Figma UI Kit/file mapping | Không thành công giả, thiết kế có link thật |
 | DONE local (PRICING-01, 24/10) | Owner chốt **giá theo sân/slot**; số người chỉ cap sức chứa. Server quote/create dùng chung giá và giảm voucher/điểm; không tính lại đơn lịch sử. | Bằng chứng mới trong worklog; không tự áp migration/deploy |
 | Riêng | PostgreSQL/Supabase đã có provider, migration, raw SQL/lock và chuyển dữ liệu theo yêu cầu 21/10; OTP/Storage còn mở | Trạng thái cloud/test thực ở worklog; OTP/Storage cần nhiệm vụ riêng |
@@ -61,3 +75,9 @@ Mỗi việc đóng bằng ID/source/lệnh/kết quả/giới hạn trong [work
 ## 6. Nhiệm vụ hoàn thiện ngoài thanh toán — 25/10/2026
 
 Owner chốt điểm cơ bản 100.000đ=100 điểm, số dư cũ quy 1/1.000, cửa sổ check-in trước 30 phút đến hết slot, hoàn thành sau check-in/hết giờ; thiếu hiện diện chờ staff. CURRENT source và migration riêng: [16](16-nonpayment-hardening.md). Chỉ ghi DONE theo bằng chứng trong worklog; chưa áp DB ứng dụng/live. Smoke Firefox/WebKit local đã có bằng chứng; TARGET bên ngoài còn thiết bị thật/endurance, vận hành cloud và các gate thanh toán đã tách.
+
+## 7. Tiện ích và thiết kế — 26/10/2026
+
+Owner giao toàn bộ 23 mục bổ sung ngoài bảng bảo mật của review. CURRENT source/API/UI: đổi lịch cùng giá/chưa check-in; batch/định kỳ atomic mỗi slot một đơn; đặt hộ, lịch vận hành, xử lý phản ánh/sự cố, inbox/reminder/retry, ảnh, moderation/reply, timeline/CSV/privacy, ca trực/RSVP/ICS/favorites/insights. Ma trận và tiêu chí OOP/SOLID/patterns/Clean Code ở [17](17-booking-experience.md); bằng chứng kiểm thử cụ thể ở worklog.
+
+TARGET phát hành: migration sau backup, thư mục media bền vững, relay thực được cấu hình và giám sát retry. NOT VERIFIED: DB ứng dụng/live, provider relay/thiết bị thực, endurance và remote CI. Privacy là quy trình xác minh/ghi kết quả, chưa tự xóa ledger. Giữ các gate thanh toán riêng; thay đổi guard xác nhận tại quầy chỉ ngăn quyền cơ sở cũ sau đổi lịch, không đổi chính sách tiền/gateway.

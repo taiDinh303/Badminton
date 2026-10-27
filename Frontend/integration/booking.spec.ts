@@ -2,12 +2,81 @@ import { test, expect } from "@playwright/test";
 
 test.afterAll(async ({ request }) => { await request.post("/__test/shutdown"); });
 
+test("real club matching, equipment, coaching, tournament and revocable calendar", async ({ page }) => {
+  await page.goto("/auth");
+  await page.getByLabel("Số điện thoại", { exact: true }).fill("0900000001");
+  await page.getByLabel("Mật khẩu", { exact: true }).fill("BrowserOnly$2026");
+  await page.locator("form").getByRole("button", { name: "Đăng nhập", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Alice", exact: true })).toBeVisible();
+  const day = new Date(); day.setUTCDate(day.getUTCDate() + 5);
+  const date = day.toISOString().slice(0, 10);
+  const token = await page.evaluate(() => localStorage.getItem("bb_token"));
+  const headers = { Authorization: `Bearer ${token}` };
+  const courts = (await (await page.request.get("/api/v1/courts", { headers })).json()).data;
+  const slots = (await (await page.request.get("/api/v1/time-slots", { headers })).json()).data;
+  const created = await page.request.post("/api/v1/bookings", { headers, data: { courtId: courts[0].id, slotId: slots.find((s: { label: string }) => s.label === "12:00").id, date, playerCount: 1 } });
+  expect(created.status()).toBe(200);
+  const booking = (await created.json()).data;
+  expect((await page.request.post(`/api/v1/bookings/${booking.id}/cancel`, { headers })).status()).toBe(200);
+  // Club requests reach the real API, JWT validation and migrated SQL database.
+  await page.goto("/calendar-sync");
+  await page.getByRole("button", { name: "Bật lịch tự đồng bộ", exact: true }).click();
+  const feedInput = page.getByLabel("Liên kết lịch", { exact: true });
+  await expect(feedInput).toBeVisible();
+  const feedUrl = await feedInput.inputValue();
+  const calendar = await page.request.get(feedUrl);
+  expect(calendar.status()).toBe(200); expect(calendar.headers()["content-type"]).toContain("text/calendar");
+  expect(await calendar.text()).toContain(`UID:booking-${booking.id}@badmintonbooking`);
+  expect(await calendar.text()).toContain("STATUS:CANCELLED");
+  await page.getByRole("button", { name: "Thu hồi liên kết", exact: true }).click();
+  await expect(page.getByText("Chưa bật đồng bộ lịch.", { exact: true })).toBeVisible();
+  expect((await page.request.get(feedUrl)).status()).toBe(404);
+  await page.getByRole("navigation", { name: "Câu lạc bộ", exact: true }).getByRole("link", { name: "Dụng cụ", exact: true }).click();
+  await page.getByLabel("Hạn trả dự kiến (giờ Việt Nam)").fill(`${date}T18:00`);
+  const equipmentOrder = page.waitForResponse(r => r.url().endsWith("/club/equipment/orders") && r.request().method() === "POST");
+  await page.getByRole("button", { name: "Đặt thuê", exact: true }).click();
+  expect((await equipmentOrder).status()).toBe(200);
+  await expect(page.getByText(/Đã giữ chỗ · Hạn trả/)).toBeVisible();
+  await page.getByRole("button", { name: /^Hủy yêu cầu #/ }).click();
+  await expect(page.getByText(/Đã hủy · Hạn trả/)).toBeVisible();
+  await page.getByRole("navigation", { name: "Câu lạc bộ", exact: true }).getByRole("link", { name: "Huấn luyện viên", exact: true }).click();
+  await page.getByLabel("Huấn luyện viên", { exact: true }).selectOption({ label: "Browser coach" });
+  await page.getByLabel("Số học viên trong nhóm của bạn").fill("2");
+  const coaching = page.waitForResponse(r => r.url().endsWith("/club/coaches/reservations") && r.request().method() === "POST");
+  await page.getByRole("button", { name: "Đặt buổi học", exact: true }).click();
+  expect((await coaching).status()).toBe(200);
+  await page.getByRole("button", { name: /^Hủy đặt học #/ }).click();
+  await expect(page.getByText(/· Đã hủy$/)).toBeVisible();
+  await page.getByRole("navigation", { name: "Câu lạc bộ", exact: true }).getByRole("link", { name: "Giải đấu nhỏ", exact: true }).click();
+  await page.getByLabel("Giải đấu", { exact: true }).selectOption({ label: "Browser tournament · Đang đăng ký" });
+  await page.getByLabel("Tên đội", { exact: true }).fill("Browser team");
+  await page.getByLabel("Tên hiển thị các thành viên (không nhập SĐT)").fill("Alice");
+  const team = page.waitForResponse(r => /\/club\/tournaments\/\d+\/teams$/.test(r.url()) && r.request().method() === "POST");
+  await page.getByRole("button", { name: "Đăng ký đội", exact: true }).click(); expect((await team).status()).toBe(200);
+  await expect(page.getByText(/Browser team · 0 thắng/)).toBeVisible();
+  await page.getByRole("navigation", { name: "Câu lạc bộ", exact: true }).getByRole("link", { name: "Tìm bạn chơi", exact: true }).click();
+  await page.getByLabel("Khu vực gặp mặt").fill("Browser area");
+  await page.getByLabel("Bắt đầu", { exact: true }).fill(`${date}T18:00`);
+  await page.getByLabel("Kết thúc", { exact: true }).fill(`${date}T20:00`);
+  await page.getByLabel("Lời nhắn").fill("Synthetic player matching");
+  const session = page.waitForResponse(r => r.url().endsWith("/club/players") && r.request().method() === "POST");
+  await page.getByRole("button", { name: "Đăng buổi chơi", exact: true }).click(); expect((await session).status()).toBe(200);
+  await expect(page.getByText("Synthetic player matching", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Đóng buổi chơi", exact: true }).click();
+  await expect(page.getByText("Synthetic player matching", { exact: true })).toHaveCount(0);
+
+});
+
 test("real login, slot quote with voucher and points, booking, and owner cancellation", async ({ page }) => {
   // Every request reaches the isolated .NET host and database; no API interception.
   await page.goto("/auth");
   await page.getByLabel("Số điện thoại", { exact: true }).fill("0900000001");
   await page.getByLabel("Mật khẩu", { exact: true }).fill("BrowserOnly$2026");
+  const login = page.waitForResponse(r => r.url().endsWith("/auth/login") && r.request().method() === "POST");
   await page.locator("form").getByRole("button", { name: "Đăng nhập", exact: true }).click();
+  const loggedIn = await login;
+  expect(loggedIn.status()).toBe(200);
+  expect((await loggedIn.json()).data.fullName).toBe("Alice");
   await expect(page.getByRole("heading", { name: "Alice", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Đặt sân", exact: true }).filter({ visible: true }).first().click();
   const day = new Date(); day.setUTCDate(day.getUTCDate() + 5);
@@ -39,6 +108,17 @@ test("real login, slot quote with voucher and points, booking, and owner cancell
   expect(booking.payableAmount).toBe(quote.payable);
   await expect(page.getByText(booking.bookingCode)).toBeVisible();
   await page.goto(`/bookings/${booking.id}`);
+  // The real API returns dd/MM/yyyy; changing only the slot must preserve its calendar date.
+  await page.getByRole("button", { name: "Đổi lịch, xem lịch sử, gửi phản ánh", exact: true }).click();
+  await expect(page.getByLabel("Ngày đổi sang", { exact: true })).toHaveValue(date);
+  await page.getByLabel("Khung giờ mới", { exact: true }).selectOption({ label: "10:00" });
+  await page.getByLabel("Lý do đổi lịch", { exact: true }).fill("Đổi sang giờ khác cùng ngày và cùng giá");
+  await page.getByLabel("Tôi xác nhận đổi lịch.", { exact: false }).check();
+  const rescheduled = page.waitForResponse(r => r.url().endsWith(`/booking-experience/${booking.id}/reschedule`) && r.request().method() === "POST");
+  await page.getByRole("button", { name: "Xác nhận đổi lịch", exact: true }).click();
+  const move = await rescheduled;
+  expect(move.status()).toBe(200);
+  expect(move.request().postDataJSON().date).toBe(date);
   const cancelled = page.waitForResponse(r => r.url().endsWith(`/bookings/${booking.id}/cancel`));
   await page.getByRole("button", { name: "Huỷ đặt chỗ", exact: true }).click();
   expect((await (await cancelled).json()).data.status).toBe("Cancelled");
@@ -54,7 +134,9 @@ test("real login, slot quote with voucher and points, booking, and owner cancell
   await expect(page.getByRole("status")).toContainText("Đã đổi mật khẩu");
   await page.getByLabel("Số điện thoại", { exact: true }).fill("0900000001");
   await page.getByLabel("Mật khẩu", { exact: true }).fill("BrowserChanged$2026");
+  const loginAgain = page.waitForResponse(r => r.url().endsWith("/auth/login") && r.request().method() === "POST");
   await page.locator("form").getByRole("button", { name: "Đăng nhập", exact: true }).click();
+  expect((await loginAgain).status()).toBe(200);
   // Gate restores the account page that required reauthentication.
   await expect(page.getByText("Alice", { exact: true }).filter({ visible: true }).first()).toBeVisible();
   const previousToken = await page.evaluate(() => localStorage.getItem("bb_token"));

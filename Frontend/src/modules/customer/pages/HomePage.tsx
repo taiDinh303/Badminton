@@ -17,10 +17,6 @@ import { formatVnd } from "../../../utils/format";
 import { Card, Callout, KpiCard } from "../../../components/ui";
 import { useAuth } from "../../../store/auth";
 
-/**
- * Trang chủ (docs 07 §3): hero CTA "Đặt sân" + thống kê nhanh + danh sách
- * cơ sở. Một hành động chính trên điện thoại; không dùng emoji (docs 07).
- */
 export default function HomePage() {
   const user = useAuth((s) => s.user);
   const { data: branches = [], isLoading, isError } = useQuery({

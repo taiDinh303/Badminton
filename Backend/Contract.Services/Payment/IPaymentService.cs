@@ -10,7 +10,7 @@ namespace Contract.Services.Payment
         Task<PaymentInitResponse> InitAsync(InitPaymentRequest request, int userId);
         Task<WebhookResult> HandleWebhookAsync(string provider, PaymentWebhookRequest raw);
         Task<PaymentView> ConfirmOnSiteAsync(int bookingId, string method, int actorId, string? note = null);
-        Task<PaymentView> RefundForMaintenanceAsync(int bookingId, int actorId, string? reason = null);
+        Task<PaymentView> RefundForMaintenanceAsync(int bookingId, int actorId, string? reason = null, Contract.Services.Maintenance.MaintenanceBookingScope? scope = null);
         Task<PaymentView> RefundAsync(int bookingId, int actorId, string? reason = null);
         Task<PaymentView> CancelRefundAsync(int bookingId, int actorId, string? reason = null);
         Task<IReadOnlyList<PaymentView>> GetByBookingAsync(int bookingId, int requestingUserId);

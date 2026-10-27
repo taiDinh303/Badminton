@@ -1,3 +1,4 @@
+using Contract.Services.Report;
 using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
@@ -12,10 +13,11 @@ namespace Services
     public sealed class MaintenanceService : BaseService, IMaintenanceService
     {
         private readonly IAuditService _audit;
+        private readonly IInventoryHistoryService _inventory;
         private readonly IBookingService _bookings;
         public MaintenanceService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit,
-            IBookingService bookings)
-            : base(uow, currentUser) { _audit = audit; _bookings = bookings; }
+            IBookingService bookings, IInventoryHistoryService inventory)
+            : base(uow, currentUser) { _audit = audit; _bookings = bookings; _inventory = inventory; }
 
         public async Task SetAsync(int courtId, DateOnly date, CourtDateStatus status,
             int actorId, string? note = null, TimeSpan? startTime = null, TimeSpan? endTime = null)
@@ -46,7 +48,7 @@ namespace Services
                 "CourtDateStatus", $"{courtId}@{date:yyyy-MM-dd}", before,
                 new { row.Status, row.Note, row.StartTime, row.EndTime }, note);
             });
-            await new InventoryHistoryService(Uow).CaptureTodayAsync(court.BranchId);
+            await _inventory.CaptureTodayAsync(court.BranchId);
 
 
             if (status != CourtDateStatus.Open)
@@ -60,7 +62,7 @@ namespace Services
                 {
                     try
                     {
-                        await _bookings.CancelForMaintenanceAsync(b.Id, actorId);
+                        await _bookings.CancelForMaintenanceAsync(b.Id, actorId, new(b.CourtId, b.Date, b.SlotId));
                     }
                     catch (Exception)
                     {

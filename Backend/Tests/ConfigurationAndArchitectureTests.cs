@@ -153,6 +153,16 @@ public class ConfigurationAndArchitectureTests
             reference => reference.Name?.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal) == true);
     }
 
+    [Fact]
+    public void Calendar_subscription_tokens_are_redacted_from_application_request_paths()
+    {
+        var secret = new string('a', 64);
+        var path = Badminton.API.Middleware.RequestLogPath.Sanitized(new Microsoft.AspNetCore.Http.PathString($"/api/v1/club/calendar/feed/{secret}.ics"));
+        Assert.DoesNotContain(secret, path);
+        Assert.Contains("[redacted]", path);
+        Assert.Equal("/api/v1/bookings/1", Badminton.API.Middleware.RequestLogPath.Sanitized(new("/api/v1/bookings/1")));
+    }
+
     private sealed class EnvironmentStub(string name) : IHostEnvironment
     {
         public string EnvironmentName { get; set; } = name;

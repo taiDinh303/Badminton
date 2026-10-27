@@ -50,7 +50,7 @@ public sealed class PointConversionAndHistoryTests
     public async Task Recorded_occupancy_capacity_survives_later_court_deactivation_and_labels_missing_history()
     {
         await using var h = new TestHost();
-        await h.RunScopeAsync(sp => new InventoryHistoryService(sp.GetRequiredService<Contract.Repositories.UnitOfWork.IUnitOfWork>()).CaptureTodayAsync());
+        await h.RunScopeAsync(sp => sp.GetRequiredService<Contract.Services.Report.IInventoryHistoryService>().CaptureTodayAsync());
         h.ActAs(h.Manager, Role.Manager);
         var before = await h.RunScopeAsync(sp => ActivatorUtilities.CreateInstance<ReportService>(sp).GetOccupancyAsync(h.FutureDate, h.FutureDate));
         HanoiTime.NowUtc = () => h.HanoiNowUtc.AddDays(1);

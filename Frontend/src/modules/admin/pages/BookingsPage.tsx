@@ -34,13 +34,6 @@ const STATUS_TABS: { key: string; label: string }[] = [
   { key: "Refunded", label: "Đã hoàn tiền" },
 ];
 
-/**
- * Admin "Đặt chỗ" (docs 07 §4) — layout card (mỗi đơn 1 thẻ):
- *   - Toolbar: tìm kiếm + lọc cơ sở + làm mới
- *   - Pills: lọc theo trạng thái
- *   - Card: badge trạng thái + mã đơn, 3 dòng (ngày, sân, khách),
- *     thanh giá + nút thao tác theo trạng thái
- */
 export default function BookingsPage() {
   const refreshBookings = useBookingRefresh();
   const [params] = useSearchParams();
@@ -234,7 +227,6 @@ export default function BookingsPage() {
   );
 }
 
-/** Số trang cần hiển thị: đầu 1–2, … quanh trang hiện, … cuối. */
 function pageNumbers(page: number, totalPages: number): (number | "…")[] {
   if (totalPages <= 7)
     return Array.from({ length: totalPages }, (_, i) => i + 1);

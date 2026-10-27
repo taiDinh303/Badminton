@@ -1,3 +1,4 @@
+using Contract.Services.Report;
 using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
@@ -11,8 +12,9 @@ namespace Services
     public sealed class TimeSlotService : BaseService, ITimeSlotService
     {
         private readonly IAuditService _audit;
-        public TimeSlotService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit)
-            : base(uow, currentUser) { _audit = audit; }
+        private readonly IInventoryHistoryService _inventory;
+        public TimeSlotService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit, IInventoryHistoryService inventory)
+            : base(uow, currentUser) { _audit = audit; _inventory = inventory; }
 
         private IGenericRepository<TimeSlot> Repo => Repository<TimeSlot>();
 
@@ -29,7 +31,7 @@ namespace Services
             {
                 await LockInventoryAsync();
                 result = await CreateCoreAsync(request, actorId);
-                await new InventoryHistoryService(Uow).CaptureTodayAsync();
+                await _inventory.CaptureTodayAsync();
             });
             return result;
         }
@@ -63,7 +65,7 @@ namespace Services
         {
             await LockInventoryAsync();
             await UpdateCoreAsync(id, request, actorId);
-            await new InventoryHistoryService(Uow).CaptureTodayAsync();
+            await _inventory.CaptureTodayAsync();
         });
 
         private async Task UpdateCoreAsync(int id, UpdateTimeSlotRequest request, int actorId)
@@ -88,7 +90,7 @@ namespace Services
         {
             await LockInventoryAsync();
             await DeleteCoreAsync(id, actorId);
-            await new InventoryHistoryService(Uow).CaptureTodayAsync();
+            await _inventory.CaptureTodayAsync();
         });
 
         private async Task DeleteCoreAsync(int id, int actorId)

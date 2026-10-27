@@ -33,9 +33,11 @@ public sealed class BookingCreationService(IUnitOfWork uow, ICurrentUser current
         Booking result = null!;
         await Uow.RunInTransactionAsync(async () =>
         {
-            if (request.IdempotencyKey is { } key) await Uow.LockBookingRequestAsync(key);
+            if (request.IdempotencyKey is { } key)
+                await Uow.LockBookingRequestAsync(key);
             var target = (await Repository<Court>().GetByConditionAsync(c => c.Id == request.CourtId)).SingleOrDefault();
-            if (target is not null) await Uow.LockBookingRequestAsync($"branch-config:{target.BranchId}");
+            if (target is not null)
+                await Uow.LockBookingRequestAsync($"branch-config:{target.BranchId}");
             result = await CreateCoreAsync(request, userId);
         });
         return result;
@@ -175,7 +177,10 @@ public sealed class BookingCreationService(IUnitOfWork uow, ICurrentUser current
                 User = user
             });
 
-            try { await SaveAsync(); }
+            try
+            {
+                await SaveAsync();
+            }
             catch (UniqueConstraintException ex)
             {
                 if (ex.ConstraintName == "ux_court_slot_active")
@@ -185,6 +190,16 @@ public sealed class BookingCreationService(IUnitOfWork uow, ICurrentUser current
             }
 
             // Patch cross-links now that both rows have primary keys.
+            if (b.GroupId.HasValue)
+            {
+                await Repository<GroupRsvp>().AddAsync(new()
+                {
+                    BookingId = b.Id,
+                    UserId = userId,
+                    Attending = true
+                });
+                await SaveAsync();
+            }
             if (voucherRedemption is not null)
             {
                 voucherRedemption.BookingId = b.Id;
@@ -205,7 +220,8 @@ public sealed class BookingCreationService(IUnitOfWork uow, ICurrentUser current
 
     private async Task<int> CountActiveBookings(int userId, int? groupId, DateOnly date)
     {
-        var u = userId; var g = groupId;
+        var u = userId;
+        var g = groupId;
         return await Repo.CountByConditionAsync(b =>
             b.Date == date && (g != null || b.UserId == u) &&
             ((b.GroupId == null && g == null) || b.GroupId == g) &&

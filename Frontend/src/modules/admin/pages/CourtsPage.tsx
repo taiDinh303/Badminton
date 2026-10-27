@@ -37,22 +37,16 @@ const emptyForm = (): CourtForm => ({
   weekendSurcharge: 20, capacity: 2, surface: "Sindalo",
 });
 
-/**
- * Admin "Sân & giá" (docs 07 §4): card grid of all courts (giá peak/low,
- * phụ thu, sức chứa, rating) + form modal (tạo / sửa).
- */
 export default function CourtsPage() {
   const qc = useQueryClient();
   const [maintStart, setMaintStart] = useState("");
   const [maintEnd, setMaintEnd] = useState("");
   const [form, setForm] = useState<CourtForm | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
-  // FEAT maintenance: Open/Maintenance/Closed per court per date (docs 03 §8).
   const [maintCourt, setMaintCourt] = useState<Court | null>(null);
   const [maintDate, setMaintDate] = useState(() => vietnamDate());
   const [maintStatus, setMaintStatus] = useState<MaintStatus>("Maintenance");
   const [maintNote, setMaintNote] = useState("");
-  // Confirm dialog before the destructive court delete (docs 07 §4).
   const [deleteCourt, setDeleteCourt] = useState<Court | null>(null);
   // Transient maintenance-success feedback so the user sees it saved.
   const [maintSaved, setMaintSaved] = useState(false);
@@ -95,7 +89,6 @@ export default function CourtsPage() {
     onSuccess: () => refetch(),
   });
 
-  // FEAT maintenance — set court date status (locks slots, docs 03 §8).
   const setMaint = useMutation({
     mutationFn: () =>
       api.admin.maintenance.set(
@@ -294,7 +287,7 @@ export default function CourtsPage() {
         </Modal>
       )}
 
-      {/* FEAT maintenance — Open/Maintenance/Closed per date (docs 03 §8) */}
+      {/* FEAT maintenance — Open/Maintenance/Closed per date */}
       {maintCourt && (
         <Modal
           title={`Bảo trì · ${maintCourt.name}`}
@@ -370,7 +363,7 @@ export default function CourtsPage() {
         </Modal>
       )}
 
-      {/* Confirm before deleting a court (docs 07 §4) */}
+      {/* Confirm before deleting a court */}
       {deleteCourt && (
         <ConfirmDialog
           title="Xóa sân?"

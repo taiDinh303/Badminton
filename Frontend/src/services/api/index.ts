@@ -39,6 +39,9 @@ export const api = {
         isActive?: boolean;
         openTime?: string;
         closeTime?: string;
+        geoLat?: number | null;
+        geoLng?: number | null;
+        hasGeo?: boolean;
       },
     ) => request<unknown>("PATCH", `/branches/${id}`, b),
     delete: (id: number) => request<unknown>("DELETE", `/branches/${id}`),
@@ -168,7 +171,7 @@ export const api = {
     deactivate: (id: number) =>
       request<unknown>("POST", `/vouchers/${id}/deactivate`),
   },
-  // ── Staff / admin (Manager + Admin, docs 07 §3) ──────────────
+  // ── Staff / admin (Manager + Admin) ──────────────
   admin: {
     staff: {
       list: () => request<Staff[]>("GET", "/admin/staff"),
@@ -280,7 +283,7 @@ export const api = {
     mine: () => request<WaitlistEntryView[]>("GET", "/waitlist/mine"),
   },
 
-  // ── FEAT 7: Groups (docs 03 §7) ───────────────────────────────────
+  // ── FEAT 7: Groups ───────────────────────────────────
   groups: {
     mine: () => request<GroupView[]>("GET", "/groups/mine"),
     create: (name: string, maxMembers = 10) =>
@@ -297,7 +300,7 @@ export const api = {
       request<GroupMemberView[]>("GET", `/groups/${id}/members`),
   },
 
-  // ── FEAT 8: Reviews (docs 03 §7) ──────────────────────────────────
+  // ── FEAT 8: Reviews ──────────────────────────────────
   reviews: {
     forBooking: (id: number) => request<ReviewView | null>("GET", `/reviews/booking/${id}`),
     paged: (courtId: number | null, page = 1) => request<Paged<ReviewView> & { averageRating: number | null }>("GET", "/reviews/paged", undefined, { courtId, page, pageSize: 20 }),
@@ -307,7 +310,7 @@ export const api = {
       request<ReviewView>("POST", "/reviews", b),
   },
 
-  // ── FEAT 9: Staff check-in (docs 03 §3) ───────────────────────────
+  // ── FEAT 9: Staff check-in ───────────────────────────
   checkin: {
     byCode: (code: string) =>
       request<{ bookingId: number; message: string }>(
@@ -327,7 +330,7 @@ export const api = {
       ),
   },
 
-  // ── Account summary: points + voucher usage (docs 07 §4) ──────────
+  // ── Account summary: points + voucher usage ──────────
   account: {
     profile: () => request<ProfileView>("GET", "/account/profile"),
     update: (b: { fullName: string; email: string | null; avatarUrl: string | null }) => request<ProfileView>("PATCH", "/account/profile", b),

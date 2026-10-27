@@ -17,10 +17,6 @@ import {
 } from "../../../components/ui";
 import { useAuth } from "../../../store/auth";
 
-/**
- * FEAT 7 — Groups (docs 03 §7): customer creates a group (max 10),
- * joins a group by id, lists members, and books for a group they own.
- */
 export default function GroupsPage() {
   const qc = useQueryClient();
   const user = useAuth((s) => s.user);
@@ -51,8 +47,6 @@ export default function GroupsPage() {
     queryFn: api.groups.mine,
   });
 
-  // Defensive dedupe by id: each group renders exactly once ("chỉ hiện 1 cái").
-  // `mine` is owner-only server-side, so groups created by others never appear.
   const groups = useMemo(() => {
     const seen = new Set<number>();
     return (showJoined ? joined.data ?? [] : rawGroups).filter((g) => {
@@ -62,8 +56,6 @@ export default function GroupsPage() {
     });
   }, [rawGroups, showJoined, joined.data]);
 
-  // Hide the "created" banner once the group is part of the list, so it
-  // isn't shown twice (banner + card).
   const bannerVisible =
     createdGroup && !rawGroups.some((g) => g.id === createdGroup.id);
 

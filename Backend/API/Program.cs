@@ -27,6 +27,7 @@ public partial class Program
         if (string.IsNullOrWhiteSpace(directory)) directory = Path.Combine(AppContext.BaseDirectory, "logs");
         builder.Host.UseSerilog((context, logger) => logger
             .ReadFrom.Configuration(context.Configuration).Enrich.FromLogContext().WriteTo.Console()
+            .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
             .WriteTo.File(Path.Combine(directory, "badminton-.log"), rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 14));
         builder.Services.AddBookingApi(builder.Configuration, builder.Environment);

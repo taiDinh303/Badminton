@@ -26,6 +26,153 @@ namespace Badminton.Tests;
 
 public sealed class HttpBookingFlowTests : IAsyncLifetime
 {
+    [Fact]
+    public async Task Club_hardening_HTTP_supports_attendance_reports_and_versioned_score_audit()
+    {
+        var ids = await _fixture.RunScopeAsync(async sp => {
+            var db = sp.GetRequiredService<BadmintonBookingDbContext>();
+            var group = new Contract.Repositories.Entity.PlayGroup { Name = "Attendance HTTP", OwnerId = _fixture.Alice };
+            group.Members.Add(new() { UserId = _fixture.Alice }); group.Members.Add(new() { UserId = _fixture.Bob }); db.PlayGroups.Add(group); await db.SaveChangesAsync();
+            var b = new Contract.Repositories.Entity.Booking { BookingCode = "ATTENDANCE-HTTP", UserId = _fixture.Alice, GroupId = group.Id, CourtId = _fixture.Court1, BranchId = _fixture.BranchId, SlotId = _fixture.SlotNoon, Date = _fixture.FutureDate, Status = BookingStatus.Confirmed, TotalAmount = 100001, PayableAmount = 100001 };
+            db.Bookings.Add(b);
+            var t = new Contract.Repositories.Entity.MiniTournament { Name = "Score HTTP", BranchId = _fixture.BranchId, OrganizerId = _fixture.Manager, MaxTeams = 2, Status = "Scheduled" }; db.Add(t); await db.SaveChangesAsync();
+            var a = new Contract.Repositories.Entity.TournamentTeam { TournamentId = t.Id, CaptainId = _fixture.Alice, Name = "Audit A" }; var c = new Contract.Repositories.Entity.TournamentTeam { TournamentId = t.Id, CaptainId = _fixture.Bob, Name = "Audit B" }; db.AddRange(a, c); await db.SaveChangesAsync();
+            var m = new Contract.Repositories.Entity.TournamentMatch { TournamentId = t.Id, TeamAId = a.Id, TeamBId = c.Id, EndsAtUtc = DateTime.UtcNow.AddMinutes(-1) }; db.Add(m); await db.SaveChangesAsync(); return (booking: b.Id, tournament: t.Id, match: m.Id);
+        });
+        ActAs(_fixture.Alice, "Customer");
+        var split = await _client.PostAsJsonAsync($"/api/v1/club/expenses/{ids.booking}/attendance", new { members = new[] { new { userId = _fixture.Alice, minutes = 30 }, new { userId = _fixture.Bob, minutes = 60 } } }); Assert.Equal(HttpStatusCode.OK, split.StatusCode);
+        var expense = (await _client.GetFromJsonAsync<JsonElement>($"/api/v1/club/expenses/{ids.booking}")).GetProperty("data"); Assert.Equal("Attendance", expense.GetProperty("splitMethod").GetString()); Assert.Equal(100001, expense.GetProperty("shares").EnumerateArray().Sum(x => x.GetProperty("amount").GetInt32()));
+        var scorePath = $"/api/v1/club/tournaments/{ids.tournament}/matches/{ids.match}";
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.PutAsJsonAsync(scorePath + "/score", new { scoreA = 21, scoreB = 15 })).StatusCode);
+        ActAs(_fixture.Manager, "Manager"); Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync(scorePath + "/score", new { scoreA = 21, scoreB = 15 })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync(scorePath + "/score", new { scoreA = 15, scoreB = 21, reason = "Đối chiếu biên bản HTTP", expectedRevision = 1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PutAsJsonAsync(scorePath + "/score", new { scoreA = 21, scoreB = 19, reason = "Màn hình cũ", expectedRevision = 1 })).StatusCode);
+        Assert.Equal(2, (await _client.GetFromJsonAsync<JsonElement>(scorePath + "/history")).GetProperty("data").GetArrayLength());
+        var item = await _client.PostAsJsonAsync("/api/v1/club/equipment", new { branchId = _fixture.BranchId, name = "Report HTTP", rental = true, stock = 1, unitPrice = 20000, active = true }); var itemId = (await item.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetInt32();
+        ActAs(_fixture.Alice, "Customer"); var order = await _client.PostAsJsonAsync("/api/v1/club/equipment/orders", new { itemId, quantity = 1, dueAtUtc = DateTime.UtcNow.AddHours(1), requestKey = "report-http" }); var orderId = (await order.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetInt32();
+        var conditionPath = $"/api/v1/club/equipment/orders/{orderId}/condition"; var report = new { unusableQuantity = 1, lost = true, assessedAmount = 50000, reason = "Khách xác nhận mất tại quầy" };
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.PostAsJsonAsync(conditionPath, report)).StatusCode);
+        ActAs(_fixture.Manager, "Manager"); Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"/api/v1/club/equipment/orders/{orderId}/issue", null)).StatusCode); Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync(conditionPath, report)).StatusCode);
+        ActAs(_fixture.Bob, "Customer"); Assert.Equal(HttpStatusCode.Conflict, (await _client.GetAsync(conditionPath)).StatusCode);
+        ActAs(_fixture.Alice, "Customer"); Assert.Equal(50000, (await _client.GetFromJsonAsync<JsonElement>(conditionPath)).GetProperty("data").GetProperty("assessedAmount").GetInt32());
+    }
+    [Fact]
+    public async Task Club_HTTP_matching_equipment_coaching_and_tournaments_enforce_roles_branches_and_payloads()
+    {
+        var root = "/api/v1/club";
+        var itemRequest = new { branchId = _fixture.BranchId, name = "Vợt HTTP", rental = true, stock = 1, unitPrice = 20000, active = true };
+        ActAs(_fixture.Alice, "Customer");
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.PostAsJsonAsync(root + "/equipment", itemRequest)).StatusCode);
+        var session = await _client.PostAsJsonAsync(root + "/players", new { branchId = _fixture.BranchId, area = "Thủ Đức", level = 3, startsAtUtc = _fixture.HanoiNowUtc.AddHours(2), endsAtUtc = _fixture.HanoiNowUtc.AddHours(3), capacity = 4, note = "Chơi đôi" });
+        Assert.Equal(HttpStatusCode.OK, session.StatusCode); var sessionId = (await session.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetInt32();
+        ActAs(_fixture.Bob, "Customer"); Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"{root}/players/{sessionId}/join", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.GetAsync($"{root}/players/{sessionId}/members")).StatusCode);
+        ActAs(_fixture.Alice, "Customer"); Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync($"{root}/players/{sessionId}/members/{_fixture.Bob}", true)).StatusCode);
+        var search = await _client.GetFromJsonAsync<JsonElement>($"{root}/players?branchId={_fixture.BranchId}&level=3&fromUtc={_fixture.HanoiNowUtc:yyyy-MM-ddTHH:mm:ssZ}&toUtc={_fixture.HanoiNowUtc.AddDays(1):yyyy-MM-ddTHH:mm:ssZ}");
+        Assert.Equal(2, search.GetProperty("data")[0].GetProperty("accepted").GetInt32());
+        ActAs(_fixture.Manager, "Manager"); var item = await _client.PostAsJsonAsync(root + "/equipment", itemRequest); Assert.Equal(HttpStatusCode.OK, item.StatusCode);
+        var itemId = (await item.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetInt32();
+        var coach = await _client.PostAsJsonAsync(root + "/coaches", new { branchId = _fixture.BranchId, name = "HLV HTTP", bio = "Đánh đôi", active = true }); Assert.Equal(HttpStatusCode.OK, coach.StatusCode);
+        var coachId = (await coach.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetInt32();
+        var slot = await _client.PostAsJsonAsync($"{root}/coaches/{coachId}/slots", new { startsAtUtc = _fixture.HanoiNowUtc.AddHours(2), endsAtUtc = _fixture.HanoiNowUtc.AddHours(3), capacity = 1, pricePerPerson = 100000 }); Assert.Equal(HttpStatusCode.OK, slot.StatusCode);
+        var slotId = (await slot.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetInt32();
+        await ClubCourtFixture.AttachAsync(_fixture, slotId);
+        var tournament = await _client.PostAsJsonAsync(root + "/tournaments", new { branchId = _fixture.BranchId, name = "Giải HTTP", maxTeams = 4 }); Assert.Equal(HttpStatusCode.OK, tournament.StatusCode);
+        var tournamentId = (await tournament.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetInt32();
+        ActAs(_fixture.Alice, "Customer");
+        var order = await _client.PostAsJsonAsync(root + "/equipment/orders", new { itemId, quantity = 1, dueAtUtc = _fixture.HanoiNowUtc.AddHours(4), requestKey = "http-order" }); Assert.Equal(HttpStatusCode.OK, order.StatusCode);
+        var orderId = (await order.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetInt32();
+        var reserve = await _client.PostAsJsonAsync(root + "/coaches/reservations", new { slotId, people = 1, requestKey = "http-coach" }); Assert.Equal(HttpStatusCode.OK, reserve.StatusCode);
+        var bookingId = (await reserve.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetInt32();
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.GetAsync(root + "/equipment/orders?staff=true")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync($"{root}/tournaments/{tournamentId}/teams", new { name = "Đội Alice", players = "Alice" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.PostAsJsonAsync($"{root}/tournaments/{tournamentId}/draw", 1)).StatusCode);
+        ActAs(_fixture.Bob, "Customer"); Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync($"{root}/tournaments/{tournamentId}/teams", new { name = "Đội Bob", players = "Bob" })).StatusCode);
+        Assert.Empty((await _client.GetFromJsonAsync<JsonElement>(root + "/equipment/orders")).GetProperty("data").EnumerateArray());
+        ActAs(_fixture.ManagerOtherBranch, "Manager");
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"{root}/equipment/orders/{orderId}/issue", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"{root}/coaches/reservations/{bookingId}/complete", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync($"{root}/tournaments/{tournamentId}/draw", 1)).StatusCode);
+        ActAs(_fixture.Manager, "Manager"); Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync($"{root}/tournaments/{tournamentId}/draw", 1)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"{root}/equipment/orders/{orderId}/issue", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"{root}/equipment/orders/{orderId}/return", null)).StatusCode);
+        Assert.Single((await _client.GetFromJsonAsync<JsonElement>($"{root}/tournaments/{tournamentId}")).GetProperty("data").GetProperty("matches").EnumerateArray());
+    }
+    [Fact]
+    public async Task Club_HTTP_calendar_subscription_is_anonymous_private_revocable_and_has_real_mime_type()
+    {
+        var id = await CreateBooking();
+        var issued = await _client.PostAsync("/api/v1/club/calendar", null); Assert.Equal(HttpStatusCode.OK, issued.StatusCode);
+        Assert.True(issued.Headers.CacheControl!.NoStore);
+        var token = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetProperty("token").GetString();
+        _client.DefaultRequestHeaders.Authorization = null;
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _client.GetAsync("/api/v1/club/calendar")).StatusCode);
+        var feed = await _client.GetAsync($"/api/v1/club/calendar/feed/{token}.ics"); Assert.Equal(HttpStatusCode.OK, feed.StatusCode);
+        Assert.Equal("text/calendar", feed.Content.Headers.ContentType!.MediaType); Assert.True(feed.Headers.CacheControl!.NoStore);
+        Assert.Contains($"UID:booking-{id}@badmintonbooking", await feed.Content.ReadAsStringAsync());
+        ActAs(_fixture.Alice, "Customer"); Assert.Equal(HttpStatusCode.OK, (await _client.DeleteAsync("/api/v1/club/calendar")).StatusCode);
+        _client.DefaultRequestHeaders.Authorization = null; Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/v1/club/calendar/feed/{token}.ics")).StatusCode);
+    }
+    [Fact]
+    public async Task Legacy_overlap_shown_as_booked_can_join_the_waitlist_over_HTTP()
+    {
+        var legacy = await _fixture.RunScopeAsync(async sp => {
+            var db = sp.GetRequiredService<BadmintonBookingDbContext>();
+            var slot = new Contract.Repositories.Entity.TimeSlot { Label = "Legacy overlap", StartTime = new(12, 15), EndTime = new(12, 45), IsActive = true };
+            db.TimeSlots.Add(slot); await db.SaveChangesAsync(); return slot.Id;
+        });
+        var original = await CreateBooking();
+        ActAs(_fixture.Bob, "Customer");
+        var availability = await _client.GetFromJsonAsync<JsonElement>($"/api/v1/bookings/availability/{_fixture.BranchId}/{_fixture.FutureDate:yyyy-MM-dd}");
+        var shown = availability.GetProperty("data").EnumerateArray().Single(c => c.GetProperty("courtId").GetInt32() == _fixture.Court1)
+            .GetProperty("slots").EnumerateArray().Single(s => s.GetProperty("slotId").GetInt32() == legacy);
+        Assert.True(shown.GetProperty("isLocked").GetBoolean());
+        Assert.Equal("Đã đặt", shown.GetProperty("lockReason").GetString());
+        var join = await _client.PostAsJsonAsync("/api/v1/waitlist/join", new {
+            courtId = _fixture.Court1, slotId = legacy, date = _fixture.FutureDate.ToString("yyyy-MM-dd"), playerCount = 1
+        });
+        Assert.Equal(HttpStatusCode.OK, join.StatusCode);
+        var entry = (await join.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+        Assert.Equal(_fixture.Court1, entry.GetProperty("courtId").GetInt32());
+        Assert.Equal("Legacy overlap", entry.GetProperty("slotLabel").GetString());
+        var entryId = entry.GetProperty("id").GetInt32();
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"/api/v1/waitlist/{entryId}/leave", null)).StatusCode);
+        Assert.Equal(BookingStatus.Pending, (await _fixture.GetBookingAsync(original)).Status);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Transferred_group_owner_can_cancel_both_unpaid_and_paid_bookings_over_HTTP(bool paid)
+    {
+        ActAs(_fixture.Alice, "Customer");
+        var groupResponse = await _client.PostAsJsonAsync("/api/v1/groups", new { name = "HTTP transferred group" });
+        var group = (await groupResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+        var groupId = group.GetProperty("id").GetInt32();
+        ActAs(_fixture.Bob, "Customer");
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync($"/api/v1/groups/{groupId}/join", new { inviteCode = group.GetProperty("inviteCode").GetString() })).StatusCode);
+        ActAs(_fixture.Alice, "Customer");
+        var response = await _client.PostAsJsonAsync("/api/v1/bookings", new {
+            courtId = _fixture.Court1, date = _fixture.FutureDate.ToString("yyyy-MM-dd"), slotId = _fixture.SlotNoon, groupId
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetProperty("id").GetInt32();
+        if (paid)
+        {
+            ActAs(_fixture.Manager, "Manager");
+            Assert.Equal(HttpStatusCode.OK, (await _client.PostAsync($"/api/v1/payments/{id}/on-site?method=cash", null)).StatusCode);
+        }
+        ActAs(_fixture.Alice, "Customer");
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync($"/api/v1/groups/{groupId}/transfer", new { userId = _fixture.Bob })).StatusCode);
+        ActAs(_fixture.Carol, "Customer");
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync($"/api/v1/bookings/{id}/cancel", null)).StatusCode);
+        ActAs(_fixture.Bob, "Customer");
+        var cancelled = await _client.PostAsync($"/api/v1/bookings/{id}/cancel", null);
+        Assert.Equal(HttpStatusCode.OK, cancelled.StatusCode);
+        Assert.Equal("Cancelled", (await cancelled.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetProperty("status").GetString());
+        Assert.Equal(_fixture.Alice, (await _fixture.GetBookingAsync(id)).UserId);
+    }
+
     private readonly TestHost _fixture = new(useMigrations: true);
     private WebApplication _app = null!;
     private HttpClient _client = null!;
@@ -115,6 +262,67 @@ public sealed class HttpBookingFlowTests : IAsyncLifetime
             Assert.Equal(HttpStatusCode.Unauthorized, (await _client.PostAsJsonAsync("/api/v1/groups", new { name = "Blocked", maxMembers = 2 })).StatusCode);
             Assert.Equal(HttpStatusCode.Unauthorized, (await _client.GetAsync("/api/v1/account/summary")).StatusCode);
         }
+    }
+
+    [Fact]
+    public async Task Experience_HTTP_enforces_owner_branch_and_read_only_calendar_contracts()
+    {
+        var id = await CreateBooking();
+        var move = new { courtId = _fixture.Court2, slotId = _fixture.SlotNoon, date = _fixture.FutureDate.ToString("yyyy-MM-dd"), reason = "Khách cần đổi sang sân bên cạnh" };
+        ActAs(_fixture.Bob, "Customer");
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync($"/api/v1/booking-experience/{id}/reschedule", move)).StatusCode);
+        var calendar = $"/api/v1/booking-experience/calendar?from={_fixture.FutureDate:yyyy-MM-dd}&to={_fixture.FutureDate:yyyy-MM-dd}";
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.GetAsync(calendar)).StatusCode);
+        ActAs(_fixture.Manager, "Manager");
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.GetAsync(calendar + $"&branchId={_fixture.BranchId2}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync(calendar)).StatusCode);
+        ActAs(_fixture.Alice, "Customer");
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync($"/api/v1/booking-experience/{id}/reschedule", move)).StatusCode);
+        var history = await _client.GetFromJsonAsync<JsonElement>($"/api/v1/booking-experience/{id}/history");
+        Assert.Contains(history.GetProperty("data").EnumerateArray(), e => e.GetProperty("event").GetString() == "rescheduled");
+        var ics = await _client.GetFromJsonAsync<JsonElement>($"/api/v1/booking-experience/{id}/calendar-file");
+        Assert.Contains("BEGIN:VCALENDAR", ics.GetProperty("data").GetString());
+    }
+
+    [Fact]
+    public async Task Experience_HTTP_upload_is_private_until_explicit_avatar_publication()
+    {
+        ActAs(_fixture.Alice, "Customer");
+        var bytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j2ioAAAAASUVORK5CYII=");
+        using var content = new MultipartFormDataContent();
+        content.Add(new ByteArrayContent(bytes), "file", "../../untrusted-name.png");
+        var upload = await _client.PostAsync("/api/v1/media", content);
+        Assert.Equal(HttpStatusCode.OK, upload.StatusCode);
+        var json = await upload.Content.ReadFromJsonAsync<JsonElement>(); var id = json.GetProperty("data").GetProperty("id").GetInt32();
+        _client.DefaultRequestHeaders.Authorization = null;
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/v1/media/{id}")).StatusCode);
+        ActAs(_fixture.Bob, "Customer");
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/v1/media/{id}")).StatusCode);
+        ActAs(_fixture.Alice, "Customer");
+        Assert.Equal(bytes, await _client.GetByteArrayAsync($"/api/v1/media/{id}"));
+        Assert.Equal(HttpStatusCode.OK, (await _client.PutAsync($"/api/v1/media/{id}/avatar", null)).StatusCode);
+        _client.DefaultRequestHeaders.Authorization = null;
+        var publicImage = await _client.GetAsync($"/api/v1/media/{id}");
+        Assert.Equal(HttpStatusCode.OK, publicImage.StatusCode); Assert.Equal("nosniff", publicImage.Headers.GetValues("X-Content-Type-Options").Single());
+        ActAs(_fixture.Alice, "Customer");
+        Assert.Equal(HttpStatusCode.OK, (await _client.DeleteAsync($"/api/v1/media/{id}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Experience_HTTP_customer_cannot_adjudicate_cases_or_read_operations_exports()
+    {
+        var id = await CreateBooking();
+        var opened = await _client.PostAsJsonAsync($"/api/v1/booking-experience/{id}/cases", new { kind = "Other", reason = "Cần nhân viên hỗ trợ kiểm tra thông tin đơn" });
+        Assert.Equal(HttpStatusCode.OK, opened.StatusCode);
+        var caseId = (await opened.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetInt32();
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.PostAsJsonAsync($"/api/v1/booking-experience/cases/{caseId}/resolve", new { accepted = true, resolution = "Khách không được tự duyệt yêu cầu" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.GetAsync($"/api/v1/operations/booking-export?from={_fixture.FutureDate:yyyy-MM-dd}&to={_fixture.FutureDate:yyyy-MM-dd}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.GetAsync("/api/v1/community/privacy/administration")).StatusCode);
+        var ownerCases = await _client.GetFromJsonAsync<JsonElement>("/api/v1/booking-experience/cases");
+        Assert.Single(ownerCases.GetProperty("data").EnumerateArray());
+        ActAs(_fixture.Bob, "Customer");
+        var otherCases = await _client.GetFromJsonAsync<JsonElement>("/api/v1/booking-experience/cases");
+        Assert.Empty(otherCases.GetProperty("data").EnumerateArray());
     }
 
     [Fact]
@@ -298,6 +506,59 @@ public sealed class HttpBookingFlowTests : IAsyncLifetime
         })).StatusCode);
         var branch = (await (await _client.GetAsync($"/api/v1/branches/{id}")).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
         Assert.Equal("06:00", branch.GetProperty("openTime").GetString());
+    }
+
+    [Fact]
+    public async Task Branch_geo_position_HTTP_set_keep_clear_and_validation()
+    {
+        var admin = await _fixture.RunScopeAsync(sp => sp.GetRequiredService<BadmintonBookingDbContext>().Users
+            .Where(u => u.Role == Badminton.Core.Enums.Role.Admin).Select(u => u.Id).SingleAsync());
+        ActAs(admin, "Admin");
+
+        var created = await _client.PostAsJsonAsync("/api/v1/branches", new {
+            name = "Geo branch", address = "Address", openTime = "06:00", closeTime = "23:00",
+            geoLat = 21.0245, geoLng = 105.8412
+        });
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetInt32();
+        var view = (await (await _client.GetAsync($"/api/v1/branches/{id}")).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+        Assert.Equal(21.0245, view.GetProperty("geoLat").GetDouble(), 4);
+        Assert.Equal(105.8412, view.GetProperty("geoLng").GetDouble(), 4);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/v1/branches", new {
+            name = "Geo branch bad", address = "Address", openTime = "06:00", closeTime = "23:00", geoLat = 21.0245
+        })).StatusCode);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/v1/branches", new {
+            name = "Geo branch bad2", address = "Address", openTime = "06:00", closeTime = "23:00",
+            geoLat = 91.0, geoLng = 105.8412
+        })).StatusCode);
+
+        var keep = await _client.PatchAsJsonAsync($"/api/v1/branches/{id}", new { name = "Geo branch renamed" });
+        Assert.Equal(HttpStatusCode.OK, keep.StatusCode);
+        view = (await (await _client.GetAsync($"/api/v1/branches/{id}")).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+        Assert.Equal(21.0245, view.GetProperty("geoLat").GetDouble(), 4);
+        Assert.Equal("Geo branch renamed", view.GetProperty("name").GetString());
+
+        var moved = await _client.PatchAsJsonAsync($"/api/v1/branches/{id}", new {
+            hasGeo = true, geoLat = 10.7626, geoLng = 106.6791
+        });
+        Assert.Equal(HttpStatusCode.OK, moved.StatusCode);
+        view = (await (await _client.GetAsync($"/api/v1/branches/{id}")).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+        Assert.Equal(10.7626, view.GetProperty("geoLat").GetDouble(), 4);
+
+        var cleared = await _client.PatchAsJsonAsync($"/api/v1/branches/{id}", new {
+            hasGeo = true, geoLat = (double?)null, geoLng = (double?)null
+        });
+        Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
+        view = (await (await _client.GetAsync($"/api/v1/branches/{id}")).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+        Assert.Equal(JsonValueKind.Null, view.GetProperty("geoLat").ValueKind);
+        Assert.Equal(JsonValueKind.Null, view.GetProperty("geoLng").ValueKind);
+
+        var broken = await _client.PatchAsJsonAsync($"/api/v1/branches/{id}", new {
+            hasGeo = true, geoLat = 5.0
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, broken.StatusCode);
     }
 
     [Fact]
@@ -549,7 +810,10 @@ public sealed class HttpBookingFlowTests : IAsyncLifetime
         Badminton.Core.Utils.HanoiTime.NowUtc = () => _fixture.HanoiNowUtc.AddHours(4);
         var completed = await _client.PostAsync($"/api/v1/bookings/{id}/complete", null);
         Assert.Equal(HttpStatusCode.OK, completed.StatusCode);
-        Assert.Equal(100, (await completed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetProperty("pointsEarned").GetInt32());
+        // The fixture date can fall on a weekend: earn one point per 1,000 VND
+        // of the actual completed order, including the existing weekend price.
+        var payable = (await _fixture.GetBookingAsync(id)).PayableAmount;
+        Assert.Equal((int)(payable / 1000m), (await completed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data").GetProperty("pointsEarned").GetInt32());
     }
 
     [Fact]

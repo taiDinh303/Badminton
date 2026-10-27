@@ -19,10 +19,6 @@ const TIER_META: Record<string, { label: string; mult: string; tone: string }> =
   None: { label: "Khách thường", mult: "1.0x", tone: "text-muted" },
 };
 
-/**
- * FEAT 4 — Membership V2 (docs 07 §4). List paid members + assign a tier to
- * a customer. Admin only (backend enforces [Authorize(Roles="Admin")]).
- */
 export default function MembershipPage() {
   const qc = useQueryClient();
   const [recovery, setRecovery] = useState<MembershipView | null>(null);

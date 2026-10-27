@@ -27,11 +27,6 @@ const emptyForm = (): SlotForm => ({
   label: "", startTime: "06:00", endTime: "07:00", isPeak: false, isActive: true,
 });
 
-/**
- * Admin "Khung giờ" (docs 07 §4).
- * Backend: CREATE hỗ trợ label+giờ+peak; UPDATE chỉ đổi label + isActive
- * (đổi giờ/peak = xóa rồi tạo mới). Form edit chỉ chỉnh label + trạng thái.
- */
 export default function SlotsPage() {
   const [form, setForm] = useState<SlotForm | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
@@ -43,8 +38,6 @@ export default function SlotsPage() {
     queryFn: () => api.timeSlots.list(canDelete),
   });
 
-  // Docs 07 §4: order slots chronologically so a re-created slot lands in
-  // its time-of-day position instead of appended at the end.
   const slots = useMemo(
     () =>
       [...rawSlots].sort(

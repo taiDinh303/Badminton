@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc">
+  <title id="title">BadmintonBooking</title>
+  <desc id="desc">Chọn sân. Hẹn đồng đội. Vào trận. Banner xanh đậm với đường kẻ sân cầu lông và quả cầu cách điệu.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1">
+      <stop stop-color="#092f2a"/>
+      <stop offset="1" stop-color="#176345"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity=".035"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="400" rx="24" fill="url(#bg)"/>
+  <rect width="1280" height="400" rx="24" fill="url(#grid)"/>
+  <circle cx="1170" cy="45" r="260" fill="#c8ee91" opacity=".045"/>
+  <g transform="translate(864 55) rotate(12 155 145)" fill="none" stroke="#d8efde" stroke-opacity=".28" stroke-width="2">
+    <rect width="300" height="290" rx="2"/>
+    <path d="M22 0v290M278 0v290M0 145h300M0 93h300M0 197h300M150 0v93M150 197v93M0 20h300M0 270h300"/>
+  </g>
+  <rect x="64" y="56" width="204" height="30" rx="15" fill="#c8ee91"/>
+  <text x="166" y="76" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="700" letter-spacing="2" fill="#103e30">BOOK. PLAY. REPEAT.</text>
+  <text x="60" y="163" font-family="Segoe UI, Arial, sans-serif" font-size="64" font-weight="750" letter-spacing="-2" fill="#ffffff">BadmintonBooking</text>
+  <text x="64" y="220" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="600" fill="#d6eddb">Chọn sân. Hẹn đồng đội. Vào trận.</text>
+  <path d="M64 253h64" stroke="#c8ee91" stroke-width="4" stroke-linecap="round"/>
+  <text x="64" y="300" font-family="Segoe UI, Arial, sans-serif" font-size="17" fill="#b6d0c5">ĐẶT SÂN CẦU LÔNG · NHÓM CHƠI · QUẢN LÝ CHI NHÁNH</text>
+  <text x="64" y="346" font-family="Segoe UI, Arial, sans-serif" font-size="14" letter-spacing="2" fill="#96b8a9">ASP.NET CORE / REACT / TYPESCRIPT</text>
+  <g transform="translate(1000 193) rotate(32)" stroke="#e8f3df" stroke-linejoin="round">
+    <path d="M-27 28L-64-74Q0-110 64-74L27 28Z" fill="#e8f3df" fill-opacity=".12" stroke-width="3"/>
+    <path d="M-17 26L-40-85M-6 25L-14-93M6 25L14-93M17 26L40-85M-50-38Q0-58 50-38M-36 0Q0-10 36 0" fill="none" stroke-width="2"/>
+    <path d="M-27 28H27V44A27 27 0 0 1-27 44Z" fill="#c8ee91" stroke="#c8ee91" stroke-width="3"/>
+  </g>
+</svg>

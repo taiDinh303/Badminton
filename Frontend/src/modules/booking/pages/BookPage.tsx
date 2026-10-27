@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -25,13 +25,6 @@ const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 
 type Sel = BookingSelection;
 
-/**
- * Grid đặt sân (docs 07 §3/§4) — redesign:
- *  - header card: cơ sở + dải ngày (mũi tên) + nhanh "Hôm nay".
- *  - grid: hàng = sân, cột = giờ; cell cho biết giá theo peak/low.
- *  - drawer xác nhận: sân/giá/người/voucher/điểm/nhóm + 1 CTA chính.
- *  - chú giải trạng thái (text + màu + icon); drawer không bị che bottom nav.
- */
 export default function BookPage() {
   const [searchParams] = useSearchParams();
   const requestedBranch = Number(searchParams.get("branchId"));
@@ -81,7 +74,7 @@ export default function BookPage() {
     setWaitlistDone(false);
   }
 
-  // Keyboard nav moves within the currently selected court's slots (docs 07 §6).
+  // Keyboard nav moves within the currently selected court's slots.
   function onKeyDown(e: React.KeyboardEvent) {
     if (!sel) return;
     const ordered = [...sel.court.slots].sort(
@@ -135,6 +128,23 @@ export default function BookPage() {
               </select>
             </span>
           </label>
+          {(() => {
+            const b = branches.find((x) => x.id === branchId);
+            const lat = b?.geoLat, lng = b?.geoLng;
+            if (!b || lat == null || lng == null) return null;
+            const dir = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${lat},${lng}`)}`;
+            return (
+              <a
+                href={dir}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium text-primary hover:underline"
+                aria-label={`Chỉ đường đến ${b.name}`}
+              >
+                Chỉ đường đến {b.name}
+              </a>
+            );
+          })()}
 
           <div className="sm:justify-self-end">
             <div className="flex items-center gap-2">
@@ -181,7 +191,7 @@ export default function BookPage() {
           >
             <CalendarDays className="h-3.5 w-3.5" /> Hôm nay
           </button>
-          {/* Legend (docs 07 §2: text + color + icon) */}
+          {/* Legend */}
           <div className="ml-auto flex flex-wrap gap-2.5 text-[11px] text-muted">
             <span className="inline-flex items-center gap-1">
               <span className="h-3 w-3 rounded bg-slot-free-bg" /> Trống
@@ -246,7 +256,11 @@ export default function BookPage() {
         ))}
       </div>
 
-      <BookingConfirmationDrawer selection={sel} date={date} weekday={weekday} groups={myGroups} form={form} close={() => setSel(null)} />
+      <div className="my-4 text-sm"><Link className="text-primary underline" to="/planner">Đặt nhiều giờ / lịch định kỳ</Link> · <Link className="text-primary underline" to="/favorites">Sân yêu thích</Link></div>
+      <BookingConfirmationDrawer selection={sel} date={date} weekday={weekday} groups={myGroups} form={form} close={() => setSel(null)} onAlternative={(courtId, slotId) => {
+        const court = courts?.find(c => c.courtId === courtId); const slot = court?.slots.find(s => s.slotId === slotId);
+        if (court && slot) selectSlot(court, slot);
+      }} />
 
       {/* Success */}
       {done && (

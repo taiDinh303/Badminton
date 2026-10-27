@@ -31,8 +31,12 @@ namespace Repositories.Context
 
         protected override void OnModelCreating(ModelBuilder mb)
         {
-            mb.Entity<InventoryDaySnapshot>(e => {
-                e.ToTable("InventoryDaySnapshots"); e.HasKey(x => x.Id);
+            ClubFeaturesModel.Configure(mb);
+            OperationsModel.Configure(mb);
+            mb.Entity<InventoryDaySnapshot>(e =>
+            {
+                e.ToTable("InventoryDaySnapshots");
+                e.HasKey(x => x.Id);
                 e.Property(x => x.CapacityJson).IsRequired();
                 e.HasIndex(x => new { x.BranchId, x.Date }).IsUnique();
                 e.HasOne<Branch>().WithMany().HasForeignKey(x => x.BranchId).OnDelete(DeleteBehavior.Restrict);

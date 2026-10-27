@@ -27,19 +27,58 @@ namespace Badminton.Tests
         private readonly bool _useMigrations;
         public readonly string DbName;
         public readonly string ConnectionString;
-        public int Alice { get; private set; }
-        public int Bob { get; private set; }
-        public int Carol { get; private set; }
-        public int Manager { get; private set; }
-        public int ManagerOtherBranch { get; private set; }
-        public int BranchId { get; private set; }
-        public int BranchId2 { get; private set; }
-        public int Court1 { get; private set; }
-        public int Court2 { get; private set; }
-        public int SlotMorning { get; private set; }
-        public int SlotNoon { get; private set; }
-        public int SlotPeak { get; private set; }
-        public int SlotSoon40 { get; private set; }
+        public int Alice
+        {
+            get; private set;
+        }
+        public int Bob
+        {
+            get; private set;
+        }
+        public int Carol
+        {
+            get; private set;
+        }
+        public int Manager
+        {
+            get; private set;
+        }
+        public int ManagerOtherBranch
+        {
+            get; private set;
+        }
+        public int BranchId
+        {
+            get; private set;
+        }
+        public int BranchId2
+        {
+            get; private set;
+        }
+        public int Court1
+        {
+            get; private set;
+        }
+        public int Court2
+        {
+            get; private set;
+        }
+        public int SlotMorning
+        {
+            get; private set;
+        }
+        public int SlotNoon
+        {
+            get; private set;
+        }
+        public int SlotPeak
+        {
+            get; private set;
+        }
+        public int SlotSoon40
+        {
+            get; private set;
+        }
         public DateTime HanoiNowUtc => DateTime.SpecifyKind(
             new DateTime(FutureDate.Year, FutureDate.Month, FutureDate.Day, 2, 0, 0),
             DateTimeKind.Utc); // 02:00 UTC == 09:00 Hanoi
@@ -73,13 +112,16 @@ namespace Badminton.Tests
             HanoiTime.NowUtc = () => HanoiNowUtc;
 
             var services = new ServiceCollection();
+            Services.DI.BookingExperienceRegistration.AddBookingExperience(services);
             if (postgres is not null)
             {
                 services.AddDbContext<PostgresBookingDbContext>((sp, o) => o.UseNpgsql(ConnectionString).AddInterceptors(sp.GetServices<Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor>()));
                 services.AddScoped<BadmintonBookingDbContext>(sp => sp.GetRequiredService<PostgresBookingDbContext>());
             }
-            else services.AddDbContext<BadmintonBookingDbContext>((sp, o) => o.UseSqlServer(ConnectionString).AddInterceptors(sp.GetServices<Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor>()));
+            else
+                services.AddDbContext<BadmintonBookingDbContext>((sp, o) => o.UseSqlServer(ConnectionString).AddInterceptors(sp.GetServices<Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor>()));
             services.AddScoped<IUnitOfWork, UnitOfWork>();
+            services.AddScoped<IOperationsReadStore, OperationsReadStore>();
             services.AddSingleton<IPricingService, PricingService>();
 
             // A mutable HttpContextAccessor the tests can pin a principal to.
@@ -140,8 +182,10 @@ namespace Badminton.Tests
             using var scope = _services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<BadmintonBookingDbContext>();
             db.Database.EnsureDeleted();
-            if (_useMigrations || db.Database.IsNpgsql()) db.Database.Migrate();
-            else db.Database.EnsureCreated();
+            if (_useMigrations || db.Database.IsNpgsql())
+                db.Database.Migrate();
+            else
+                db.Database.EnsureCreated();
 
             var now = DateTime.UtcNow;
 
@@ -181,14 +225,18 @@ namespace Badminton.Tests
             var s4 = new TimeSlot { Label = "09:40", StartTime = new TimeOnly(9, 40), EndTime = new TimeOnly(10, 40), IsPeak = false, IsActive = true, CreatedAt = now };
             db.TimeSlots.AddRange(s1, s2, s3, s4);
             db.SaveChanges();
-            SlotMorning = s1.Id; SlotNoon = s2.Id; SlotPeak = s3.Id; SlotSoon40 = s4.Id;
+            SlotMorning = s1.Id;
+            SlotNoon = s2.Id;
+            SlotPeak = s3.Id;
+            SlotSoon40 = s4.Id;
 
             var c1 = new Court { BranchId = BranchId, Code = "S01", Name = "Court 1", PriceLowPeak = 100_000, PricePeak = 150_000, WeekendSurcharge = 0.20m, Capacity = 2, IsActive = true, CreatedAt = now };
             var c2 = new Court { BranchId = BranchId, Code = "S02", Name = "Court 2", PriceLowPeak = 100_000, PricePeak = 150_000, WeekendSurcharge = 0.20m, Capacity = 2, IsActive = true, CreatedAt = now };
             var c3 = new Court { BranchId = BranchId2, Code = "S01", Name = "Court 1B", PriceLowPeak = 100_000, PricePeak = 150_000, WeekendSurcharge = 0.20m, Capacity = 2, IsActive = true, CreatedAt = now };
             db.Courts.AddRange(c1, c2, c3);
             db.SaveChanges();
-            Court1 = c1.Id; Court2 = c2.Id;
+            Court1 = c1.Id;
+            Court2 = c2.Id;
 
             var alice = MakeUser("Alice", "0900000001", Role.Customer);
             var bob = MakeUser("Bob", "0900000002", Role.Customer);
@@ -200,8 +248,11 @@ namespace Badminton.Tests
             var admin = MakeUser("Admin", "0900000006", Role.Admin);
             db.Users.AddRange(alice, bob, carol, manager, manager2, admin);
             db.SaveChanges();
-            Alice = alice.Id; Bob = bob.Id; Carol = carol.Id;
-            Manager = manager.Id; ManagerOtherBranch = manager2.Id;
+            Alice = alice.Id;
+            Bob = bob.Id;
+            Carol = carol.Id;
+            Manager = manager.Id;
+            ManagerOtherBranch = manager2.Id;
 
             ActAs(Manager, Role.Manager);
         }
@@ -238,7 +289,8 @@ namespace Badminton.Tests
         public void ActAs(int userId, params Role[] roles)
         {
             var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, userId.ToString()) };
-            foreach (var r in roles) claims.Add(new(ClaimTypes.Role, r.ToString()));
+            foreach (var r in roles)
+                claims.Add(new(ClaimTypes.Role, r.ToString()));
             _services.GetRequiredService<TestHttpContextAccessor>().HttpContext =
                 new DefaultHttpContext
                 {
@@ -278,7 +330,8 @@ namespace Badminton.Tests
         public async Task<ModelViews.Booking.BookingView> CompleteAsPlayedAsync(int id, int actorId, string? note = null)
         {
             var original = HanoiTime.NowUtc;
-            try {
+            try
+            {
                 var booking = await GetBookingAsync(id);
                 var slot = await RunScopeAsync(sp => sp.GetRequiredService<BadmintonBookingDbContext>().TimeSlots.SingleAsync(s => s.Id == booking.SlotId));
                 HanoiTime.NowUtc = () => DateTime.SpecifyKind(HanoiTime.SlotStart(booking.Date, slot.StartTime).Add(-HanoiTime.FixedOffset), DateTimeKind.Utc);
@@ -409,7 +462,10 @@ namespace Badminton.Tests
 
     public sealed class TestHttpContextAccessor : IHttpContextAccessor, ICurrentUser
     {
-        public HttpContext? HttpContext { get; set; }
+        public HttpContext? HttpContext
+        {
+            get; set;
+        }
         public ClaimsPrincipal Principal => HttpContext?.User ?? new ClaimsPrincipal(new ClaimsIdentity());
     }
 }

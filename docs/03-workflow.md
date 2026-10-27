@@ -57,6 +57,8 @@ CURRENT: chi tiết đơn trả QrToken/CheckedInAt; QR mã hóa token thực. S
 
 Waitlist cho phép chọn trực tiếp ô “Đã đặt”, kể cả Pending; không ẩn sân khi mọi giờ đã đặt. Join khi slot đầy → Waiting → job promotion tạo Pending khi slot được giải phóng → lưu PromotedBookingId; leave kết thúc lượt. Năm worker dùng SQL application locks và heartbeat; đa instance/restart cần tải thử trước release.
 
+CURRENT bổ sung 26/10: join và promotion kiểm giao nhau theo giờ trên cùng sân/ngày, kể cả booking dùng SlotId khác trong dữ liệu legacy: `existing.Start < requested.End && requested.Start < existing.End`, chỉ Pending/Confirmed chặn chỗ. Hai slot chỉ chạm đầu/cuối không chồng nhau. Người chờ giữ Waiting khi còn booking giao giờ; khi chỗ được nhả, tạo đơn vẫn qua guard/transaction hiện có để chống race. Không sửa dữ liệu slot hay migration lịch sử; việc DB ứng dụng có slot legacy chồng giờ vẫn NOT VERIFIED.
+
 ## 7. Jobs
 
 | Worker | Chu kỳ source | Bất biến cần giữ |
@@ -74,6 +76,10 @@ Không bảo đảm xử lý đúng giây TTL. BackgroundJobs:Enabled=false ph�
 CURRENT: mỗi sân/ngày có một lịch Open/Maintenance/Closed, tùy chọn giờ bắt đầu/kết thúc (cùng ngày); không nhập giờ là khóa cả ngày. Khung giờ giao nhau với lịch bị khóa ngay khi khách xem ngày đó, ngoài khoảng vẫn đặt được. Mở xóa khoảng giờ khóa. Cần migration AddCourtMaintenanceHours, giữ bảng/PK/lịch sử cũ; hai cột nullable giữ lịch khóa cả ngày hiện có.
 
 Khi khóa sân, hủy Pending và trả điểm/voucher; Confirmed hoàn toàn phần qua adapter hiện có, giữ ledger và kiểm quyền cơ sở. Nếu lỗi xử lý, giữ sân khóa và báo mã đơn để staff lưu lại cùng lịch/thử lại. Lưu lịch và tạo đơn dùng cùng transaction-owned SQL applock để tránh nhận đơn mới trong khoảng khóa. NOT VERIFIED: gateway thật/crash giữa gọi gateway và lưu ledger; không coi kiểm mock là hoàn tiền ngân hàng thật.
+
+CURRENT bổ sung 26/10: mỗi đơn trong danh sách ảnh hưởng mang snapshot sân/ngày/slot của phạm vi bảo trì. Sau khóa chuyển trạng thái, server kiểm lại snapshot và lịch bảo trì hiện tại dưới khóa court-date trước khi hủy Pending hoặc tạo refund/online intent. Đơn đã chuyển sân/ngày/giờ ra ngoài phạm vi, hoặc lịch đã mở lại/thu hẹp không còn chặn slot, được bỏ qua; lỗi gateway/đối soát thật vẫn được báo. Không giữ transaction bao ngoài provider IO; intent online vẫn commit trước khi gọi provider.
+
+Hủy đơn nhóm dùng chung authorization ở pending cancellation, cash/QR refund và online intent: người đặt ban đầu hoặc chủ nhóm hiện tại được hủy, ngoài quyền staff hợp lệ theo cơ sở. Server kiểm identity/active/verified và đọc owner mới dưới khóa group khi dùng quyền chủ nhóm; chuyển chủ lần nữa thu hồi quyền của chủ trung gian. Booking.UserId, tài khoản nhận hoàn, ledger điểm và voucher không chuyển theo chủ nhóm. UI hiện nút hủy cho chủ hiện tại; quyền khởi tạo thanh toán và đọc receipt vẫn giữ theo người đặt/staff.
 
 Voucher có hiệu lực đến hết ValidUntil theo ngày Việt Nam; job khóa khi ValidUntil < hôm nay. API không cho dùng mã hết hạn ngay cả trước tick job, preview/submit báo “Voucher đã hết hạn sử dụng”.
 

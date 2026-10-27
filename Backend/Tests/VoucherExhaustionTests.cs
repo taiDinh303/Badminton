@@ -140,6 +140,7 @@ namespace Badminton.Tests
             Assert.Equal(1, usedAfterReserve.UsedQty);
 
             // Cancel the pending booking (same user).
+            _h.ActAs(_h.Alice, Role.Customer);
             await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<IBookingService>()
                  .CancelAsync(booking!.Id, _h.Alice));

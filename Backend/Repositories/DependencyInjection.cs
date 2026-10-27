@@ -20,6 +20,7 @@ public static class DependencyInjection
         }
         else services.AddDbContext<BadmintonBookingDbContext>(options => options.UseSqlServer(connection));
         services.AddScoped<IUnitOfWork, Repositories.UnitOfWork.UnitOfWork>();
+        services.AddScoped<IOperationsReadStore, Repositories.UnitOfWork.OperationsReadStore>();
         return services;
     }
 }

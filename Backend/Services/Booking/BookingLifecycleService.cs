@@ -7,11 +7,13 @@ using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using Contract.Services.Notify;
 using Contract.Services.Points;
+using Contract.Services.Operations;
 
 namespace Services;
 
 public sealed class BookingLifecycleService(IUnitOfWork uow, ICurrentUser currentUser,
-    IPointService points, IAuditService audit, INotifyService notify, BookingCompletionService completion) : BaseService(uow, currentUser)
+    IPointService points, IAuditService audit, INotifyService notify, BookingCompletionService completion,
+    IBookingTransitionGuard transitions) : BaseService(uow, currentUser)
 {
     private readonly IPointService _points = points;
     private readonly BookingCompletionService _completion = completion;
@@ -28,6 +30,8 @@ public sealed class BookingLifecycleService(IUnitOfWork uow, ICurrentUser curren
 
     private async Task<Booking> MarkCompletedCoreAsync(int bookingId, int actorId, string? note = null)
     {
+        await transitions.AcquireAsync(bookingId);
+        await transitions.EnsureNoPendingRefundAsync(bookingId);
         var b = await MustGetActive(bookingId);
         await AuthorizeStaffBranchAsync(b.BranchId, actorId);
         if (b.Status is not BookingStatus.Confirmed)
@@ -52,6 +56,8 @@ public sealed class BookingLifecycleService(IUnitOfWork uow, ICurrentUser curren
 
     private async Task<Booking> MarkNoShowCoreAsync(int bookingId, int actorId, string? note = null)
     {
+        await transitions.AcquireAsync(bookingId);
+        await transitions.EnsureNoPendingRefundAsync(bookingId);
         var b = await MustGetActive(bookingId);
         await AuthorizeStaffBranchAsync(b.BranchId, actorId);
         if (b.Status is not BookingStatus.Confirmed)
@@ -70,7 +76,7 @@ public sealed class BookingLifecycleService(IUnitOfWork uow, ICurrentUser curren
         }
 
         int claimed = await Uow.Bookings.MarkNoShowAsync(bookingId,
-            "No-show: khach khong den san" + (string.IsNullOrWhiteSpace(note) ? "" : " - " + note), DateTime.UtcNow, HanoiTime.HanoiNow());
+            "No-show: khach khong den san" + (string.IsNullOrWhiteSpace(note) ? "" : " - " + note), DateTime.UtcNow, HanoiTime.HanoiNow(), b.BranchId);
         if (claimed == 0)
         {
             var nowStatus = await Repo.GetByIdAsync(bookingId);
@@ -81,7 +87,7 @@ public sealed class BookingLifecycleService(IUnitOfWork uow, ICurrentUser curren
         b.CancelledAt = DateTime.UtcNow;
         b.CancelReason = "No-show: khach khong den san" + (string.IsNullOrWhiteSpace(note) ? "" : " - " + note);
         b.UpdatedAt = DateTime.UtcNow;
-        Repo.Update(b);
+        Repo.UpdateProperties(b, nameof(Booking.Status), nameof(Booking.CancelledAt), nameof(Booking.CancelReason), nameof(Booking.UpdatedAt));
 
         if (b.PointsEarned > 0 && await _points.HasEarnedRowAsync(b.Id))
             await _points.ClawbackAsync(b.UserId, b.Id, b.PayableAmount,

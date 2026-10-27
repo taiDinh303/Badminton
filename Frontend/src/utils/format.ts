@@ -4,6 +4,18 @@ export function vietnamDate(date = new Date()): string {
   }).format(date);
 }
 
+/** A booking calendar date for an HTML date input; never reinterpret it in local time. */
+export function dateInputValue(date: string): string {
+  const value = date.trim();
+  const displayDate = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);
+  const iso = displayDate
+    ? `${displayDate[3]}-${displayDate[2].padStart(2, "0")}-${displayDate[1].padStart(2, "0")}`
+    : value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || iso.startsWith("0000-")) return "";
+  const parsed = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === iso ? iso : "";
+}
+
 export function formatVnd(n: number): string {
   return `${Math.round(n).toLocaleString("vi-VN")}đ`;
 }
@@ -20,8 +32,6 @@ export function formatDay(date: string): string {
   }).format(parsed);
 }
 
-/** Backend slotLabel = "14:00 (02:00-03:00)" — the parenthetical is a
- *  12-hour time that confuses users. Keep just the label portion ("14:00"). */
 export function slotLabelClean(label: string | null | undefined): string {
   if (!label) return "—";
   return label.includes("(") ? label.split("(")[0].trim() : label;

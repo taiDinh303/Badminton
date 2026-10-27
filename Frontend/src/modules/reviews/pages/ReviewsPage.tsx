@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ReviewCommunity from "../../experience/components/ReviewCommunity";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Star, MessageSquare } from "lucide-react";
@@ -27,10 +28,6 @@ function Stars({ rating, size = "h-4 w-4" }: { rating: number; size?: string }) 
   );
 }
 
-/**
- * FEAT 8 — Reviews (docs 03 §7): public per-court review list + average.
- * Submission happens on a Completed booking's detail page.
- */
 export default function ReviewsPage() {
   const [page, setPage] = useState(1);
   const [courtId, setCourtId] = useState<number | null>(null);
@@ -130,6 +127,7 @@ export default function ReviewsPage() {
                   {r.comment && (
                     <p className="mt-3 text-sm text-muted">{r.comment}</p>
                   )}
+                  <ReviewCommunity reviewId={r.id} />
                   {r.flaggedRefunded && (
                     <p className="mt-2 text-[11px] font-medium text-state-warning">
                       Đơn này đã được hoàn tiền

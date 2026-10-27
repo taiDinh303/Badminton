@@ -28,10 +28,6 @@ const emptyForm = (): StaffForm => ({
   role: "Manager", branchId: null,
 });
 
-/**
- * Admin "Nhân viên" (docs 07 §4, chỉ Admin): list staff, tạo,
- * khóa/mở khóa, đổi role, gán cơ sở.
- */
 export default function StaffPage() {
   const [form, setForm] = useState<StaffForm | null>(null);
   const { data: branches = [] } = useQuery({

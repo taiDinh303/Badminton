@@ -9,8 +9,8 @@ namespace Contract.Repositories.UnitOfWork
 
         public Page(int number, int size)
         {
-            Number = Math.Max(1, number);
             Size = Math.Max(1, size);
+            Number = Math.Clamp(number, 1, int.MaxValue / Size);
         }
 
         public int Skip => (Number - 1) * Size;
@@ -25,6 +25,8 @@ namespace Contract.Repositories.UnitOfWork
     public interface IGenericRepository<T> where T : class
     {
         Task<T?> GetByIdAsync(int id, CancellationToken ct = default);
+        // Reload tracked state after the caller acquires its business transaction lock.
+        Task<T?> GetFreshByIdAsync(int id, CancellationToken ct = default);
 
         Task<IReadOnlyList<T>> GetAllAsync(CancellationToken ct = default);
 

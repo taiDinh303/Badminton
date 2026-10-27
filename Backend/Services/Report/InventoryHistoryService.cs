@@ -3,12 +3,12 @@ using Badminton.Core.Utils;
 using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using System.Text.Json;
+using Contract.Services.Report;
 namespace Services;
 
-public sealed record InventorySlot(int Court, int Slot, bool Peak);
 
 /// Captures today's latest known capacity; past rows are never rewritten using current configuration.
-public sealed class InventoryHistoryService(IUnitOfWork uow)
+public sealed class InventoryHistoryService(IUnitOfWork uow) : IInventoryHistoryService
 {
     public async Task CaptureTodayAsync(int? branchId = null)
     {

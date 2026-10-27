@@ -4,9 +4,11 @@ import { ApiError, type GroupView } from "../../../services/api";
 import { formatDay, formatVnd } from "../../../utils/format";
 import { Button, Callout } from "../../../components/ui";
 import type { BookingForm, BookingSelection } from "../hooks/useBookingForm";
+import AlternativeSlots from "../../experience/components/AlternativeSlots";
+import CourtPhotos from "../../experience/components/CourtPhotos";
 
-interface Props { selection: BookingSelection | null; date: string; weekday: string; groups: GroupView[]; form: BookingForm; close: () => void }
-export default function BookingConfirmationDrawer({ selection: sel, date, weekday, groups: myGroups, form, close }: Props) {
+interface Props { selection: BookingSelection | null; date: string; weekday: string; groups: GroupView[]; form: BookingForm; close: () => void; onAlternative: (courtId: number, slotId: number) => void }
+export default function BookingConfirmationDrawer({ selection: sel, date, weekday, groups: myGroups, form, close, onAlternative }: Props) {
   const { players, setPlayers, voucher, setVoucher, groupId, setGroupId, pointsToRedeem, setPointsToRedeem,
     create, joinWaitlist, quote, validQuote, capacity, waitlistDone, createFailed, selectedBooked, price } = form;
   return (<>
@@ -42,6 +44,8 @@ export default function BookingConfirmationDrawer({ selection: sel, date, weekda
                   <X className="h-5 w-5" />
                 </button>
               </div>
+
+              <CourtPhotos key={sel.court.courtId} courtId={sel.court.courtId} />
 
               {/* People + voucher */}
               <div className="mt-4 grid grid-cols-2 gap-2.5">
@@ -184,6 +188,7 @@ export default function BookingConfirmationDrawer({ selection: sel, date, weekda
                 </Button>
               )}
               {joinWaitlist.isError && <Callout tone="error" className="mt-2">{joinWaitlist.error.message}</Callout>}
+              {(createFailed || selectedBooked) && <AlternativeSlots courtId={sel.court.courtId} slotId={sel.slot.slotId} date={date} onSelect={onAlternative} />}
               {waitlistDone && (
                 <Callout tone="success" className="mt-2">
                   Đã xếp bạn vào danh sách chờ (FIFO).

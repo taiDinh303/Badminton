@@ -1,3 +1,4 @@
+using Contract.Services.Report;
 using Badminton.Core.Utils;
 using Badminton.Core.Enums;
 using Contract.Repositories.Entity;
@@ -13,8 +14,9 @@ namespace Services
     public sealed class BranchService : BaseService, IBranchService
     {
         private readonly IAuditService _audit;
-        public BranchService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit)
-            : base(uow, currentUser) { _audit = audit; }
+        private readonly IInventoryHistoryService _inventory;
+        public BranchService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit, IInventoryHistoryService inventory)
+            : base(uow, currentUser) { _audit = audit; _inventory = inventory; }
 
         private IGenericRepository<Branch> Repo => Repository<Branch>();
 
@@ -32,7 +34,8 @@ namespace Services
                 .Select(b => new BranchView(
                     b.Id, b.Name, b.Address, b.IsActive,
                     b.OpenTime.ToString("HH\\:mm"), b.CloseTime.ToString("HH\\:mm"),
-                    counts.TryGetValue(b.Id, out var n) ? n : 0))
+                    counts.TryGetValue(b.Id, out var n) ? n : 0,
+                    b.GeoLat, b.GeoLng))
                 .ToList();
         }
 
@@ -42,7 +45,8 @@ namespace Services
             var courtCount = await Repository<Court>()
                 .CountByConditionAsync(c => c.BranchId == id && c.IsActive && c.DeletedAt == null);
             return new BranchView(b.Id, b.Name, b.Address, b.IsActive,
-                b.OpenTime.ToString("HH\\:mm"), b.CloseTime.ToString("HH\\:mm"), courtCount);
+                b.OpenTime.ToString("HH\\:mm"), b.CloseTime.ToString("HH\\:mm"), courtCount,
+                b.GeoLat, b.GeoLng);
         }
 
         public async Task<int> CreateAsync(CreateBranchRequest request, int actorId)
@@ -55,6 +59,7 @@ namespace Services
         private async Task<int> CreateCoreAsync(CreateBranchRequest request, int actorId)
         {
             Validate(request.Name, request.Address, ParseTime(request.OpenTime), ParseTime(request.CloseTime));
+            ValidateGeo(request.GeoLat, request.GeoLng);
             var dupes = await Repo.GetByConditionAsync(b => b.Name == request.Name && b.DeletedAt == null);
             if (dupes.Count > 0)
                 throw new ConflictException($"Cơ sở '{request.Name}' đã tồn tại.");
@@ -78,7 +83,7 @@ namespace Services
             var branchId = id;
             await Uow.LockBookingRequestAsync($"branch-config:{branchId}");
             await UpdateCoreAsync(id, request, actorId);
-            await new InventoryHistoryService(Uow).CaptureTodayAsync(branchId);
+            await _inventory.CaptureTodayAsync(branchId);
         });
 
         private async Task UpdateCoreAsync(int id, UpdateBranchRequest request, int actorId)
@@ -87,6 +92,7 @@ namespace Services
             var open = request.OpenTime is null ? b.OpenTime : ParseTime(request.OpenTime);
             var close = request.CloseTime is null ? b.CloseTime : ParseTime(request.CloseTime);
             Validate(request.Name ?? b.Name, request.Address ?? b.Address, open, close);
+            ValidateGeo(request.GeoLat ?? b.GeoLat, request.GeoLng ?? b.GeoLng);
             var today = HanoiTime.HanoiToday();
             var affected = await Repository<Booking>().CountByConditionAsync(x => x.BranchId == id && x.Date >= today && x.DeletedAt == null
                 && (x.Status == BookingStatus.Pending || x.Status == BookingStatus.Confirmed)
@@ -98,7 +104,13 @@ namespace Services
             if (request.IsActive.HasValue) b.IsActive = request.IsActive.Value;
             if (request.OpenTime is not null) b.OpenTime = ParseTime(request.OpenTime);
             if (request.CloseTime is not null) b.CloseTime = ParseTime(request.CloseTime);
+            if (request.HasGeo)
+            {
+                b.GeoLat = request.GeoLat;
+                b.GeoLng = request.GeoLng;
+            }
             Validate(b.Name, b.Address, b.OpenTime, b.CloseTime);
+            ValidateGeo(b.GeoLat, b.GeoLng);
             b.UpdatedAt = DateTime.UtcNow;
             Repo.Update(b);
             await SaveAsync();
@@ -109,7 +121,7 @@ namespace Services
             var branchId = id;
             await Uow.LockBookingRequestAsync($"branch-config:{branchId}");
             await DeleteCoreAsync(id, actorId);
-            await new InventoryHistoryService(Uow).CaptureTodayAsync(branchId);
+            await _inventory.CaptureTodayAsync(branchId);
         });
 
         private async Task DeleteCoreAsync(int id, int actorId)
@@ -154,9 +166,21 @@ namespace Services
             if (close <= open) throw new BadRequestException("Giờ đóng cửa phải sau giờ mở cửa trong cùng ngày.");
         }
 
+        private static void ValidateGeo(double? lat, double? lng)
+        {
+            if (lat.HasValue != lng.HasValue)
+                throw new BadRequestException("Vị trí cần cả latitude và longitude.");
+            if (lat is not { } vLat || lng is not { } vLng)
+                return;
+            if (vLat is < -90 or > 90)
+                throw new BadRequestException("Latitude phải trong khoảng -90 đến 90.");
+            if (vLng is < -180 or > 180)
+                throw new BadRequestException("Longitude phải trong khoảng -180 đến 180.");
+        }
+
         private static object? AuditCopy(Branch b) => new
         {
-            b.Name, b.Address, b.IsActive, b.OpenTime, b.CloseTime
+            b.Name, b.Address, b.IsActive, b.OpenTime, b.CloseTime, b.GeoLat, b.GeoLng
         };
     }
 }

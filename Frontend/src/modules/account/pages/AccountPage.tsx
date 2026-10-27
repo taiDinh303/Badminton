@@ -1,4 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
+import { ExperienceLinks } from "../../experience/components/ExperienceUi";
+import { mediaResourceUrl } from "../../../services/http";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -24,12 +26,6 @@ const ROLE_LABEL: Record<string, string> = {
   Admin: "Quản trị",
 };
 
-/**
- * Tài khoản (docs 07 §4): hồ sơ + điểm/voucher + shortcut tới các trang con.
- * Redesign: a clear profile hero, a loyalty strip that shows the real
- * accumulated points balance, and a voucher card that reflects the
- * mỗi tài khoản dùng mỗi mã một lần; các mã khác vẫn khả dụng.
- */
 export default function AccountPage() {
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
@@ -77,11 +73,12 @@ export default function AccountPage() {
   return (
     <div className="mx-auto max-w-2xl p-4 md:p-6">
       <h1 className="text-2xl font-bold">Tài khoản</h1>
+        <ExperienceLinks />
 
       {/* Profile hero */}
       <Card className="mt-4 p-4 md:p-5">
         <div className="flex items-center gap-4">
-          {profile.data?.avatarUrl ? <img src={profile.data.avatarUrl} alt="Ảnh đại diện" referrerPolicy="no-referrer" className="h-14 w-14 rounded-2xl object-cover" /> : <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-white">
+          {profile.data?.avatarUrl ? <img src={mediaResourceUrl(profile.data.avatarUrl)} alt="Ảnh đại diện" referrerPolicy="no-referrer" className="h-14 w-14 rounded-2xl object-cover" /> : <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-white">
             {(profile.data?.fullName ?? user?.fullName ?? "?").charAt(0).toUpperCase()}
           </span>}
           <div className="min-w-0">
@@ -102,7 +99,7 @@ export default function AccountPage() {
         {editing && <form className="mt-4 space-y-3" onSubmit={(e) => { e.preventDefault(); update.mutate(); }}>
           <Field label="Họ và tên" required maxLength={100} value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
           <Field label="Email" type="email" maxLength={150} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          <Field label="URL ảnh đại diện" type="url" maxLength={500} placeholder="https://… (để trống để xóa ảnh)" value={form.avatarUrl} onChange={(e) => setForm({ ...form, avatarUrl: e.target.value })} />
+          <Field label="URL ảnh đại diện" type="text" maxLength={500} placeholder="https://… hoặc ảnh đã tải lên (để trống để xóa ảnh)" value={form.avatarUrl} onChange={(e) => setForm({ ...form, avatarUrl: e.target.value })} />
           <div className="flex gap-2"><Button type="submit" disabled={update.isPending || !form.fullName.trim()}>Lưu tài khoản</Button><Button type="button" variant="ghost" disabled={update.isPending} onClick={() => setEditing(false)}>Hủy</Button></div>
           {update.isError && <Callout tone="error">{update.error.message}</Callout>}
         </form>}

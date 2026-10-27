@@ -2,11 +2,6 @@ import { useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { ArrowUp, ArrowDown, ArrowUpDown, Inbox } from "lucide-react";
 
-/**
- * Lightweight virtualized table (docs 07 §6: sticky header, virtualize > 100
- * rows, sortable columns). Only ~30 rows in the DOM at a time.
- */
-
 export interface Column<T> {
   key: string;
   label: string;
