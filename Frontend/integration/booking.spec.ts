@@ -1,4 +1,19 @@
-import { test, expect } from "@playwright/test";
+import { test as base, expect } from "@playwright/test";
+
+// Exercise the production limiter too: background-query 429s must not hide
+// behind a later missing-option timeout. No routing/mocking or limiter bypass.
+const test = base.extend<{ apiRateLimit: void }>({
+  apiRateLimit: [async ({ page }, use) => {
+    const rejected: string[] = [];
+    page.on("response", response => {
+      const path = new URL(response.url()).pathname.replace(/(\/calendar\/feed\/)[^/]+/, "$1[redacted]");
+      if (path.startsWith("/api/v1/") && response.status() === 429)
+        rejected.push(`${response.request().method()} ${path}`);
+    });
+    await use();
+    expect(rejected, "Real API requests must stay within the production rate limit").toEqual([]);
+  }, { auto: true }],
+});
 
 test.afterAll(async ({ request }) => { await request.post("/__test/shutdown"); });
 
@@ -19,7 +34,8 @@ test("real club matching, equipment, coaching, tournament and revocable calendar
   const booking = (await created.json()).data;
   expect((await page.request.post(`/api/v1/bookings/${booking.id}/cancel`, { headers })).status()).toBe(200);
   // Club requests reach the real API, JWT validation and migrated SQL database.
-  await page.goto("/calendar-sync");
+  await page.getByRole("link", { name: "Câu lạc bộ", exact: true }).filter({ visible: true }).first().click();
+  await page.getByRole("navigation", { name: "Câu lạc bộ", exact: true }).getByRole("link", { name: "Lịch tự đồng bộ", exact: true }).click();
   await page.getByRole("button", { name: "Bật lịch tự đồng bộ", exact: true }).click();
   const feedInput = page.getByLabel("Liên kết lịch", { exact: true });
   await expect(feedInput).toBeVisible();
@@ -107,13 +123,20 @@ test("real login, slot quote with voucher and points, booking, and owner cancell
   expect(booking.totalAmount).toBe(quote.total);
   expect(booking.payableAmount).toBe(quote.payable);
   await expect(page.getByText(booking.bookingCode)).toBeVisible();
-  await page.goto(`/bookings/${booking.id}`);
+  // Stay in the SPA: a document reload restarts warmSession and its API queries.
+  await page.getByRole("link", { name: "Đơn của tôi", exact: true }).filter({ visible: true }).first().click();
+  await page.getByRole("link", { name: booking.bookingCode, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/bookings/${booking.id}$`));
   // The real API returns dd/MM/yyyy; changing only the slot must preserve its calendar date.
+  const slotsLoaded = page.waitForResponse(r => new URL(r.url()).pathname === "/api/v1/time-slots" && r.request().method() === "GET");
   await page.getByRole("button", { name: "Đổi lịch, xem lịch sử, gửi phản ánh", exact: true }).click();
+  const slotsResponse = await slotsLoaded;
+  expect(slotsResponse.status(), "Rescheduling requires a successful time-slots response").toBe(200);
+  expect((await slotsResponse.json()).data).toEqual(expect.arrayContaining([expect.objectContaining({ label: "10:00" })]));
   await expect(page.getByLabel("Ngày đổi sang", { exact: true })).toHaveValue(date);
-  // The slots query fires when the panel opens; wait for the option to render before selecting.
+  // Wait for React to render the successfully loaded catalogue.
   const newSlot = page.getByLabel("Khung giờ mới", { exact: true });
-  await expect(newSlot.locator("option", { hasText: "10:00" })).toHaveCount(1, { timeout: 30_000 });
+  await expect(newSlot.locator("option", { hasText: "10:00" })).toHaveCount(1);
   await newSlot.selectOption({ label: "10:00" });
   await page.getByLabel("Lý do đổi lịch", { exact: true }).fill("Đổi sang giờ khác cùng ngày và cùng giá");
   await page.getByLabel("Tôi xác nhận đổi lịch.", { exact: false }).check();
@@ -126,7 +149,7 @@ test("real login, slot quote with voucher and points, booking, and owner cancell
   await page.getByRole("button", { name: "Huỷ đặt chỗ", exact: true }).click();
   expect((await (await cancelled).json()).data.status).toBe("Cancelled");
   await expect(page.getByText("Đã hủy", { exact: true })).toBeVisible();
-  await page.goto("/account");
+  await page.getByRole("link", { name: "Tài khoản", exact: true }).filter({ visible: true }).first().click();
   await page.getByLabel("Mật khẩu hiện tại", { exact: true }).fill("BrowserOnly$2026");
   await page.getByLabel("Mật khẩu mới", { exact: true }).fill("BrowserChanged$2026");
   await page.getByLabel("Nhập lại mật khẩu mới", { exact: true }).fill("BrowserChanged$2026");
@@ -143,7 +166,7 @@ test("real login, slot quote with voucher and points, booking, and owner cancell
   // Gate restores the account page that required reauthentication.
   await expect(page.getByText("Alice", { exact: true }).filter({ visible: true }).first()).toBeVisible();
   const previousToken = await page.evaluate(() => localStorage.getItem("bb_token"));
-  await page.goto("/account");
+  await expect(page).toHaveURL(/\/account$/);
   const revoked = page.waitForResponse(r => r.url().endsWith("/auth/logout"));
   await page.getByRole("button", { name: "Đăng xuất mọi thiết bị", exact: true }).click();
   expect((await revoked).status()).toBe(200);

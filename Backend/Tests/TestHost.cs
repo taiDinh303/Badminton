@@ -181,11 +181,22 @@ namespace Badminton.Tests
         {
             using var scope = _services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<BadmintonBookingDbContext>();
-            db.Database.EnsureDeleted();
-            if (_useMigrations || db.Database.IsNpgsql())
-                db.Database.Migrate();
-            else
-                db.Database.EnsureCreated();
+            // CI LocalDB can spend longer creating database files/schema than a
+            // business query. Bound setup separately; keep normal query timeouts.
+            var queryTimeout = db.Database.GetCommandTimeout();
+            try
+            {
+                db.Database.SetCommandTimeout(TimeSpan.FromMinutes(2));
+                db.Database.EnsureDeleted();
+                if (_useMigrations || db.Database.IsNpgsql())
+                    db.Database.Migrate();
+                else
+                    db.Database.EnsureCreated();
+            }
+            finally
+            {
+                db.Database.SetCommandTimeout(queryTimeout);
+            }
 
             var now = DateTime.UtcNow;
 
@@ -454,6 +465,7 @@ namespace Badminton.Tests
             HanoiTime.NowUtc = () => DateTime.UtcNow;
             using var scope = _services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<BadmintonBookingDbContext>();
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(2));
             db.Database.EnsureDeleted();
             _services.Dispose();
             return ValueTask.CompletedTask;
