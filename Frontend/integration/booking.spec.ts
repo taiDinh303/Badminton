@@ -111,7 +111,10 @@ test("real login, slot quote with voucher and points, booking, and owner cancell
   // The real API returns dd/MM/yyyy; changing only the slot must preserve its calendar date.
   await page.getByRole("button", { name: "Đổi lịch, xem lịch sử, gửi phản ánh", exact: true }).click();
   await expect(page.getByLabel("Ngày đổi sang", { exact: true })).toHaveValue(date);
-  await page.getByLabel("Khung giờ mới", { exact: true }).selectOption({ label: "10:00" });
+  // The slots query fires when the panel opens; wait for the option to render before selecting.
+  const newSlot = page.getByLabel("Khung giờ mới", { exact: true });
+  await expect(newSlot.locator("option", { hasText: "10:00" })).toHaveCount(1, { timeout: 30_000 });
+  await newSlot.selectOption({ label: "10:00" });
   await page.getByLabel("Lý do đổi lịch", { exact: true }).fill("Đổi sang giờ khác cùng ngày và cùng giá");
   await page.getByLabel("Tôi xác nhận đổi lịch.", { exact: false }).check();
   const rescheduled = page.waitForResponse(r => r.url().endsWith(`/booking-experience/${booking.id}/reschedule`) && r.request().method() === "POST");
