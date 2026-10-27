@@ -1,21 +1,44 @@
 import { test as base, expect } from "@playwright/test";
 
+// All cases use one server and one loopback IP. Browser contexts do not isolate
+// the public policy's 100 requests / 10 seconds quota (DependencyInjection.cs).
+const publicRateWindowMs = 10_000;
+let previousPageClosedAt: number | undefined;
+
 // Exercise the production limiter too: background-query 429s must not hide
 // behind a later missing-option timeout. No routing/mocking or limiter bypass.
 const test = base.extend<{ apiRateLimit: void }>({
   apiRateLimit: [async ({ page }, use) => {
+    if (previousPageClosedAt !== undefined) {
+      const remaining = publicRateWindowMs - (performance.now() - previousPageClosedAt);
+      if (remaining > 0) await new Promise(resolve => setTimeout(resolve, remaining));
+    }
     const rejected: string[] = [];
     page.on("response", response => {
       const path = new URL(response.url()).pathname.replace(/(\/calendar\/feed\/)[^/]+/, "$1[redacted]");
       if (path.startsWith("/api/v1/") && response.status() === 429)
         rejected.push(`${response.request().method()} ${path}`);
     });
-    await use();
+    try {
+      await use();
+    } finally {
+      // Stop background prefetch/polling before starting the idle window.
+      await page.close();
+      previousPageClosedAt = performance.now();
+    }
     expect(rejected, "Real API requests must stay within the production rate limit").toEqual([]);
   }, { auto: true }],
 });
 
 test.afterAll(async ({ request }) => { await request.post("/__test/shutdown"); });
+
+test("public rate limit rejects an over-budget burst before independent browser flows", async ({ request }) => {
+  // Deliberately fill the real shared quota; the following cases must recover
+  // through the fixture's idle window, even on a runner fast enough to hit it.
+  const responses = await Promise.all(Array.from({ length: 101 }, () => request.get("/api/v1/branches")));
+  expect(responses.filter(response => response.status() === 200)).toHaveLength(100);
+  expect(responses.filter(response => response.status() === 429)).toHaveLength(1);
+});
 
 test("real club matching, equipment, coaching, tournament and revocable calendar", async ({ page }) => {
   await page.goto("/auth");
