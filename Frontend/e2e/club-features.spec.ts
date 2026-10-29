@@ -892,6 +892,10 @@ test("calendar creates a subscription link and revokes it without persisting tok
   await expect(
     page.getByRole("link", { name: "Mở đăng ký trong ứng dụng lịch" }),
   ).toHaveAttribute("href", /^webcal:/);
+  await page.context().grantPermissions(["clipboard-write", "clipboard-read"]);
+  await page.getByRole("button", { name: "Sao chép liên kết", exact: true }).click();
+  await expect(page.getByText("Đã sao chép liên kết lịch.")).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(`/api/v1/club/calendar/feed/${"a".repeat(64)}.ics`);
   expect(
     await page.evaluate(() =>
       JSON.stringify({ ...localStorage, ...sessionStorage }),
@@ -924,9 +928,29 @@ test("all club pages fit a mobile viewport with loading or empty data", async ({
       ),
       route,
     ).toBe(true);
+    await expect(page.getByRole("navigation", { name: "Câu lạc bộ", exact: true }).locator('[aria-current="page"]')).toHaveCount(1);
+    await page.screenshot({ path: `../artifacts/club-ui-20261029/${route}-mobile.png`, fullPage: true });
   }
   await page.screenshot({
     path: "../artifacts/club-features-20261027/calendar-mobile.png",
     fullPage: true,
   });
+});
+
+test("club navigation shows the current feature and links between all six desktop pages", async ({ page }) => {
+  await setup(page, []);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/players");
+  const navigation = page.getByRole("navigation", { name: "Câu lạc bộ", exact: true });
+  for (const [label, path] of [
+    ["Tìm bạn chơi", "/players"], ["Chia chi phí", "/group-expenses"],
+    ["Dụng cụ", "/equipment"], ["Huấn luyện viên", "/coaches"],
+    ["Giải đấu nhỏ", "/tournaments"], ["Lịch tự đồng bộ", "/calendar-sync"],
+  ]) {
+    await navigation.getByRole("link", { name: label, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect(navigation.getByRole("link", { name: label, exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("list", { name: "Các bước thực hiện" })).toBeVisible();
+    await page.screenshot({ path: `../artifacts/club-ui-20261029/${path.slice(1)}-desktop.png`, fullPage: true });
+  }
 });

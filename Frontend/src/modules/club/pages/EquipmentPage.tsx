@@ -239,6 +239,7 @@ export default function EquipmentPage({ staff = false }: { staff?: boolean }) {
           key={item.id}
           title={`${item.name} · ${item.rental ? "Cho thuê" : "Bán cầu"}`}
         >
+          <div className="club-tags"><span className="club-tag">{item.rental ? "Nhận và trả tại cơ sở" : "Mua tại cơ sở"}</span><span className={`club-tag${!item.available || !item.active ? " club-tag-muted" : ""}`}>{!item.active ? "Tạm ngừng" : item.available > 0 ? "Còn hàng" : "Hết hàng"}</span></div>
           <p>
             {money(item.unitPrice)} / đơn vị · Còn {item.available}
             {staff && ` / ${item.stock}`} ·{" "}
