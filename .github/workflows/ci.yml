@@ -143,6 +143,8 @@ jobs:
       # prior build (dist/). Without this the preview server has nothing to
       # serve and Playwright's config.webServer times out after 120s.
       - run: npm run build
+      - name: Prepare bounded Ubuntu dependency downloads
+        run: bash ../scripts/Prepare-PlaywrightApt.sh
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npx playwright test
         env:
@@ -195,6 +197,9 @@ jobs:
       - run: npm ci
         working-directory: Frontend
       - run: npm run build
+        working-directory: Frontend
+      - name: Prepare bounded Ubuntu dependency downloads
+        run: bash ../scripts/Prepare-PlaywrightApt.sh
         working-directory: Frontend
       - run: npx playwright install --with-deps chromium
         working-directory: Frontend
