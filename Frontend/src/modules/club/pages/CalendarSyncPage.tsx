@@ -12,6 +12,7 @@ import {
 export default function CalendarSyncPage() {
   const queryClient = useQueryClient();
   const [url, setUrl] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
   const query = useQuery({
     queryKey: ["club", "calendar-state"],
     queryFn: club.subscription,
@@ -19,6 +20,7 @@ export default function CalendarSyncPage() {
   });
   const action = useMutation({
     mutationFn: async (rotate: boolean) => {
+      setCopyStatus("");
       if (rotate) {
         const { token } = await club.rotateCalendar();
         setUrl(calendarFeedUrl(token));
@@ -83,6 +85,15 @@ export default function CalendarSyncPage() {
                 onFocus={(e) => e.currentTarget.select()}
               />
             </label>
+            <Button variant="ghost" type="button" onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(url);
+                setCopyStatus("Đã sao chép liên kết lịch.");
+              } catch {
+                setCopyStatus("Chọn liên kết ở trên và sao chép thủ công.");
+              }
+            }}>Sao chép liên kết</Button>
+            <p role="status">{copyStatus}</p>
             <a
               className="text-primary underline"
               href={url.replace(/^https?:/, "webcal:")}

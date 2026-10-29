@@ -136,7 +136,7 @@ export default function CoachesPage({ staff = false }: { staff?: boolean }) {
         ))}
       </SelectField>
       <QueryStatus query={coaches} empty={coaches.data?.length === 0} />
-      {coach && <p>{coach.bio}</p>}
+      {coach && <Panel title={coach.name}><div className="club-tags"><span className="club-tag">Huấn luyện viên</span><span className="club-tag">{coach.active ? "Đang nhận học viên" : "Tạm ngừng nhận"}</span></div><p>{coach.bio || "Chọn lịch học bên dưới để xem buổi cá nhân hoặc nhóm còn chỗ."}</p></Panel>}
       {staff && (
         <CoachEditor
           key={`${branchId}:${coach?.id ?? 0}`}

@@ -135,6 +135,7 @@ export default function PlayersPage() {
           key={s.id}
           title={`${s.area} · Mức ${s.level} · ${s.accepted}/${s.capacity} người`}
         >
+          <div className="club-tags"><span className="club-tag">Trình độ {s.level}/5</span><span className="club-tag">{s.capacity - s.accepted > 0 ? `Còn ${s.capacity - s.accepted} chỗ` : "Đã đủ người"}</span></div>
           <p>
             {s.owner} · {time(s.startsAtUtc)} – {time(s.endsAtUtc)}
           </p>

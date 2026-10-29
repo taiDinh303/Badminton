@@ -1,17 +1,18 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
+import { Users, Wallet, Package, GraduationCap, Trophy, CalendarSync, ArrowRight, LoaderCircle, Inbox } from "lucide-react";
+import FeatureHeading from "../../../components/FeatureHeading";
+import "../club.css";
 import { api } from "../../../services/api";
 import {
   Button,
   Callout,
-  PageHeader,
   SelectField,
 } from "../../../components/ui";
 import { useAuth } from "../../../store/auth";
 import { formatClubTime } from "../utils/clubTime";
 export {
-  Panel,
   Pages,
   ActionStatus,
 } from "../../experience/components/ExperienceUi";
@@ -57,6 +58,19 @@ export function useBranch() {
   );
   return { branchId, control, user };
 }
+const features = [
+  { path: "/players", label: "Tìm bạn chơi", icon: Users, hint: "Cùng trình độ, cùng giờ rảnh", steps: ["Chọn khu vực và giờ rảnh", "Gửi yêu cầu tham gia", "Chủ buổi duyệt và thống nhất sân"] },
+  { path: "/group-expenses", label: "Chia chi phí", icon: Wallet, hint: "Rõ phần tiền của từng người", steps: ["Chọn đơn sân của nhóm", "Chia đều hoặc theo phút tham dự", "Ghi nhận từng khoản đã đóng"] },
+  { path: "/equipment", label: "Dụng cụ", icon: Package, hint: "Vợt sẵn sàng, cầu đủ cho buổi chơi", steps: ["Chọn dụng cụ hoặc cầu", "Gửi yêu cầu và nhận tại cơ sở", "Trả vợt sau buổi chơi"] },
+  { path: "/coaches", label: "Huấn luyện viên", icon: GraduationCap, hint: "Luyện tập theo lịch của bạn", steps: ["Chọn huấn luyện viên", "Xem giờ học còn chỗ", "Đặt buổi cá nhân hoặc nhóm"] },
+  { path: "/tournaments", label: "Giải đấu nhỏ", icon: Trophy, hint: "Từ đăng ký đến kết quả", steps: ["Chọn giải và đăng ký đội", "Theo dõi bảng và lịch thi đấu", "Xem kết quả và xếp hạng"] },
+  { path: "/calendar-sync", label: "Lịch tự đồng bộ", icon: CalendarSync, hint: "Lịch sân luôn bên bạn", steps: ["Tạo liên kết lịch riêng tư", "Đăng ký trong ứng dụng lịch", "Ứng dụng lịch tự lấy thay đổi"] },
+];
+
+export function Panel({ title, children }: { title: string; children: ReactNode }) {
+  return <section className="club-panel"><header className="club-panel-heading"><h2>{title}</h2></header><div className="club-panel-body">{children}</div></section>;
+}
+
 export function Shell({
   title,
   subtitle,
@@ -68,25 +82,23 @@ export function Shell({
   children: ReactNode;
   staff?: boolean;
 }) {
+  const { pathname } = useLocation();
+  const feature = features.find((f) => pathname.endsWith(f.path)) ?? features[0];
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-4 md:p-6">
-      <PageHeader title={title} subtitle={subtitle} />
+    <div className="club-shell">
+      <div className="club-hero">
+        <span className="club-eyebrow">{staff ? "Vận hành câu lạc bộ" : "Kết nối · Luyện tập · Thi đấu"}</span>
+        <FeatureHeading icon={feature.icon} title={title} subtitle={subtitle} />
+        <p className="club-hero-caption">{feature.hint}</p>
+      </div>
       <nav
         aria-label="Câu lạc bộ"
-        className="flex flex-wrap gap-3 text-sm text-primary underline"
+        className="club-navigation"
       >
-        <Link to="/players">Tìm bạn chơi</Link>
-        <Link to="/group-expenses">Chia chi phí</Link>
-        <Link to={staff ? "/admin/club/equipment" : "/equipment"}>Dụng cụ</Link>
-        <Link to={staff ? "/admin/club/coaches" : "/coaches"}>
-          Huấn luyện viên
-        </Link>
-        <Link to={staff ? "/admin/club/tournaments" : "/tournaments"}>
-          Giải đấu nhỏ
-        </Link>
-        <Link to="/calendar-sync">Lịch tự đồng bộ</Link>
+        {features.map(({ path, label, icon: Icon }) => <NavLink key={path} to={staff && ["/equipment", "/coaches", "/tournaments"].includes(path) ? `/admin/club${path}` : path} className={({ isActive }) => `club-nav-item${isActive ? " is-active" : ""}`}><Icon size={19} aria-hidden="true" /><span>{label}</span><ArrowRight size={14} className="club-nav-arrow" aria-hidden="true" /></NavLink>)}
       </nav>
-      {children}
+      {!staff && <ol className="club-steps" aria-label="Các bước thực hiện">{feature.steps.map((step, index) => <li key={step}><span>{index + 1}</span>{step}</li>)}</ol>}
+      <div className="club-content">{children}</div>
     </div>
   );
 }
@@ -99,9 +111,9 @@ export function QueryStatus({
 }) {
   return (
     <>
-      {query.isPending && <p role="status">Đang tải…</p>}
+      {query.isPending && <p role="status" className="club-feedback"><LoaderCircle size={18} className="animate-spin" aria-hidden="true" />Đang tải…</p>}
       {query.error && <Callout tone="error">{query.error.message}</Callout>}
-      {!query.isPending && !query.error && empty && <p>Chưa có dữ liệu.</p>}
+      {!query.isPending && !query.error && empty && <div className="club-empty"><Inbox size={28} aria-hidden="true" /><p>Chưa có dữ liệu.</p><span>Thử đổi bộ lọc hoặc quay lại sau để xem cập nhật.</span></div>}
     </>
   );
 }
@@ -152,7 +164,7 @@ export function Form({
 }) {
   return (
     <form
-      className="space-y-3"
+      className="club-form"
       onSubmit={(e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         submit(new FormData(e.currentTarget));

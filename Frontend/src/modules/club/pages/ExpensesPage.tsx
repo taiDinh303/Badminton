@@ -53,11 +53,18 @@ function ExpenseEditor({
     queryFn: () => club.expense(bookingId),
   });
   const expense = query.data;
+  const collected = expense?.shares.filter((s) => s.paidAt).reduce((sum, s) => sum + s.amount, 0) ?? 0;
   return (
     <Panel title={`Chi phí đơn #${bookingId}`}>
       <QueryStatus query={query} />
       {expense ? (
         <>
+          <dl className="club-expense-summary">
+            <div><dt>Tiền sân cần chia</dt><dd>{money(expense.total)}</dd></div>
+            <div><dt>Đã đóng góp</dt><dd>{money(collected)}</dd></div>
+            <div><dt>Còn cần đóng</dt><dd>{money(Math.max(0, expense.total - collected))}</dd></div>
+          </dl>
+          <progress className="club-payment-progress" aria-label="Tiến độ đóng góp" max={expense.total || 1} value={collected} />
           <p>
             {expense.splitMethod === "Attendance"
               ? "Theo phút tham dự · "

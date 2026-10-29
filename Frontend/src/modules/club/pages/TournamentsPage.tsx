@@ -253,7 +253,7 @@ function TournamentBoard({ id, staff }: { id: number; staff: boolean }) {
           <Panel title="Đội & xếp hạng">
             <QueryStatus query={query} empty={data.teams.length === 0} />
             {data.teams.map((t) => (
-              <div key={t.id} className="border-b border-line py-3">
+              <div key={t.id} className="club-team-row border-b border-line py-3">
                 <p>
                   {t.pool ? `Bảng ${t.pool} · ` : ""}
                   {t.name} · {t.won} thắng / {t.played} trận · Hiệu số{" "}
@@ -270,7 +270,7 @@ function TournamentBoard({ id, staff }: { id: number; staff: boolean }) {
             </p>
             {data.matches.length === 0 && <p>Chưa chia bảng.</p>}
             {data.matches.map((m) => (
-              <div key={m.id} className="border-b border-line py-3">
+              <div key={m.id} className="club-match-card">
                 <p>
                   Bảng {m.pool} · Vòng {m.round} · A: {names.get(m.teamAId)} —
                   B: {names.get(m.teamBId)}
