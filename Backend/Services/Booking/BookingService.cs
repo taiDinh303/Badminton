@@ -8,6 +8,8 @@ using Contract.Services.Payment;
 using Contract.Services.Points;
 using Contract.Services.Pricing;
 using Contract.Services.Voucher;
+using Contract.Services.Operations;
+using Contract.Services.Maintenance;
 using Badminton.Core.Base;
 using Badminton.Core.Enums;
 using Badminton.Core.Utils;
@@ -27,11 +29,14 @@ namespace Services
         private readonly IPointService _points;
         private readonly IPaymentService _payments;
         private readonly BookingLifecycleService _lifecycle;
+        private readonly IBookingTransitionGuard _transitions;
+        private readonly IBookingCancellationAuthorization _cancellation;
 
         public BookingService(IUnitOfWork uow, ICurrentUser currentUser,
             BookingCreationService creation, IVoucherService vouchers, IGroupService groups,
             IAuditService audit, IPointService points, IPaymentService payments,
-            BookingLifecycleService lifecycle, BookingAvailabilityService availability, BookingQuoteService quote)
+            BookingLifecycleService lifecycle, BookingAvailabilityService availability, BookingQuoteService quote,
+            IBookingTransitionGuard transitions, IBookingCancellationAuthorization cancellation)
             : base(uow, currentUser)
         {
             _creation = creation;
@@ -43,6 +48,8 @@ namespace Services
             _points = points;
             _payments = payments;
             _lifecycle = lifecycle;
+            _transitions = transitions;
+            _cancellation = cancellation;
         }
 
         private IGenericRepository<Booking> Repo => Repository<Booking>();
@@ -182,21 +189,28 @@ namespace Services
 
         // - cancel (P0-1: paid orders go through a tiered refund) ----------
 
-        public async Task CancelForMaintenanceAsync(int bookingId, int actorId)
+        public async Task CancelForMaintenanceAsync(int bookingId, int actorId, MaintenanceBookingScope? scope = null)
         {
-            var booking = await Repo.GetByIdAsync(bookingId) ?? throw new NotFoundException("Booking", bookingId);
-            await AuthorizeStaffBranchAsync(booking.BranchId, actorId);
-            if (booking.Status == BookingStatus.Confirmed)
+            try
             {
-                await _payments.RefundForMaintenanceAsync(bookingId, actorId, "Hoàn toàn phần do sân bảo trì/đóng");
-                return;
+                var booking = (await Repo.GetByConditionAsync(b => b.Id == bookingId)).SingleOrDefault() ?? throw new NotFoundException("Booking", bookingId);
+                scope ??= new(booking.CourtId, booking.Date, booking.SlotId);
+                if (booking.Status == BookingStatus.Confirmed)
+                {
+                    // Online intent must commit before provider IO: no enclosing transaction here.
+                    await _payments.RefundForMaintenanceAsync(bookingId, actorId, "Hoàn toàn phần do sân bảo trì/đóng", scope);
+                    return;
+                }
+                await Uow.RunInTransactionAsync(() => CancelForMaintenanceCoreAsync(bookingId, actorId, scope));
             }
-            await Uow.RunInTransactionAsync(() => CancelForMaintenanceCoreAsync(bookingId, actorId));
+            catch (MaintenanceScopeChangedException) { /* The stale work item no longer affects this booking. */ }
         }
 
-        private async Task CancelForMaintenanceCoreAsync(int bookingId, int actorId)
+        private async Task CancelForMaintenanceCoreAsync(int bookingId, int actorId, MaintenanceBookingScope scope)
         {
-            var b = await Repo.GetByIdAsync(bookingId) ?? throw new NotFoundException("Booking", bookingId);
+            await _transitions.AcquireAsync(bookingId);
+            var b = (await Repo.GetByConditionAsync(b => b.Id == bookingId)).SingleOrDefault() ?? throw new NotFoundException("Booking", bookingId);
+            await _transitions.EnsureMaintenanceScopeAsync(b, scope);
             await AuthorizeStaffBranchAsync(b.BranchId, actorId);
             if (b.Status == BookingStatus.Confirmed)
             {
@@ -204,10 +218,10 @@ namespace Services
             }
             if (b.Status != BookingStatus.Pending) return;
             var now = DateTime.UtcNow;
-            var claimed = await Uow.Bookings.CancelPendingAsync(bookingId, "Sân bảo trì/đóng", now);
+            var claimed = await Uow.Bookings.CancelPendingAsync(bookingId, "Sân bảo trì/đóng", now, b.BranchId);
             if (claimed == 0) throw new ConflictException("Đơn vừa thay đổi trạng thái. Lưu lại lịch để xử lý hoàn tiền.");
             b.Status = BookingStatus.Cancelled; b.CancelReason = "Sân bảo trì/đóng"; b.CancelledAt = now; b.UpdatedAt = now;
-            Repo.Update(b);
+            Repo.UpdateProperties(b, nameof(Booking.Status), nameof(Booking.CancelledAt), nameof(Booking.CancelReason), nameof(Booking.UpdatedAt));
             if (b.VoucherRedemptionId is { } pendingRid) await _vouchers.ReleaseVoucherAsync(pendingRid);
             if (b.PointsRedeemed > 0) await _points.RestoreAsync(b.UserId, b.Id, b.PointsRedeemed, b.BookingCode);
             await SaveAsync();
@@ -216,9 +230,8 @@ namespace Services
 
         public async Task<BookingView> CancelAsync(int bookingId, int actorId)
         {
-            var booking = await Repo.GetByIdAsync(bookingId) ?? throw new NotFoundException("Booking", bookingId);
+            var booking = (await Repo.GetByConditionAsync(b => b.Id == bookingId)).SingleOrDefault() ?? throw new NotFoundException("Booking", bookingId);
             if (booking.DeletedAt.HasValue) throw new NotFoundException("Booking", bookingId);
-            await AuthorizeCancel(booking, actorId);
             if (booking.Status is BookingStatus.Confirmed or BookingStatus.Completed)
             {
                 await _payments.CancelRefundAsync(bookingId, actorId, "Khach/manager huy don da thanh toan.");
@@ -231,10 +244,11 @@ namespace Services
 
         private async Task<BookingView> CancelCoreAsync(int bookingId, int actorId)
         {
-            var b = await Repo.GetByIdAsync(bookingId);
+            await _transitions.AcquireAsync(bookingId);
+            var b = (await Repo.GetByConditionAsync(b => b.Id == bookingId)).SingleOrDefault();
             if (b is null || b.DeletedAt.HasValue)
                 throw new NotFoundException("Booking", bookingId);
-            await AuthorizeCancel(b, actorId);
+            await _cancellation.EnsureAuthorizedAsync(b, actorId);
 
             if (b.Status is BookingStatus.Cancelled or BookingStatus.NoShow or BookingStatus.Refunded)
                 throw new ConflictException($"Dat cho da o trang thai {b.Status}.");
@@ -250,13 +264,13 @@ namespace Services
                 : null;
 
             var before = new { b.Status, b.CancelReason };
-            if (await Uow.Bookings.CancelPendingAsync(bookingId, "Khach/manager huy", DateTime.UtcNow) == 0)
+            if (await Uow.Bookings.CancelPendingAsync(bookingId, "Khach/manager huy", DateTime.UtcNow, b.BranchId) == 0)
                 throw new ConflictException("Đơn vừa thay đổi trạng thái. Vui lòng tải lại.");
             b.Status = BookingStatus.Cancelled;
             b.CancelledAt = DateTime.UtcNow;
             b.CancelReason = "Khach/manager huy";
             b.UpdatedAt = DateTime.UtcNow;
-            Repo.Update(b);
+            Repo.UpdateProperties(b, nameof(Booking.Status), nameof(Booking.CancelledAt), nameof(Booking.CancelReason), nameof(Booking.UpdatedAt));
 
             if (redemption is not null)
                 await _vouchers.ReleaseVoucherAsync(b.VoucherRedemptionId!.Value);
@@ -294,23 +308,6 @@ namespace Services
                 return;
             }
             throw new ConflictException("Khong co quyen xem dat cho nay.");
-        }
-
-        private async Task AuthorizeCancel(Booking b, int actorId)
-        {
-            if (b.UserId == actorId) return;
-            if (b.GroupId is { } gid && await _groups.CanBookForGroupAsync(gid, actorId)) return;
-
-            var ctx = _currentUser.Principal;
-            if (ctx?.IsInRole("Admin") == true) return; // global
-            if (ctx?.IsInRole("Manager") == true)
-            {
-                var actor = await Repository<User>().GetByIdAsync(actorId);
-                if (actor is { Role: Role.Manager }
-                    && actor.BranchId is { } ab && ab == b.BranchId)
-                    return;
-            }
-            throw new ConflictException("Khong co quyen huy dat cho nay.");
         }
 
         private async Task<BookingView> ToView(Booking b)

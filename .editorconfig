@@ -10,6 +10,8 @@ trim_trailing_whitespace = true
 
 [*.cs]
 indent_size = 4
+csharp_preserve_single_line_statements = false
+csharp_preserve_single_line_blocks = false
 
 [*.md]
 trim_trailing_whitespace = false

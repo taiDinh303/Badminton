@@ -4,16 +4,20 @@ using Badminton.Core.Utils;
 using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Points;
+using Contract.Services.Operations;
 
 namespace Services;
 
-public sealed class BookingCompletionService(IUnitOfWork uow, IPointService points)
+public sealed class BookingCompletionService(IUnitOfWork uow, IPointService points, IBookingTransitionGuard transitions)
 {
     public async Task<Booking?> CompleteAsync(int bookingId, bool onlyIfDue = false)
     {
         Booking? result = null;
         await uow.RunInTransactionAsync(async () =>
         {
+            await transitions.AcquireAsync(bookingId);
+            if (onlyIfDue && await transitions.HasPendingRefundAsync(bookingId)) return;
+            await transitions.EnsureNoPendingRefundAsync(bookingId);
             var repo = uow.GetRepository<Booking>();
             var booking = await repo.GetByIdAsync(bookingId)
                 ?? throw new NotFoundException("Booking", bookingId);

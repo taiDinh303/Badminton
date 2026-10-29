@@ -1,6 +1,6 @@
 /* Badminton semantic theme: shared by customer and operations modules. */
 :root {
-  /* Docs 07 §2 — Design tokens V1 */
+  /* Design tokens V1 */
   --bg: #f5f6f8; /* surface.page */
   --fg: #0f172a; /* text.primary */
   --muted: #475569; /* text.secondary */

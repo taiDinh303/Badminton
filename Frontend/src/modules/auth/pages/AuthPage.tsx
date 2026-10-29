@@ -14,10 +14,6 @@ import { useAuth } from "../../../store/auth";
 import { ApiError } from "../../../services/api";
 import { Button, Callout } from "../../../components/ui";
 
-/**
- * Đăng nhập / đăng ký (docs 07 §4). Layout 2 cột: brand + điểm nổi bật
- * (trên desktop), form (luôn 1 cột trên mobile). Không dùng emoji.
- */
 export default function AuthPage() {
   const [params] = useSearchParams();
   const location = useLocation();

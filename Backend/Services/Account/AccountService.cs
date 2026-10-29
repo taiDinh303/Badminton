@@ -35,7 +35,16 @@ namespace Services
             if (string.IsNullOrWhiteSpace(request.FullName) || request.FullName.Trim().Length > 100)
                 throw new BadRequestException("Tên phải có từ 1 đến 100 ký tự.");
             var avatar = request.AvatarUrl?.Trim();
-            if (!string.IsNullOrEmpty(avatar) && (!Uri.TryCreate(avatar, UriKind.Absolute, out var uri)
+            var storedAvatar = avatar?.StartsWith("/api/v1/media/", StringComparison.Ordinal) == true;
+            if (storedAvatar)
+            {
+                if (!int.TryParse(avatar![14..], out var mediaId))
+                    throw new BadRequestException("Ảnh đại diện không hợp lệ.");
+                var media = await Repository<StoredMedia>().GetByIdAsync(mediaId);
+                if (media is null || media.OwnerId != userId || media.DeletedAt.HasValue || !media.IsPublic || media.CourtId.HasValue || media.ReviewId.HasValue)
+                    throw new BadRequestException("Chọn ảnh đại diện đã công khai của bạn.");
+            }
+            if (!string.IsNullOrEmpty(avatar) && !storedAvatar && (!Uri.TryCreate(avatar, UriKind.Absolute, out var uri)
                 || (uri.Scheme != "https" && uri.Scheme != "http") || avatar.Length > 500))
                 throw new BadRequestException("Ảnh đại diện phải là URL HTTP/HTTPS hợp lệ, tối đa 500 ký tự.");
             var u = (await Repository<User>().GetByIdAsync(userId))!;

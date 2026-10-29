@@ -3,8 +3,11 @@ using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using Contract.Services.Notify;
 using Contract.Services.Payment;
+using Contract.Services.Operations;
 using Contract.Services.Points;
 using Contract.Services.Voucher;
+using Contract.Services.Booking;
+using Contract.Services.Maintenance;
 using Badminton.Core.Base;
 using Badminton.Core.Domain;
 using Badminton.Core.Enums;
@@ -22,10 +25,13 @@ namespace Services
         private readonly INotifyService _notify;
         private readonly OnlineRefundService? _onlineRefunds;
         private readonly IVoucherService _vouchersForRefund;
+        private readonly IBookingTransitionGuard _transitions;
+        private readonly IBookingCancellationAuthorization _cancellation;
 
         public PaymentService(IUnitOfWork uow, ICurrentUser currentUser,
             IPaymentGatewayFactory gateways, IPointService points,
-            IAuditService audit, INotifyService notify, IVoucherService vouchersForRefund, OnlineRefundService? onlineRefunds = null)
+            IAuditService audit, INotifyService notify, IVoucherService vouchersForRefund,
+            IBookingTransitionGuard transitions, IBookingCancellationAuthorization cancellation, OnlineRefundService? onlineRefunds = null)
             : base(uow, currentUser)
         {
             _gateways = gateways;
@@ -34,6 +40,8 @@ namespace Services
             _notify = notify;
             _onlineRefunds = onlineRefunds;
             _vouchersForRefund = vouchersForRefund;
+            _transitions = transitions;
+            _cancellation = cancellation;
         }
 
         private IGenericRepository<Payment> Repo => Repository<Payment>();
@@ -218,7 +226,8 @@ namespace Services
             int confirmed = 0;
             await Uow.RunInTransactionAsync(async () =>
             {
-                confirmed = await Uow.Bookings.ConfirmAsync(bookingId, GenerateQrToken(), DateTime.UtcNow);
+                // A concurrent reschedule must not let staff act using the old branch scope.
+                confirmed = await Uow.Bookings.ConfirmAsync(bookingId, GenerateQrToken(), DateTime.UtcNow, booking.BranchId);
                 if (confirmed == 0)
                     throw new ConflictException(
                         $"Đơn {booking.BookingCode} đã hết hạn hoặc vừa thay đổi trạng thái. Vui lòng tải lại.");
@@ -242,25 +251,30 @@ namespace Services
         public Task<PaymentView> RefundAsync(int bookingId, int actorId, string? reason = null) =>
             RefundCoreAsync(bookingId, actorId, reason, cancel: false, maintenance: false);
 
-        public Task<PaymentView> RefundForMaintenanceAsync(int bookingId, int actorId, string? reason = null) =>
-            RefundCoreAsync(bookingId, actorId, reason, cancel: false, maintenance: true);
+        public Task<PaymentView> RefundForMaintenanceAsync(int bookingId, int actorId, string? reason = null, MaintenanceBookingScope? scope = null) =>
+            RefundCoreAsync(bookingId, actorId, reason, cancel: false, maintenance: true, scope);
 
         public Task<PaymentView> CancelRefundAsync(int bookingId, int actorId, string? reason = null) =>
             RefundCoreAsync(bookingId, actorId, reason, cancel: true, maintenance: false);
 
         private async Task<PaymentView> RefundCoreAsync(int bookingId, int actorId, string? reason,
-            bool cancel, bool maintenance)
+            bool cancel, bool maintenance, MaintenanceBookingScope? scope = null)
         {
             var receipt = (await Repo.GetByConditionAsync(p => p.BookingId == bookingId && p.Status == PaymentStatus.Success)).FirstOrDefault();
             if (receipt is not null && receipt.Method is not (PaymentMethod.Cash or PaymentMethod.QR)
                 && !_gateways.GetGateway(receipt.Method).IsSimulation && _onlineRefunds is not null)
-                return await _onlineRefunds.RequestAsync(receipt.Id, actorId, reason, cancel, maintenance);
+                return await _onlineRefunds.RequestAsync(receipt.Id, actorId, reason, cancel, maintenance, maintenanceScope: scope);
             PaymentView result = null!;
             await Uow.RunInTransactionAsync(async () =>
             {
-                var booking = await Bookings.GetByIdAsync(bookingId)
+                await _transitions.AcquireAsync(bookingId);
+                await _transitions.EnsureNoPendingRefundAsync(bookingId);
+                // Read after the transition lock; a caller may have tracked an older branch snapshot.
+                var booking = (await Bookings.GetByConditionAsync(b => b.Id == bookingId && b.DeletedAt == null)).SingleOrDefault()
                     ?? throw new NotFoundException("Booking", bookingId);
-                if (!cancel || booking.UserId != actorId)
+                if (maintenance && scope is not null) await _transitions.EnsureMaintenanceScopeAsync(booking, scope);
+                if (cancel) await _cancellation.EnsureAuthorizedAsync(booking, actorId);
+                else
                     await AuthorizeStaffScope(booking, actorId);
 
                 var existing = await FindRefundAsync(bookingId);
@@ -280,7 +294,7 @@ namespace Services
                 var method = original.Method;
 
                 var claimed = await Uow.Bookings.ClaimRefundAsync(bookingId, cancel,
-                    cancel ? "Huy da thanh toan: " + label : label, DateTime.UtcNow);
+                    cancel ? "Huy da thanh toan: " + label : label, DateTime.UtcNow, booking.BranchId);
                 if (claimed == 0)
                 {
                     var winner = await FindRefundAsync(bookingId);

@@ -1,3 +1,4 @@
+using Contract.Services.Report;
 using Badminton.Core.Utils;
 using Badminton.Core.Enums;
 using Contract.Repositories.Entity;
@@ -13,8 +14,9 @@ namespace Services
     public sealed class CourtService : BaseService, ICourtService
     {
         private readonly IAuditService _audit;
-        public CourtService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit)
-            : base(uow, currentUser) { _audit = audit; }
+        private readonly IInventoryHistoryService _inventory;
+        public CourtService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit, IInventoryHistoryService inventory)
+            : base(uow, currentUser) { _audit = audit; _inventory = inventory; }
 
         private IGenericRepository<Court> Repo => Repository<Court>();
 
@@ -38,7 +40,7 @@ namespace Services
             await Uow.RunInTransactionAsync(async () => {
                 await Uow.LockBookingRequestAsync($"branch-config:{request.BranchId}");
                 result = await CreateCoreAsync(request, actorId);
-                await new InventoryHistoryService(Uow).CaptureTodayAsync(request.BranchId);
+                await _inventory.CaptureTodayAsync(request.BranchId);
             });
             return result;
         }
@@ -73,7 +75,7 @@ namespace Services
             var branchId = (await MustGetAsync(id)).BranchId;
             await Uow.LockBookingRequestAsync($"branch-config:{branchId}");
             await UpdateCoreAsync(id, request, actorId);
-            await new InventoryHistoryService(Uow).CaptureTodayAsync(branchId);
+            await _inventory.CaptureTodayAsync(branchId);
         });
 
         private async Task UpdateCoreAsync(int id, UpdateCourtRequest request, int actorId)
@@ -110,7 +112,7 @@ namespace Services
             var branchId = (await MustGetAsync(id)).BranchId;
             await Uow.LockBookingRequestAsync($"branch-config:{branchId}");
             await DeleteCoreAsync(id, actorId);
-            await new InventoryHistoryService(Uow).CaptureTodayAsync(branchId);
+            await _inventory.CaptureTodayAsync(branchId);
         });
 
         private async Task DeleteCoreAsync(int id, int actorId)

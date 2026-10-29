@@ -200,7 +200,7 @@ public sealed class ProjectQualityTests
     }
 
     private static TimeSlotService SlotService(IServiceProvider sp) => new(sp.GetRequiredService<IUnitOfWork>(),
-        sp.GetRequiredService<ICurrentUser>(), sp.GetRequiredService<IAuditService>());
+        sp.GetRequiredService<ICurrentUser>(), sp.GetRequiredService<IAuditService>(), sp.GetRequiredService<Contract.Services.Report.IInventoryHistoryService>());
 
     private static ReportService Report(IServiceProvider sp, int actor)
     {

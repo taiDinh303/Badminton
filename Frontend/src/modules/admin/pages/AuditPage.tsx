@@ -26,7 +26,6 @@ const ENTITY_FILTERS = [
   { key: "Review", label: "Đánh giá" },
 ];
 
-/** Human label for a backend entity type (docs 03: mọi entity được audit). */
 const ENTITY_LABEL: Record<string, string> = {
   Booking: "Đơn đặt",
   Branch: "Cơ sở",
@@ -40,13 +39,6 @@ const ENTITY_LABEL: Record<string, string> = {
   Review: "Đánh giá",
 };
 
-/**
- * Decode an audit entityId. Most are plain ids, but the maintenance service
- * logs a composite "courtId@yyyy-MM-dd" (docs 03 §8). We split it into an id
- * ("Sân #2") plus an optional detail line (the court's date) so the cell can
- * render a bounded two-line block instead of one long line that wraps to
- * three lines and bleeds into the row below ("đối tượng hiện thêm" bug).
- */
 function renderEntityId(
   entityType: string,
   entityId: string | null,
@@ -69,9 +61,6 @@ function tsToVi(iso: string): string {
   return `${d.toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })} ${d.toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit" })}`;
 }
 
-/**
- * Admin "Nhật ký" (docs 07 §4): audit log paged + filter theo entity.
- */
 export default function AuditPage() {
   const [entity, setEntity] = useState("");
   const [page, setPage] = useState(1);

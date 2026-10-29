@@ -18,10 +18,6 @@ import { formatVnd } from "../../../utils/format";
 import { Card, KpiCard, Busy, Callout, BarChart, ProgressBar } from "../../../components/ui";
 import { isAdmin, useAuth } from "../../../store/auth";
 
-/**
- * Tổng quan (docs 07 §4): việc cần xử lý trước biểu đồ —
- * 4 KPI + doanh thu 7 ngày + lấp đầy + cảnh báo.
- */
 export default function DashboardPage() {
   const isAdminUser = isAdmin(useAuth((s) => s.user));
   const { data: s, isLoading, isError, refetch } = useQuery({
@@ -34,7 +30,6 @@ export default function DashboardPage() {
   from.setTime(from.getTime() + 7 * 3600_000 - 6 * 86400_000);
   const fromStr = from.toISOString().slice(0, 10);
 
-  // Revenue/occupancy charts are [Admin] on the backend (docs 03 role matrix).
   const { data: revenue, error: revenueError } = useQuery({
     queryKey: ["report", "revenue", fromStr, toStr],
     queryFn: () => api.admin.report.revenue(fromStr, toStr),

@@ -31,7 +31,7 @@ namespace Services.DI
         public static IServiceCollection AddBookingServices(
             this IServiceCollection services, IConfiguration? configuration = null)
         {
-
+            services.AddBookingExperience();
             services.AddScoped<Contract.Services.Contact.IContactService, ContactService>();
 
             // On-site gateways never move real money — always registered.
@@ -57,9 +57,13 @@ namespace Services.DI
                     : new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build().GetSection("Payment:Momo");
                 services.Configure<MoMoSettings>(momoSection);
                 services.AddHttpClient("momo",
-                    c => { c.Timeout = TimeSpan.FromSeconds(35); c.BaseAddress = new Uri(
+                    c =>
+                    {
+                        c.Timeout = TimeSpan.FromSeconds(35);
+                        c.BaseAddress = new Uri(
                         configuration?["Payment:Momo:Endpoint"]
-                        ?? "https://test-payment.momo.vn"); });
+                        ?? "https://test-payment.momo.vn");
+                    });
                 services.AddSingleton<IMomoApiClient>(sp =>
                     new HttpMoMoApiClient(
                         sp.GetRequiredService<IHttpClientFactory>()
@@ -77,9 +81,13 @@ namespace Services.DI
                     : new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build().GetSection("Payment:Vnpay");
                 services.Configure<VnPaySettings>(vnSection);
                 services.AddHttpClient("vnpay",
-                    c => { c.Timeout = TimeSpan.FromSeconds(10); c.BaseAddress = new Uri(
+                    c =>
+                    {
+                        c.Timeout = TimeSpan.FromSeconds(10);
+                        c.BaseAddress = new Uri(
                         configuration?["Payment:Vnpay:Endpoint"]
-                        ?? "https://sandbox.vnpayment.vn"); });
+                        ?? "https://sandbox.vnpayment.vn");
+                    });
                 services.AddSingleton<IVnPayClient>(sp =>
                     new HttpVnPayClient(
                         sp.GetRequiredService<IHttpClientFactory>().CreateClient("vnpay"),
@@ -95,9 +103,13 @@ namespace Services.DI
                     : new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build().GetSection("Payment:Zalopay");
                 services.Configure<ZalopaySettings>(zpSection);
                 services.AddHttpClient("zalopay",
-                    c => { c.Timeout = TimeSpan.FromSeconds(10); c.BaseAddress = new Uri(
+                    c =>
+                    {
+                        c.Timeout = TimeSpan.FromSeconds(10);
+                        c.BaseAddress = new Uri(
                         configuration?["Payment:Zalopay:Endpoint"]
-                        ?? "https://sb-openapi.zalopay.vn"); });
+                        ?? "https://sb-openapi.zalopay.vn");
+                    });
                 services.AddSingleton<IZalopayClient>(sp =>
                     new HttpZalopayClient(
                         sp.GetRequiredService<IHttpClientFactory>().CreateClient("zalopay"),

@@ -152,7 +152,7 @@ namespace Badminton.API.Jobs
                 var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
                 var bookingRepo = uow.GetRepository<Booking>();
                 var completion = scope.ServiceProvider.GetRequiredService<Services.BookingCompletionService>();
-                await new Services.InventoryHistoryService(uow).CaptureTodayAsync();
+                await scope.ServiceProvider.GetRequiredService<Contract.Services.Report.IInventoryHistoryService>().CaptureTodayAsync();
                 var bookings = await bookingRepo.GetByConditionAsync(b => b.Status == BookingStatus.Confirmed);
                 var slotIds = bookings.Select(b => b.SlotId).Distinct().ToList();
                 var slots = (await uow.GetRepository<TimeSlot>().GetByConditionAsync(s => slotIds.Contains(s.Id)))

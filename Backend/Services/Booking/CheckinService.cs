@@ -1,6 +1,7 @@
 using Contract.Repositories.Entity;
 using Contract.Repositories.UnitOfWork;
 using Contract.Services.Booking;
+using Contract.Services.Operations;
 using Badminton.Core.Base;
 using Badminton.Core.Enums;
 
@@ -8,9 +9,10 @@ namespace Services
 {
     public sealed class CheckinService : BaseService, ICheckinService
     {
+        private readonly IBookingTransitionGuard _transitions;
         public CheckinService(IUnitOfWork uow,
-            Badminton.Core.Security.ICurrentUser currentUser)
-            : base(uow, currentUser) { }
+            Badminton.Core.Security.ICurrentUser currentUser, IBookingTransitionGuard transitions)
+            : base(uow, currentUser) { _transitions = transitions; }
 
         private IGenericRepository<Booking> Bookings => Repository<Booking>();
 
@@ -38,6 +40,18 @@ namespace Services
 
         private async Task<Booking> ApplyCheckinAsync(Booking b)
         {
+            Booking result = null!;
+            await Uow.RunInTransactionAsync(async () =>
+            {
+                await _transitions.AcquireAsync(b.Id);
+                await _transitions.EnsureNoPendingRefundAsync(b.Id);
+                result = await ApplyCheckinCoreAsync(b);
+            });
+            return result;
+        }
+
+        private async Task<Booking> ApplyCheckinCoreAsync(Booking b)
+        {
             if (b.DeletedAt.HasValue) throw new NotFoundException("Booking", b.Id);
             if (b.Status == BookingStatus.Pending && (b.PendingExpiresAt is null || b.PendingExpiresAt <= DateTime.UtcNow))
                 throw new ConflictException("Đơn đã hết thời gian giữ chỗ, không thể check-in.");
@@ -57,7 +71,7 @@ namespace Services
                 throw new ConflictException("Chỉ check-in từ 30 phút trước giờ bắt đầu đến hết khung giờ chơi.");
 
             var now = DateTime.UtcNow;
-            int claimed = await Uow.Bookings.CheckinAsync(b.Id, now, businessNow);
+            int claimed = await Uow.Bookings.CheckinAsync(b.Id, now, businessNow, b.BranchId);
             if (claimed == 0)
                 throw new ConflictException(
                     $"Đơn {b.BookingCode} vừa được check-in bởi thao tác khác.");

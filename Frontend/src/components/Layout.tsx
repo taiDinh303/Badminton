@@ -3,15 +3,10 @@ import { clsx } from "clsx";
 import { Feather, LogOut, Menu, X } from "lucide-react";
 import { useState, useRef } from "react";
 import AccountMenu from "./AccountMenu";
-import { customerItems, mobileItems, adminItems } from "../app/navigation";
+import NotificationBell from "../modules/experience/components/NotificationBell";
+import { customerItems, mobileItems, adminItems, experiencePageTitles } from "../app/navigation";
 import { useAuth, isStaff, isAdmin } from "../store/auth";
 
-/**
- * Responsive shell (docs 07 §3):
- *  - mobile: bottom navigation (core customer items), safe-area aware.
- *  - desktop: left sidebar. Customers see customer items (incl. Nhóm/Đánh giá);
- *    Manager/Admin additionally get the admin section items (incl. Check-in).
- */
 function navClass({ isActive }: { isActive: boolean }) {
   return clsx(
     "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors cursor-pointer",
@@ -33,7 +28,7 @@ export default function Layout() {
   const menuButton = useRef<HTMLButtonElement>(null);
   const location = useLocation();
   const currentItem = [...adminItems, ...customerItems].find(item => item.to === location.pathname);
-  const title = currentItem?.label ?? "Chi tiết đặt sân";
+  const title = experiencePageTitles[location.pathname] ?? currentItem?.label ?? "Chi tiết đặt sân";
   const TitleIcon = currentItem?.icon ?? Feather;
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
@@ -132,7 +127,7 @@ export default function Layout() {
               </button>
               <div className="header-title"><TitleIcon size={20} aria-hidden="true" /><p className="text-sm font-semibold">{title}</p></div>
             </div>
-            <AccountMenu />
+            <div className="flex shrink-0 items-center gap-2"><NotificationBell /><AccountMenu /></div>
           </div>
           {menuOpen && <nav id="mobile-menu" aria-label="Menu di động" className="mobile-menu-grid mt-3 max-h-[65dvh] overflow-y-auto border-t border-border pt-3 md:hidden"
             onKeyDown={event => { if (event.key === "Escape") { setMenuOpen(false); menuButton.current?.focus(); } }}>

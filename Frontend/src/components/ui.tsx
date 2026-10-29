@@ -29,12 +29,6 @@ import type {
 } from "react";
 import { useEffect, useRef } from "react";
 
-/*
- * Design system components — docs 07 §2/§6.
- * CSS variables only, no hardcoded hex. Text + color + icon, never color-only.
- */
-
-/** Card surface (docs 07 §2: bg #fff, radius 12, border #E2E8F0). */
 export function Card({ children, className, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -49,7 +43,6 @@ export function Card({ children, className, ...rest }: HTMLAttributes<HTMLDivEle
   );
 }
 
-/** Labeled text input with inline validation (docs 07 §6: label + inline error). */
 export function Field({
   label,
   error,
@@ -83,7 +76,6 @@ export function Field({
   );
 }
 
-/** Labeled select — visual parity with Field. */
 export function SelectField({
   label,
   className,
@@ -95,6 +87,7 @@ export function SelectField({
       <span className="mb-1.5 block font-medium text-muted">{label}</span>
       <select
         {...select}
+        aria-label={select["aria-label"] ?? label}
         className={clsx(
           "w-full appearance-none rounded-lg border border-border bg-card px-3 py-2.5 text-base text-fg outline-none transition-colors focus:border-primary",
           className,
@@ -106,7 +99,6 @@ export function SelectField({
   );
 }
 
-/** Primary / ghost / danger / accent button. Min touch target 44px (docs 07 §2). */
 export function Button({
   variant = "primary",
   size = "md",
@@ -138,7 +130,6 @@ export function Button({
   );
 }
 
-/** Centered spinner while async work runs. */
 export function Busy({ label = "Đang tải…" }: { label?: string }) {
   return (
     <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
@@ -148,7 +139,6 @@ export function Busy({ label = "Đang tải…" }: { label?: string }) {
   );
 }
 
-/** KPI card for dashboards (docs 07 §4 admin tổng quan). */
 export function KpiCard({
   icon,
   label,
@@ -184,7 +174,6 @@ export function KpiCard({
   );
 }
 
-/** Horizontal pill group for filter tabs (docs 07 §3: filter trong URL/bảng). */
 export function Pills<T extends string>({
   options,
   value,
@@ -232,7 +221,6 @@ export function Pills<T extends string>({
   );
 }
 
-/** Toolbar row: title/subtitle on the left, search + actions on the right. */
 export function Toolbar({
   icon = Home,
   title,
@@ -268,7 +256,6 @@ export function Toolbar({
   );
 }
 
-/** Page-level header (kept for customer pages). */
 export function PageHeader({
   title,
   subtitle,
@@ -289,7 +276,6 @@ export function PageHeader({
   );
 }
 
-/** Status pill — always text + color (docs 07: no color-only signaling). */
 export function StatusBadge({ status, size = "md" }: { status: string; size?: "md" | "sm" }) {
   const map: Record<string, { cls: string; icon: ReactNode; label: string }> = {
     Pending: {
@@ -327,7 +313,6 @@ export function StatusBadge({ status, size = "md" }: { status: string; size?: "m
       icon: <XCircle className="h-3 w-3" />,
       label: "No-show",
     },
-    // Payment statuses (docs 03 §3).
     Success: {
       cls: "bg-slot-free-bg text-slot-free-fg",
       icon: <CheckCircle2 className="h-3 w-3" />,
@@ -383,7 +368,6 @@ export function StatusBadge({ status, size = "md" }: { status: string; size?: "m
   );
 }
 
-/** Inline success/warning/error callout (docs 07 §5 sample messages). */
 export function Callout({
   tone,
   children,
@@ -414,7 +398,6 @@ export function Callout({
   );
 }
 
-/** Simple horizontal progress bar (usage, fill-rate, etc.). */
 export function ProgressBar({
   value,
   max,
@@ -448,7 +431,6 @@ export function ProgressBar({
   );
 }
 
-/** Empty state with icon (docs 07 §4: mọi trạng thái phải kèm chữ). */
 export function EmptyState({
   icon,
   title,
@@ -472,7 +454,6 @@ export function EmptyState({
   );
 }
 
-/** Search input (toolbar-style, left icon). */
 export function SearchInput({
   value,
   onChange,
@@ -498,7 +479,6 @@ export function SearchInput({
   );
 }
 
-/** Modal dialog — Escape closes, focus trap-light, click backdrop closes. */
 export function Modal({
   title,
   children,
@@ -581,7 +561,6 @@ export function Modal({
   );
 }
 
-/** Small confirm dialog (hủy / bảo trì / xóa — docs 07 §4 có hộp xác nhận kèm lý do). */
 export function ConfirmDialog({
   title,
   message,
@@ -625,7 +604,6 @@ export function ConfirmDialog({
   );
 }
 
-/** Pagination footer (trước / sau + trang hiện tại). */
 export function Pagination({
   page,
   totalPages,
@@ -666,7 +644,6 @@ export function Pagination({
   );
 }
 
-/** Horizontal bar chart (no chart lib → tiny bundle, docs 07 §6). */
 export function BarChart({
   data,
   tone = "primary",
@@ -696,8 +673,6 @@ export function BarChart({
     </div>
   );
 }
-
-// ── Slot visual (docs 07 §2: text + color + icon, never color-only) ─
 
 export function SlotCell({
   state,

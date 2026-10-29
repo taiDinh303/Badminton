@@ -20,10 +20,6 @@ const TABS: { key: string; label: string }[] = [
   { key: "NoShow", label: "No-show" },
 ];
 
-/**
- * Đơn của tôi (docs 07 §4): danh sách sắp diễn ra/đã qua/đã hủy, điểm, voucher;
- * các trạng thái rỗng/chờ/hoàn thành/hủy có hoàn tiền; filter trạng thái.
- */
 export default function MyBookingsPage() {
   const refreshBookings = useBookingRefresh();
   const user = useAuth((s) => s.user);

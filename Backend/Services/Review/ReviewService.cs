@@ -6,14 +6,16 @@ using Badminton.Core.Base;
 using Badminton.Core.Security;
 using ModelViews.Review;
 using System.Text.Json;
+using Contract.Services.Operations;
 
 namespace Services
 {
     public sealed class ReviewService : BaseService, IReviewService
     {
         private readonly IAuditService _audit;
-        public ReviewService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit)
-            : base(uow, currentUser) { _audit = audit; }
+        private readonly ICourtRatingProjection _ratings;
+        public ReviewService(IUnitOfWork uow, ICurrentUser currentUser, IAuditService audit, ICourtRatingProjection ratings)
+            : base(uow, currentUser) { _audit = audit; _ratings = ratings; }
 
         private IGenericRepository<Review> Repo => Repository<Review>();
 
@@ -32,7 +34,8 @@ namespace Services
                 throw new BadRequestException("Nhận xét tối đa 2000 ký tự.");
 
             var booking = await Repository<Booking>().GetByIdAsync(request.BookingId);
-            if (booking is null) throw new NotFoundException("Booking", request.BookingId);
+            if (booking is null)
+                throw new NotFoundException("Booking", request.BookingId);
             if (booking.Status != Badminton.Core.Enums.BookingStatus.Completed)
                 throw new ConflictException("Chỉ đánh giá được đơn đã hoàn thành.");
             if (booking.UserId != userId)
@@ -58,17 +61,9 @@ namespace Services
             };
             await Repo.AddAsync(review);
 
-            // Rebuild from source rows under the court lock; no accumulated rounding or lost updates.
-            if (court is not null)
-            {
-                var ratings = await Repo.GetByConditionAsync(r => r.CourtId == court.Id);
-                court.RatingCount = ratings.Count + 1;
-                court.RatingAvg = Math.Round((ratings.Sum(r => (double)r.Rating) + request.Rating) / court.RatingCount, 2);
-                court.UpdatedAt = DateTime.UtcNow;
-                Repository<Court>().UpdateProperties(court, nameof(Court.RatingAvg), nameof(Court.RatingCount), nameof(Court.UpdatedAt));
-            }
-
             await SaveAsync();
+            if (court is not null)
+                await _ratings.RebuildAsync(court.Id);
             await _audit.LogAsync(userId, "review.create", "Review", review.Id.ToString(),
                 null, review);
             return await ToView(review);
@@ -76,8 +71,9 @@ namespace Services
 
         public async Task<IReadOnlyList<ReviewView>> GetByCourtAsync(int courtId)
         {
-            var list = await Repo.GetByConditionAsync(r => r.CourtId == courtId);
-            if (list.Count == 0) return Array.Empty<ReviewView>();
+            var list = await Repo.GetByConditionAsync(r => r.CourtId == courtId && !r.IsHidden);
+            if (list.Count == 0)
+                return Array.Empty<ReviewView>();
 
             var court = await Repository<Court>().GetByIdAsync(courtId);
             var userIds = list.Select(r => r.UserId).Distinct().ToList();
@@ -96,17 +92,19 @@ namespace Services
         public async Task<ReviewView?> GetByBookingAsync(int bookingId)
         {
             var booking = await Repository<Booking>().GetByIdAsync(bookingId) ?? throw new NotFoundException("Booking", bookingId);
-            if (booking.UserId != _currentUser.Id) await AuthorizeStaffBranchAsync(booking.BranchId, _currentUser.Id);
+            if (booking.UserId != _currentUser.Id)
+                await AuthorizeStaffBranchAsync(booking.BranchId, _currentUser.Id);
             var row = (await Repo.GetByConditionAsync(r => r.BookingId == bookingId)).SingleOrDefault();
             return row is null ? null : await ToView(row);
         }
 
         public async Task<(IReadOnlyList<ReviewView> Items, int Total, double? Average)> GetPagedAsync(int? courtId, Page page)
         {
-            System.Linq.Expressions.Expression<Func<Review, bool>> predicate = r => courtId == null || r.CourtId == courtId;
+            System.Linq.Expressions.Expression<Func<Review, bool>> predicate = r => !r.IsHidden && (courtId == null || r.CourtId == courtId);
             var (items, count) = await Repo.GetPagedAsync(predicate, r => r.CreatedAt, OrderDirection.Desc, page);
             var totalStars = await Repo.SumIntByConditionAsync(predicate, r => r.Rating);
-            var courtIds = items.Select(r => r.CourtId).Distinct().ToList(); var userIds = items.Select(r => r.UserId).Distinct().ToList();
+            var courtIds = items.Select(r => r.CourtId).Distinct().ToList();
+            var userIds = items.Select(r => r.UserId).Distinct().ToList();
             var courts = (await Repository<Court>().GetByConditionAsync(c => courtIds.Contains(c.Id))).ToDictionary(c => c.Id);
             var users = (await Repository<User>().GetByConditionAsync(u => userIds.Contains(u.Id))).ToDictionary(u => u.Id);
             return (items.Select(r => ToView(r, courts.GetValueOrDefault(r.CourtId)?.Name ?? "?", users.GetValueOrDefault(r.UserId)?.FullName ?? "?")).ToList(),

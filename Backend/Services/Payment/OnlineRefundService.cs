@@ -9,6 +9,9 @@ using Contract.Repositories.UnitOfWork;
 using Contract.Services.Audit;
 using Contract.Services.Points;
 using Contract.Services.Payment;
+using Contract.Services.Operations;
+using Contract.Services.Booking;
+using Contract.Services.Maintenance;
 using Contract.Services.Voucher;
 using Microsoft.Extensions.Options;
 using ModelViews.Payment;
@@ -16,11 +19,12 @@ using ModelViews.Payment;
 namespace Services;
 
 public sealed class OnlineRefundService(IUnitOfWork uow, ICurrentUser currentUser, IOnlineRefundClient client,
-    IOptions<OnlineRefundSettings> settings, IPointService points, IVoucherService vouchers, IAuditService audit)
+    IOptions<OnlineRefundSettings> settings, IPointService points, IVoucherService vouchers, IAuditService audit,
+    IBookingTransitionGuard transitions, IBookingCancellationAuthorization cancellation)
     : BaseService(uow, currentUser)
 {
     public async Task<PaymentView> RequestAsync(int paymentId, int actorId, string? reason,
-        bool cancel = false, bool maintenance = false, bool lateReceipt = false)
+        bool cancel = false, bool maintenance = false, bool lateReceipt = false, MaintenanceBookingScope? maintenanceScope = null)
     {
         if (!settings.Value.Enabled) throw new ConflictException("ONLINE_REFUND_DISABLED: Chưa bật hoàn tiền online sau nghiệm thu sandbox.");
         OnlineRefundOperation operation = null!;
@@ -30,11 +34,15 @@ public sealed class OnlineRefundService(IUnitOfWork uow, ICurrentUser currentUse
         {
             await Uow.LockBookingRequestAsync($"online-refund:{paymentId}");
             receipt = await Repository<Payment>().GetByIdAsync(paymentId) ?? throw new NotFoundException("Payment", paymentId);
-            var booking = await Repository<Booking>().GetByIdAsync(receipt.BookingId) ?? throw new NotFoundException("Booking", receipt.BookingId);
-            if (!cancel || booking.UserId != actorId || lateReceipt) await AuthorizeStaffBranchAsync(booking.BranchId, actorId);
-            else if (_currentUser.Id != actorId) throw new ConflictException("Danh tính thao tác không hợp lệ.");
+            await transitions.AcquireAsync(receipt.BookingId);
+            var booking = (await Repository<Booking>().GetByConditionAsync(b => b.Id == receipt.BookingId)).SingleOrDefault()
+                ?? throw new NotFoundException("Booking", receipt.BookingId);
+            if (maintenance && maintenanceScope is not null) await transitions.EnsureMaintenanceScopeAsync(booking, maintenanceScope);
+            if (cancel && !lateReceipt && !maintenance) await cancellation.EnsureAuthorizedAsync(booking, actorId);
+            else await AuthorizeStaffBranchAsync(booking.BranchId, actorId);
             var existing = (await Repository<OnlineRefundOperation>().GetByConditionAsync(o => o.PaymentId == paymentId)).SingleOrDefault();
             if (existing is not null) { operation = existing; return; }
+            if (!lateReceipt) await transitions.EnsureNoPendingRefundAsync(booking.Id);
             if (receipt.Status != PaymentStatus.Success || receipt.Method is PaymentMethod.Cash or PaymentMethod.QR)
                 throw new ConflictException("Giao dịch không phải khoản thu online thành công.");
             if (lateReceipt)
@@ -75,11 +83,12 @@ public sealed class OnlineRefundService(IUnitOfWork uow, ICurrentUser currentUse
             await Uow.LockBookingRequestAsync($"online-refund:{paymentId}");
             var persisted = (await Repository<OnlineRefundOperation>().GetByConditionAsync(o => o.Id == operation.Id)).Single();
             if (persisted.Succeeded) { result = await ReceiptAsync(persisted); return; }
+            await transitions.AcquireAsync(persisted.BookingId);
             var booking = (await Repository<Booking>().GetByConditionAsync(b => b.Id == persisted.BookingId)).Single();
             // Receipt refunds never resurrect or overwrite a terminal booking.
             if (!persisted.IsLateReceipt)
             {
-                var changed = await Uow.Bookings.ClaimRefundAsync(booking.Id, persisted.CancelBooking, persisted.Reason, DateTime.UtcNow);
+                var changed = await Uow.Bookings.ClaimRefundAsync(booking.Id, persisted.CancelBooking, persisted.Reason, DateTime.UtcNow, booking.BranchId);
                 if (changed == 0) throw new ConflictException("Provider đã hoàn tiền nhưng đơn vừa thay đổi; giữ yêu cầu đối soát để kiểm tra.");
                 if (persisted.Amount > 0 && await points.HasEarnedRowAsync(booking.Id))
                     await points.ClawbackAsync(booking.UserId, booking.Id, persisted.Amount, "online refund " + booking.BookingCode);

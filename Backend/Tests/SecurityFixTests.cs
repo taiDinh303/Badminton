@@ -95,6 +95,7 @@ public sealed class SecurityFixTests
             receipt.Method = PaymentMethod.VnPay;
             await db.SaveChangesAsync();
         });
+        h.ActAs(h.Alice, Role.Customer);
         await Assert.ThrowsAsync<ConflictException>(() => h.RunScopeAsync(sp => sp.GetRequiredService<IBookingService>().CancelAsync(booking.Id, h.Alice)));
         Assert.Equal(BookingStatus.Confirmed, (await h.GetBookingAsync(booking.Id)).Status);
         Assert.Equal(1, (await h.GetVoucherAsync("HOLD")).UsedQty);

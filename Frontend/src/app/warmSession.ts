@@ -3,8 +3,6 @@ import { api } from "../services/api";
 import type { AuthUser } from "../store/auth";
 import { pageLoaders } from "./pageLoaders";
 
-// Warm the initial screen of each permitted feature, never every historical row.
-// Three workers avoid flooding the API when signing in on a cold instance.
 export function warmSession(client: QueryClient, user: AuthUser) {
   let stopped = false;
   const load = async <T,>(key: QueryKey, fn: () => Promise<T>) => {

@@ -1,17 +1,29 @@
 # 02 — Thiết kế dữ liệu hệ thống đặt sân cầu lông
 
+## CLB — CURRENT source 27/10/2026
+
+Model đếm trực tiếp hiện có **49 bảng**, gồm15bảng CLB (13ban đầu +2audit/biên bản). Danh sách ở [18](18-club-features.md), cải thiện và schema mới nhất ở [19](19-club-hardening.md). AddClubFeatures SQLServer20261027115559/PG20261027115721, tiếp theo HardenClubWorkflows SQLServer20261027130036/PG20261027130113. Không sửa migration lịch sử hoặc tự áp DB ứng dụng/live; con số baseline trong lịch sử không thay model hiện tại.
+
 > **Chủ tài liệu: Đinh Văn Tài.** Cập nhật: 20/10/2026.
-> **EN/AI:** This doc describes the **source EF Core model** (`Repositories/Context/BadmintonBookingDbContext.cs`, 17 tables).
-> **Dev baseline = SQL Server, `int` PKs, enums as `nvarchar`.** Production target = Supabase Postgres (target only; provider, migration and raw SQL must be reviewed).
+> **EN/AI:** Source EF Core maps49tables through `BadmintonBookingDbContext`, `OperationsModel` and `ClubFeaturesModel` as of27/10/2026. Historical cloud baseline is separate; current CLB hardening is specified in document19.
+> **Dev baseline = SQL Server, `int` PKs, enums as `nvarchar`.** CURRENT source có PostgreSQL provider, migration riêng và kiểm thử loopback. TARGET production Supabase phải đối chiếu migration/dữ liệu/quyền thực tế; chưa nghiệm thu live từ bằng chứng local.
 
 ## 1. Nguyên tắc dữ liệu
 
 - Postgres (prod) / SQL Server (dev) lưu: hồ sơ, cơ sở, sân, đặt chỗ, thanh toán, voucher, điểm, audit, review.
-- **Ảnh chỉ nằm trong Storage** (prod: Supabase buckets), **không lưu blob/base64 trong DB**. Dev dùng cột `ImageUrl` (string path).
+- **Ảnh không lưu blob/base64 trong DB**. CURRENT adapter lưu tệp riêng ngoài wwwroot, DB chỉ giữ metadata/key; production phải cấu hình Media:Directory bền vững. Supabase Storage là TARGET adapter, chưa được triển khai/nghiệm thu trong lượt này. Cột ImageUrl cũ vẫn tương thích.
 - Booking cập nhật trạng thái khi hủy, giữ bản ghi và tiền snapshot; hoàn tiền tạo Payment riêng. Ledger/audit có thiết kế append-only ở ứng dụng, chưa là bảo vệ bất biến DB trước mọi thao tác đặc quyền.
 - Mọi timestamp lưu UTC; xác định ngày đặt & deadline hiển thị theo `Asia/Ho_Chi_Minh` (Hanoi clock, fixed UTC+7).
 - Chỉ dùng schema cần cho V1; mọi thay đổi schema qua **migration có phiên bản** (EF Core), không sửa tay schema production.
 - **Nguồn chân thực = DB.** Chống overbooking bằng unique filtered index, không chỉ app-level lock.
+
+### CURRENT bổ sung 26/10/2026
+
+Migration AddBookingExperience riêng cho SQL Server/PostgreSQL thêm 14 bảng: BookingBatches, BookingCases, BookingHistory, CourtFavorites, DisruptionContacts, GroupRsvps, HandoverItems, InboxMessages, NotificationPreferences, PrivacyRequests, ReviewReplies, ReviewReports, StaffShifts, StoredMedia. Hai bảng OnlineRefundOperations/InventoryDaySnapshots từ các migration trước giữ nguyên; tổng model hiện tại 33 bảng. Reviews thêm IsHidden/ModerationReason; Notifications thêm Attempts/LastError.
+
+Batch có unique actor/request key và fingerprint toàn manifest; inbox unique user/event key; RSVP unique booking/user; favorites unique user/court; reply unique review. FK quan trọng dùng Restrict để giữ lịch sử. Creator của đơn nhóm Pending/Confirmed được backfill RSVP nếu còn là thành viên. Downgrade bị chặn khi bảng workflow mới có dữ liệu; cần backup/compensating release, không xóa yêu cầu/lịch sử âm thầm.
+
+PostgreSQL bật RLS và thu hồi quyền PUBLIC/anon/authenticated cho bảng mới và identity sequence; API backend tiếp tục xác thực/phân quyền qua service. Không cấp quyền trực tiếp từ frontend. CURRENT là schema/source và fixture local; NOT VERIFIED áp migration/live. Chi tiết chức năng ở [17](17-booking-experience.md).
 
 ## 2. Sơ đồ quan hệ
 

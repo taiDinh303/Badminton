@@ -6,7 +6,7 @@ test("onsite mode offers Cash and QR, keeps booking pending until staff confirms
   let requestedMethod = "";
   await mockApi(page, [
     { pattern: /\/payments\/methods$/, respond: () => ok(["Cash", "QR"]) },
-    { pattern: /\/bookings\/42$/, respond: () => ok({ id: 42, bookingCode: "BK-ONSITE", status: "Pending", courtName: "Sân 1", date: "2099-10-21", slotLabel: "18:00", playerCount: 1, payableAmount: 100000, totalAmount: 100000, discountAmount: 0, pointsEarned: 0, pointsRedeemed: 0, createdAt: "2099-10-21T00:00:00Z" }) },
+    { pattern: /\/bookings\/42$/, respond: () => ok({ id: 42, bookingCode: "BK-ONSITE", status: "Pending", userId: 1, courtName: "Sân 1", date: "2099-10-21", slotLabel: "18:00", playerCount: 1, payableAmount: 100000, totalAmount: 100000, discountAmount: 0, pointsEarned: 0, pointsRedeemed: 0, createdAt: "2099-10-21T00:00:00Z" }) },
     { pattern: /\/payments\/booking\/42$/, respond: () => ok([]) },
     { pattern: /\/payments\/init$/, method: "POST", respond: (_route, _url, body) => {
       requestedMethod = (body as { method: string }).method;

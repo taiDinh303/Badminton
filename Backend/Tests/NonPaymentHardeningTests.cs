@@ -72,7 +72,7 @@ public sealed class NonPaymentHardeningTests
         Assert.Null(await h.RunScopeAsync(sp => sp.GetRequiredService<BookingCompletionService>().CompleteAsync(b.Id, true)));
         await SetBooking(h, b.Id, BookingStatus.Confirmed, true);
         var result = await h.RunScopeAsync(sp => sp.GetRequiredService<IBookingService>().MarkCompletedAsync(b.Id, h.Manager));
-        Assert.Equal(100, result.PointsEarned);
+        Assert.Equal(b.PayableAmount / 1000, result.PointsEarned);
     }
 
     [Fact]
@@ -203,7 +203,7 @@ public sealed class NonPaymentHardeningTests
                 new PointLedger { UserId = h.Alice, Delta = -99900, LedgerKey = $"unit-v2:{h.Alice}", Reason = "conversion", CreatedAt = DateTime.UtcNow });
             await db.SaveChangesAsync();
         });
-        await h.RunScopeAsync(sp => sp.GetRequiredService<IPointService>().ClawbackAsync(h.Alice, old.Id, 50000, "half"));
+        await h.RunScopeAsync(sp => sp.GetRequiredService<IPointService>().ClawbackAsync(h.Alice, old.Id, old.PayableAmount / 2, "half"));
         Assert.Equal(50, await h.RunScopeAsync(sp => sp.GetRequiredService<IPointService>().GetBalanceAsync(h.Alice)));
         await h.RunScopeAsync(sp => sp.GetRequiredService<IPointService>().AwardAsync(h.Alice, fresh.Id, 100000, "new units"));
         Assert.Equal(150, await h.RunScopeAsync(sp => sp.GetRequiredService<IPointService>().GetBalanceAsync(h.Alice)));

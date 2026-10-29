@@ -22,6 +22,14 @@ namespace Repositories.UnitOfWork
             return await _dbSet.FindAsync([id], ct);
         }
 
+        public async Task<T?> GetFreshByIdAsync(int id, CancellationToken ct = default)
+        {
+            var entity = await _dbSet.FindAsync([id], ct);
+            if (entity is null) return null;
+            await _context.Entry(entity).ReloadAsync(ct);
+            return _context.Entry(entity).State == EntityState.Detached ? null : entity;
+        }
+
         public async Task<IReadOnlyList<T>> GetAllAsync(CancellationToken ct = default) =>
             await _dbSet.AsNoTracking().ToListAsync(ct);
 

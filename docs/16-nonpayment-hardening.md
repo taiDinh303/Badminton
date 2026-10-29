@@ -39,6 +39,7 @@ Các route cũ vẫn tồn tại. Các trường DTO mới là bổ sung; số J
 - `GET /groups/mine` vẫn owner-only; thêm `GET /groups/joined` cho các nhóm đang tham gia.
 - Thêm đổi tên, rời nhóm, loại thành viên, chuyển chủ và giải tán. Chỉ owner được quản trị; owner cần chuyển chủ hoặc giải tán trước khi rời; nhóm còn booking hoạt động không được giải tán.
 - Chuyển chủ chỉ cho thành viên đang hoạt động và thu hồi mã mời cũ. Quota nhóm đếm theo GroupId qua các owner, không được reset bằng chuyển chủ.
+- CURRENT bổ sung 26/10: người đặt ban đầu và owner hiện tại của nhóm được hủy cả đơn cũ Pending/đã trả, qua cùng policy server; owner được kiểm lại dưới khóa group, không tin entity owner đã track. Thành viên thường/chủ trung gian đã chuyển quyền không được hủy nếu không phải người đặt hoặc staff đúng quyền. Hoàn tiền/điểm/voucher vẫn về tài khoản gắn với đơn ban đầu; chuyển owner không chuyển quyền lợi hoặc mở quyền xem receipt/khởi tạo checkout của tài khoản khác.
 - Nhóm **tạo mới** cần mã mời bí mật khi join. Owner được xoay mã; server chỉ lưu hash, không trả lại mã cũ. UI hiển thị mã khi tạo/xoay và chỉ giữ trong bộ nhớ màn hình.
 - Nhóm cũ chưa có hash vẫn nhận join theo ID để giữ tương thích; owner có thể xoay mã để chuyển sang lời mời có kiểm soát. Đây là giới hạn tương thích có chủ đích, không tuyên bố mọi nhóm cũ đã có invite protection.
 

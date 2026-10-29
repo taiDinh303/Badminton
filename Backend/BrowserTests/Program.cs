@@ -22,6 +22,18 @@ await fixture.RunScopeAsync(async sp =>
 });
 await fixture.CountPointsIntoAsync(fixture.Alice, 1000, "browser fixture");
 await fixture.AddVoucherAsync("BROWSER", 10, 1, 10000);
+// Synthetic club catalogue for the browser flow; this executable only accepts loopback BadmintonTest_*.
+fixture.ActAs(fixture.Manager, Badminton.Core.Enums.Role.Manager);
+await fixture.RunScopeAsync(async sp => {
+    var equipment = sp.GetRequiredService<Contract.Services.Operations.IEquipmentService>();
+    await equipment.SaveItemAsync(null, new(fixture.BranchId, "Browser racket", true, 2, 20000, true));
+    var coaching = sp.GetRequiredService<Contract.Services.Operations.ICoachingService>();
+    var coach = await coaching.SaveCoachAsync(null, new(fixture.BranchId, "Browser coach", "Synthetic class", true));
+    var classId = await coaching.AddSlotAsync(coach, new(fixture.HanoiNowUtc.AddHours(2), fixture.HanoiNowUtc.AddHours(3), 4, 100000));
+    await ClubCourtFixture.AttachAsync(fixture, classId);
+    var tournaments = sp.GetRequiredService<Contract.Services.Operations.ITournamentService>();
+    await tournaments.CreateAsync(new(fixture.BranchId, "Browser tournament", 8));
+});
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     ApplicationName = typeof(Badminton.API.Program).Assembly.GetName().Name,

@@ -7,6 +7,8 @@ export interface Branch {
   openTime: string;
   closeTime: string;
   courtCount?: number;
+  geoLat?: number | null;
+  geoLng?: number | null;
 }
 
 export interface Court {
@@ -89,7 +91,7 @@ export interface Booking {
   userName: string | null;
   price: PriceBreakdown;
   cancelReason: string | null;
-  /** FEAT check-in: server-generated 64-hex token shown as the QR (docs 03 Â§3). */
+  /** FEAT check-in: server-generated 64-hex token shown as the QR. */
   qrToken?: string | null;
   checkedInAt?: string | null;
   pendingExpiresAt?: string | null;
@@ -211,7 +213,7 @@ export interface WaitlistEntryView {
   promotedBookingId: number | null;
 }
 
-// â”€â”€ FEAT 7: Groups (docs 03 Â§7) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ FEAT 7: Groups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface GroupView {
   inviteCode?: string | null;
   id: number;
@@ -231,7 +233,7 @@ export interface GroupMemberView {
   joinedAt: string;
 }
 
-// â”€â”€ FEAT 8: Reviews (docs 03 Â§7) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ FEAT 8: Reviews â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface ReviewView {
   id: number;
   bookingId: number;
@@ -245,7 +247,7 @@ export interface ReviewView {
   flaggedRefunded: boolean;
 }
 
-// â”€â”€ FEAT 9: Staff check-in (docs 03 Â§3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ FEAT 9: Staff check-in â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface SlotCheckinView {
   id: number;
   bookingCode: string;
@@ -253,7 +255,7 @@ export interface SlotCheckinView {
   checkedInAt: string | null;
 }
 
-// â”€â”€ Account summary: loyalty points + voucher usage (docs 07 Â§4) â”€â”€â”€â”€â”€â”€
+// â”€â”€ Account summary: loyalty points + voucher usage â”€â”€â”€â”€â”€â”€
 export interface PointSummary {
   balance: number;
   redeemableVnd: number;
@@ -287,7 +289,7 @@ export interface AccountSummary {
   availableVouchers: MyVoucher[];
 }
 
-// â”€â”€ Admin report views (docs 05) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ Admin report views â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export interface RevenueByDay {
   date: string;
   bookings: number;

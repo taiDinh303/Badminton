@@ -14,10 +14,6 @@ import {
 } from "../../../components/ui";
 import { ListChecks, X, Hourglass, CalendarDays } from "lucide-react";
 
-/**
- * FEAT 2 — My waitlist (customer view). Shows every slot the customer has
- * joined the queue for, with status + "leave" action.
- */
 export default function WaitlistPage() {
   const user = useAuth((s) => s.user);
   const qc = useQueryClient();

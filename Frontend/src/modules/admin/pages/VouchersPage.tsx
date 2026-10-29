@@ -32,16 +32,11 @@ const emptyForm = (): VoucherForm => ({
   validUntil: new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10),
 });
 
-/**
- * Admin "Voucher" (docs 07 §4): list + usage progress + create modal + deactivate.
- */
 export default function VouchersPage() {
   const [form, setForm] = useState<VoucherForm | null>(null);
   // Voucher create/deactivate are [Admin] in the backend; a Manager can only list.
   const canManage = isAdmin(useAuth((s) => s.user));
 
-  // Show ALL vouchers (active + deactivated) so "Vô hiệu" flips the row to a
-  // locked state instead of making it vanish (it was hidden by activeOnly).
   const { data: vouchers = [], isLoading, refetch } = useQuery({
     queryKey: ["vouchers"],
     queryFn: () => api.vouchers.list(false),

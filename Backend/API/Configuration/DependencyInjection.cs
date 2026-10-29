@@ -35,7 +35,11 @@ public static class DependencyInjection
                     {
                         var idText = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
                         var role = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
-                        if (!int.TryParse(idText, out var id)) { context.Fail("Invalid identity."); return; }
+                        if (!int.TryParse(idText, out var id))
+                        {
+                            context.Fail("Invalid identity.");
+                            return;
+                        }
                         var users = context.HttpContext.RequestServices.GetRequiredService<Contract.Repositories.UnitOfWork.IUnitOfWork>()
                             .GetRepository<Contract.Repositories.Entity.User>();
                         var user = (await users.GetByConditionAsync(u => u.Id == id, context.HttpContext.RequestAborted)).SingleOrDefault();
@@ -77,16 +81,19 @@ public static class DependencyInjection
         services.AddRateLimiter(o =>
         {
             o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            foreach (var (name, limit, seconds) in new[] { ("public", 100, 10), ("auth", 5, 60), ("contact", 3, 60) })
+            foreach (var (name, limit, seconds) in new[] { ("public", 100, 10), ("auth", 5, 60), ("contact", 3, 60), ("upload", 10, 60) })
                 o.AddPolicy(name, context => RateLimitPartition.GetFixedWindowLimiter(
                     context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                     _ => new FixedWindowRateLimiterOptions
                     {
-                        PermitLimit = limit, Window = TimeSpan.FromSeconds(seconds), QueueLimit = 0
+                        PermitLimit = limit,
+                        Window = TimeSpan.FromSeconds(seconds),
+                        QueueLimit = 0
                     }));
         });
 
         services.AddBookingServices(configuration);
+        services.AddScoped<Contract.Services.Operations.IMediaStore, Badminton.API.Adapters.FileMediaStore>();
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, HttpCurrentUser>();
         services.AddMemoryCache();
@@ -105,8 +112,11 @@ public static class DependencyInjection
         services.AddControllers().ConfigureApiBehaviorOptions(options =>
             options.InvalidModelStateResponseFactory = context => new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(new
             {
-                data = (object?)null, message = "Dữ liệu yêu cầu không hợp lệ.", statusCode = 400,
-                code = "VALIDATION_ERROR", requestId = context.HttpContext.TraceIdentifier
+                data = (object?)null,
+                message = "Dữ liệu yêu cầu không hợp lệ.",
+                statusCode = 400,
+                code = "VALIDATION_ERROR",
+                requestId = context.HttpContext.TraceIdentifier
             }));
         services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(opt =>
             opt.JsonSerializerOptions.Converters.Add(

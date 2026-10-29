@@ -1,14 +1,5 @@
 import type { Page, Route, Request } from "@playwright/test";
 
-/**
- * Shared API-mock helpers for the E2E suite. The SPA is served by `vite
- * preview` on :4173 and every /api/v1/** call is intercepted here, so the
- * tests run fully offline (no .NET runtime, no SQL Server). The mock
- * envelopes mirror the real BaseResponse<T> wrapper used by lib/api.ts:
- *
- *   { data: T, message: string | null, statusCode: number, code: string | null }
- */
-
 export type BaseEnvelope<T> = {
   data: T;
   message: string | null;
@@ -30,14 +21,9 @@ export const err = (statusCode: number, code: string, message: string): BaseEnve
   code,
 });
 
-/** A request matcher that matches any URL whose path contains /api/v1/.
- *  Works whether the SPA calls same-origin "/api/v1/..." or an absolute
- *  http://host/api/v1/... URL. */
 export const apiRoute = (): (url: URL) => boolean => (url) =>
   url.pathname.includes("/api/v1/");
 
-/** Install a set of (regex → response) API mocks on the page. Handlers that
- *  return a Promise are awaited; returning a JSON string / object is fine. */
 export async function mockApi(
   page: Page,
   handlers: Array<{
@@ -60,9 +46,7 @@ export async function mockApi(
       const body = safeBody(req);
       const out = h.respond(route, url, body);
       if (out === undefined) continue; // let another handler / the default pass
-      // Honor the BaseResponse envelope's statusCode as the real HTTP status so
-      // ok/err mocks surface exactly as the SPA's api.ts expects (a non-OK
-      // status makes request() throw ApiError with the envelope's message).
+
       let status = 200;
       if (out !== null && typeof out === "object" && typeof (out as { statusCode?: unknown }).statusCode === "number") {
         status = (out as { statusCode: number }).statusCode;
@@ -74,8 +58,7 @@ export async function mockApi(
       });
       return;
     }
-    // No handler matched — return a 404 envelope rather than letting the
-    // request reach the (absent) real server.
+
     await route.fulfill({
       status: 404,
       contentType: "application/json",
@@ -94,10 +77,6 @@ function safeBody(req: Request): unknown {
   }
 }
 
-/** Seed an authenticated customer into the app's storage so a
- *  Protected/Staff route renders without a real login. Mirrors the shape
- *  that store/auth.ts hydrates from sessionStorage (bb_user) and the JWT
- *  token (localStorage bb_token). */
 export async function seedLoggedInCustomer(
   page: Page,
   user: { id: number; fullName: string; role: string; phone: string },

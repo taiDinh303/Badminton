@@ -33,14 +33,20 @@ namespace Badminton.API.Jobs
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                try { await RunOnceAsync(); }
+                try
+                {
+                    await RunOnceAsync();
+                }
                 catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
                 {
                     _logger.LogError(ex,
                         "{Job} tick failed; will retry on the next interval.",
                         nameof(WaitlistPromotionJob));
                 }
-                try { await Task.Delay(Interval, stoppingToken); }
+                try
+                {
+                    await Task.Delay(Interval, stoppingToken);
+                }
                 catch (TaskCanceledException) { break; }
             }
         }
@@ -59,6 +65,8 @@ namespace Badminton.API.Jobs
                 using var scope = _scopes.CreateScope();
                 var sp = scope.ServiceProvider;
                 await sp.GetRequiredService<Contract.Services.Notify.INotifyService>().RetryPendingAsync();
+                await sp.GetRequiredService<Contract.Services.Operations.IReminderService>().RunAsync();
+                await sp.GetRequiredService<Contract.Services.Operations.IClubMaintenanceService>().RunAsync();
                 var waitlist = sp.GetRequiredService<IWaitlistService>();
                 var uow = sp.GetRequiredService<IUnitOfWork>();
                 var today = HanoiTime.HanoiToday();
@@ -68,7 +76,8 @@ namespace Badminton.API.Jobs
                 var entries = await uow.GetRepository<WaitlistEntry>()
                     .GetByConditionAsync(w =>
                         w.Status == WaitlistStatus.Waiting && w.Date >= today);
-                if (entries.Count == 0) return;
+                if (entries.Count == 0)
+                    return;
 
                 var tuples = entries
                     .Select(e => (e.CourtId, e.SlotId, e.Date))
@@ -79,7 +88,8 @@ namespace Badminton.API.Jobs
                 foreach (var (courtId, slotId, date) in tuples)
                 {
                     var b = await waitlist.PromoteAsync(courtId, slotId, date);
-                    if (b is not null) promoted++;
+                    if (b is not null)
+                        promoted++;
                 }
 
                 if (promoted > 0)

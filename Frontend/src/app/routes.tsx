@@ -1,4 +1,6 @@
 import { pageLoaders } from "./pageLoaders";
+import { clubCustomerRoutes, clubStaffRoutes } from "./clubRoutes";
+import { experienceCustomerRoutes, experienceStaffRoutes, experienceAdminRoutes } from "./experienceRoutes";
 import { lazy, Suspense, useEffect } from "react";
 import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router-dom";
 import Layout from "../components/Layout";
@@ -32,8 +34,6 @@ const Membership = lazy(pageLoaders.Membership);
 function Gate({ roles }: { roles?: string[] }) {
   const user = useAuth(state => state.user);
   const location = useLocation();
-  // Cached pages may not issue a request, so the transport cannot be the only
-  // boundary detecting a missed storage event when the shared token changes.
   const sessionValid = sessionMatchesStorage();
   useEffect(() => {
     if (!sessionValid) expireLocalSession();
@@ -64,7 +64,11 @@ export const router = createBrowserRouter([
     { path: "waitlist", element: <Waitlist /> },
     { path: "groups", element: <Groups /> },
     { path: "reviews", element: <Reviews /> },
+    ...experienceCustomerRoutes,
+    ...clubCustomerRoutes,
     { element: <Gate roles={["Admin", "Manager"]} />, children: [
+      ...experienceStaffRoutes,
+      ...clubStaffRoutes,
       { path: "admin", element: <Dashboard /> },
       { path: "admin/reconciliation", element: <Reconciliation /> },
       { path: "admin/bookings", element: <AdminBookings /> },
@@ -73,6 +77,7 @@ export const router = createBrowserRouter([
       { path: "admin/slots", element: <Slots /> },
       { path: "checkin", element: <Checkin /> },
       { element: <Gate roles={["Admin"]} />, children: [
+        ...experienceAdminRoutes,
         { path: "admin/branches", element: <Branches /> },
         { path: "admin/contacts", element: <Contacts /> },
         { path: "admin/staff", element: <Staff /> },

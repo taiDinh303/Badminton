@@ -48,6 +48,7 @@ namespace Badminton.Tests
             Assert.True(balanceAtCompleted > 0, "completed booking must have earned points");
 
             // Owner cancels her own paid order (9h out → 100% tier).
+            _h.ActAs(_h.Alice, Role.Customer);
             var view = await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<IBookingService>()
                  .CancelAsync(bookingId, _h.Alice));
@@ -80,9 +81,11 @@ namespace Badminton.Tests
         {
             var bookingId = await MakeConfirmedBookingAsync(_h.Bob, _h.Court2, _h.SlotPeak);
 
+            _h.ActAs(_h.Bob, Role.Customer);
             await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<IBookingService>().CancelAsync(bookingId, _h.Bob));
 
+            _h.ActAs(_h.Manager, Role.Manager);
             await _h.RunScopeAsync(sp =>
                 sp.GetRequiredService<IPaymentService>()
                  .CancelRefundAsync(bookingId, _h.Manager));
