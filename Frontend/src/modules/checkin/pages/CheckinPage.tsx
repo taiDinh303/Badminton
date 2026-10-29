@@ -1,3 +1,4 @@
+import FeatureHeading from "../../../components/FeatureHeading";
 import { vietnamDate } from "../../../utils/format";
 import TokenScanner from "../components/TokenScanner";
 import { useMemo, useState } from "react";
@@ -18,7 +19,6 @@ import {
   Callout,
   Busy,
   Button,
-  PageHeader,
   Field,
   StatusBadge,
 } from "../../../components/ui";
@@ -92,12 +92,13 @@ export default function CheckinPage() {
   const selectedCourt = courts.find((c) => c.id === courtId);
 
   return (
-    <div className="mx-auto max-w-3xl p-4 md:p-6">
-      <PageHeader
+    <div className="feature-page">
+      <FeatureHeading icon={ScanLine}
         title="Check-in"
         subtitle="Nhân viên xác nhận khách đến sân"
       />
 
+      <div className="checkin-grid">
       {/* Quick check-in */}
       <Card className="mt-5 p-4 md:p-5">
         <p className="mb-1 flex items-center gap-1.5 text-sm font-semibold">
@@ -292,6 +293,7 @@ export default function CheckinPage() {
           )}
         </div>
       </Card>
+      </div>
     </div>
   );
 }

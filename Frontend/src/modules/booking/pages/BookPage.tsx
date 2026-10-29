@@ -1,3 +1,4 @@
+import FeatureHeading from "../../../components/FeatureHeading";
 import { Link, useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -32,7 +33,7 @@ export default function BookPage() {
   const [date, setDate] = useState(today);
   const [branchId, setBranchId] = useState<number | null>(null);
   const [sel, setSel] = useState<Sel | null>(null);
-  const { data: branches = [] } = useQuery({
+  const { data: branches = [], isError: branchesError, refetch: reloadBranches } = useQuery({
     queryKey: ["branches"],
     queryFn: api.branches.list,
   });
@@ -48,11 +49,11 @@ export default function BookPage() {
   useEffect(() => {
     if (branchId == null && branches.length > 0) {
       const requested = branches.find(b => b.id === requestedBranch && b.isActive);
-      setBranchId(requested?.id ?? branches[0].id);
+      setBranchId(requested?.id ?? branches.find(b => b.isActive)?.id ?? null);
     }
   }, [branches, branchId, requestedBranch]);
 
-  const { data: courts, isLoading, refetch } = useQuery({
+  const { data: courts, isLoading, isError: availabilityError, refetch } = useQuery({
     queryKey: ["availability", branchId, date],
     queryFn: () => api.booking.availability(branchId!, date),
     enabled: branchId != null,
@@ -97,16 +98,11 @@ export default function BookPage() {
   const weekday = WEEKDAYS[new Date(`${date}T00:00:00`).getDay()];
 
   return (
-    <div className="mx-auto max-w-5xl p-4 md:p-6" onKeyDown={onKeyDown}>
-      <div>
-        <h1 className="text-2xl font-bold">Đặt sân</h1>
-        <p className="mt-1 text-sm text-muted">
-          Chọn cơ sở, ngày & khung giờ trống để đặt. Khách check-in bằng mã/QR tại sân.
-        </p>
-      </div>
+    <div className="feature-page booking-page" onKeyDown={onKeyDown}>
+      <FeatureHeading icon={CalendarDays} title="Đặt sân" subtitle="Chọn sân & giờ chơi · Check-in bằng QR" />
 
       {/* Controls card */}
-      <Card className="mt-4 p-4">
+      <Card className="booking-controls mt-4 p-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="flex items-center gap-2.5 text-sm">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -116,7 +112,7 @@ export default function BookPage() {
               <span className="block text-[11px] font-medium text-muted">Cơ sở</span>
               <select
                 value={branchId ?? ""}
-                onChange={(e) => setBranchId(Number(e.target.value))}
+                onChange={(e) => { setSel(null); setBranchId(Number(e.target.value)); }}
                 aria-label="Chọn cơ sở"
                 className="w-full rounded-lg border border-border bg-card px-2.5 py-1.5 text-sm font-semibold text-fg outline-none focus:border-primary"
               >
@@ -151,7 +147,8 @@ export default function BookPage() {
               <button
                 type="button"
                 aria-label="Ngày trước"
-                onClick={() => setDate((d) => addDays(d, -1))}
+                disabled={date <= today}
+                onClick={() => { setSel(null); setDate((d) => addDays(d, -1)); }}
                 className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted transition-colors hover:text-fg"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -161,7 +158,7 @@ export default function BookPage() {
                   type="date"
                   value={date}
                   min={today}
-                  onChange={(e) => e.target.value && setDate(e.target.value)}
+                  onChange={(e) => { if (e.target.value) { setSel(null); setDate(e.target.value); } }}
                   aria-label="Chọn ngày"
                   className="mt-0.5 w-full text-center text-sm font-semibold tnum text-fg outline-none"
                 />
@@ -169,7 +166,7 @@ export default function BookPage() {
               <button
                 type="button"
                 aria-label="Ngày sau"
-                onClick={() => setDate((d) => addDays(d, 1))}
+                onClick={() => { setSel(null); setDate((d) => addDays(d, 1)); }}
                 className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted transition-colors hover:text-fg"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -181,7 +178,7 @@ export default function BookPage() {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setDate(today)}
+            onClick={() => { setSel(null); setDate(today); }}
             className={
               "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors " +
               (date === today
@@ -202,23 +199,24 @@ export default function BookPage() {
             <span className="inline-flex items-center gap-1">
               <span className="h-3 w-3 rounded bg-slot-maint-bg" /> Bảo trì
             </span>
-            <span className="inline-flex items-center gap-1 text-accent">
+            <span className="inline-flex items-center gap-1 text-primary">
               <Zap className="h-3 w-3" /> Cao điểm
             </span>
           </div>
         </div>
       </Card>
 
+      {(branchesError || availabilityError) && <Callout tone="error" className="mt-4">Không tải được lịch sân. <Button size="sm" variant="ghost" onClick={() => { if (branchesError) void reloadBranches(); else void refetch(); }}>Thử lại</Button></Callout>}
       {isLoading && <div className="mt-4"><Busy label="Đang tải khung giờ…" /></div>}
 
-      {!isLoading && openCourts.length === 0 && (
+      {!isLoading && !branchesError && !availabilityError && openCourts.length === 0 && (
         <Callout tone="info" className="mt-4">
           Chưa có sân trống vào ngày này.
         </Callout>
       )}
 
       {/* Grid — compact per-court cards, slots wrap within viewport (no h-scroll) */}
-      <div className="mt-4 space-y-3">
+      <div className="court-grid mt-4">
         {(courts ?? []).map((c) => (
           <Card key={c.courtId} className="p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -232,7 +230,7 @@ export default function BookPage() {
                 {c.slots.filter((s) => !s.isLocked).length}/{c.slots.length} trống
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
+            <div className="slot-grid">
               {c.slots.map((s) => {
                 const state = !s.isLocked ? "free" : isBooked(s) ? "booked" : s.lockReason === "Bảo trì" || s.lockReason === "San bao tri/dong" ? "maint" : "closed";
                 const isSel =

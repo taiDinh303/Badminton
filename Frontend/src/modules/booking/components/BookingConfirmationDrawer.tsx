@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useRef } from "react";
 import { X, Users, Hourglass, BadgePercent, Coins } from "lucide-react";
 import { ApiError, type GroupView } from "../../../services/api";
 import { formatDay, formatVnd } from "../../../utils/format";
@@ -9,6 +10,14 @@ import CourtPhotos from "../../experience/components/CourtPhotos";
 
 interface Props { selection: BookingSelection | null; date: string; weekday: string; groups: GroupView[]; form: BookingForm; close: () => void; onAlternative: (courtId: number, slotId: number) => void }
 export default function BookingConfirmationDrawer({ selection: sel, date, weekday, groups: myGroups, form, close, onAlternative }: Props) {
+  const dialog = useRef<HTMLDivElement>(null);
+  const open = sel != null;
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    dialog.current?.focus();
+    return () => { if (previous?.isConnected) previous.focus(); };
+  }, [open]);
   const { players, setPlayers, voucher, setVoucher, groupId, setGroupId, pointsToRedeem, setPointsToRedeem,
     create, joinWaitlist, quote, validQuote, capacity, waitlistDone, createFailed, selectedBooked, price } = form;
   return (<>
@@ -23,6 +32,9 @@ export default function BookingConfirmationDrawer({ selection: sel, date, weekda
             transition={{ duration: 0.25, ease: "easeOut" }}
           >
             <div
+              ref={dialog}
+              tabIndex={-1}
+              onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); close(); } }}
               className="rounded-t-2xl border border-border bg-card p-4 shadow-lg md:rounded-2xl"
               style={{ marginBottom: "env(safe-area-inset-bottom)" }}
               role="dialog"
@@ -99,7 +111,7 @@ export default function BookingConfirmationDrawer({ selection: sel, date, weekda
                 </label>
               </div>
 
-              <p className="mt-2 text-[11px] text-muted">Mỗi mã voucher chỉ dùng một lần cho mỗi tài khoản. Bạn vẫn có thể dùng mã khác.</p>
+              <p className="mt-2 text-[11px] text-muted">Mỗi mã dùng một lần / tài khoản.</p>
 
               {/* Group (owner-only) */}
               {myGroups.length > 0 && (
@@ -150,14 +162,14 @@ export default function BookingConfirmationDrawer({ selection: sel, date, weekda
                 <div className="text-xs text-muted tnum">
                   {price.peak ? "Cao điểm" : "Giờ thường"} · {formatVnd(price.base)} / sân / slot
                 </div>
-                <p className="text-xl font-bold tnum text-fg">{price.total === null || quote.isFetching ? "Đang tính…" : formatVnd(price.total)}</p>
+                <p className="text-xl font-bold tnum text-fg">{quote.isError ? "—" : price.total === null || quote.isFetching ? "Đang tính…" : formatVnd(price.total)}</p>
               </div>
 
               <p className="mt-2 text-xs text-muted">Sức chứa tối đa {capacity} người. Số người không làm thay đổi giá sân.</p>
               <p className="mt-2 text-xs text-muted">Mang mã đặt/QR đến sân để nhân viên check-in, từ 30 phút trước giờ bắt đầu đến hết khung giờ.</p>
               {price.voucherDiscount > 0 && <p className="mt-1 text-xs">Voucher: −{formatVnd(price.voucherDiscount)}</p>}
               {price.pointsDiscount > 0 && <p className="mt-1 text-xs">Điểm đổi: −{formatVnd(price.pointsDiscount)}</p>}
-              {quote.isError && <Callout tone="error" className="mt-2">{quote.error.message}</Callout>}
+              {quote.isError && <Callout tone="error" className="mt-2">{quote.error.message} <Button type="button" size="sm" variant="ghost" disabled={quote.isFetching} onClick={() => void quote.refetch()}>Thử lại giá</Button></Callout>}
               {create.isError && (
                 <Callout tone="error" className="mt-2">
                   {create.error instanceof ApiError
@@ -191,7 +203,7 @@ export default function BookingConfirmationDrawer({ selection: sel, date, weekda
               {(createFailed || selectedBooked) && <AlternativeSlots courtId={sel.court.courtId} slotId={sel.slot.slotId} date={date} onSelect={onAlternative} />}
               {waitlistDone && (
                 <Callout tone="success" className="mt-2">
-                  Đã xếp bạn vào danh sách chờ (FIFO).
+                  Đã tham gia danh sách chờ.
                 </Callout>
               )}
             </div>

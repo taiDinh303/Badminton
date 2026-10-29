@@ -177,7 +177,7 @@ export default function BookingDetailPage() {
   }
 
   return (
-      <div className="mx-auto max-w-2xl p-4 md:p-6">
+    <div className="feature-page">
         <BookingTools booking={b} />
       <Link
         to="/bookings"
@@ -187,8 +187,10 @@ export default function BookingDetailPage() {
       </Link>
 
       {b.status === "Pending" && b.pendingExpiresAt && <PendingDeadline deadline={b.pendingExpiresAt} serverTime={b.serverTimeUtc} />}
+      <div className="detail-grid">
+      <section aria-label="Thông tin đặt sân">
       {/* Status hero */}
-      <Card className="mt-4 overflow-hidden">
+      <Card className="detail-hero mt-4 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-bg/50 p-4">
           <div>
             <div className="flex items-center gap-2">
@@ -228,7 +230,9 @@ export default function BookingDetailPage() {
         )}
       </Card>
 
-      {/* Price breakdown */}
+      </section>
+      <section aria-label="Giá và thanh toán">
+      {/* Price breakdown (docs 07 §4: show every line clearly) */}
       {p && (
         <Card className="mt-4">
           <p className="mb-2 flex items-center gap-1 text-sm font-semibold">
@@ -382,7 +386,7 @@ export default function BookingDetailPage() {
           <p className="mb-2 text-sm font-semibold">Giao dịch</p>
           <div className="space-y-2">
             {pays.map((tx: PaymentView) => (
-              <div key={tx.id} className="flex items-center justify-between text-sm">
+              <div key={tx.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <div className="flex items-center gap-2">
                   <StatusBadge status={tx.status} size="sm" />
                   <span className="text-muted tnum">
@@ -402,6 +406,8 @@ export default function BookingDetailPage() {
           </div>
         </Card>
       )}
+      </section>
+      </div>
     </div>
   );
 }

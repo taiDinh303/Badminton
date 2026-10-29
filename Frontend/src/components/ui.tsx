@@ -1,4 +1,5 @@
 import { clsx } from "clsx";
+import FeatureHeading from "./FeatureHeading";
 import {
   Loader,
   Check,
@@ -221,11 +222,13 @@ export function Pills<T extends string>({
 }
 
 export function Toolbar({
+  icon = Home,
   title,
   subtitle,
   search,
   actions,
 }: {
+  icon?: typeof Home;
   title: string;
   subtitle?: string;
   search?: { value: string; onChange: (v: string) => void; placeholder?: string };
@@ -233,10 +236,7 @@ export function Toolbar({
 }) {
   return (
     <div className="page-toolbar flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
-      </div>
+      <FeatureHeading icon={icon} title={title} subtitle={subtitle} />
       <div className="flex flex-wrap items-center gap-2">
         {search && (
           <div className="relative">
@@ -443,7 +443,7 @@ export function EmptyState({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 px-6 py-14 text-center">
+    <div className="empty-state flex flex-col items-center justify-center gap-2 px-6 py-14 text-center">
       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-bg text-muted">
         {icon ?? <Inbox className="h-5 w-5" />}
       </span>
@@ -695,7 +695,7 @@ export function SlotCell({
     free: "bg-slot-free-bg text-slot-free-fg",
     booked: "bg-slot-booked-bg text-slot-booked-fg",
     maint: "bg-slot-maint-bg text-slot-maint-fg",
-    closed: "bg-slot-booked-bg text-slot-booked-fg",
+    closed: "bg-bg text-muted",
   };
   const icon =
     state === "free" ? <Check className="h-3 w-3" /> : state === "booked" ? <Lock className="h-3 w-3" /> : <Wrench className="h-3 w-3" />;
@@ -707,9 +707,10 @@ export function SlotCell({
       disabled={disabled}
       onClick={onClick}
       aria-pressed={selected}
+      title={sub}
       aria-label={`${label} ${text}${peak ? " giờ cao điểm" : ""}`}
       className={clsx(
-        "flex h-16 min-w-[64px] flex-col items-center justify-center gap-0.5 rounded-lg border px-1 text-center transition-all",
+        "slot-cell flex h-16 min-w-[64px] flex-col items-center justify-center gap-0.5 rounded-lg border px-1 text-center transition-all",
         base[state],
         state === "free" && !disabled && "hover:ring-2 hover:ring-primary/40",
         selected && "ring-2 ring-primary",

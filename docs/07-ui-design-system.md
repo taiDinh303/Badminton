@@ -8,14 +8,14 @@ Tham khảo shell trắng/xám, sidebar và header rõ của Marixa; giữ thư�
 
 ## 2. Token
 
-[theme.css](../Frontend/src/theme.css) là nguồn giá trị màu; index.css map Tailwind @theme và hành vi chung.
+[theme.css](../Frontend/src/theme.css) khai báo token nền; [redesign.css](../Frontend/src/redesign.css) override palette hiện hành, index.css map Tailwind @theme. [workspace.css](../Frontend/src/workspace.css) quản lý bố cục fluid và responsive mới.
 
 | Token | CURRENT | Mục đích |
 | --- | --- | --- |
-| primary | #15803D | Hành động/focus, tương phản tốt hơn xanh sáng cũ |
-| accent | #FACC15 | Nhấn CTA, chữ tối |
-| bg/card | #F5F6F8 / #FFFFFF | Trang/bề mặt |
-| fg/muted/border | #0F172A / #475569 / #E2E8F0 | Nội dung phụ/cấu trúc |
+| primary | #176345 | Hành động/focus |
+| accent | #E7F36B | Nhấn CTA, chữ tối |
+| bg/card | #F3F6F2 / #FFFFFF | Trang/bề mặt |
+| fg/muted/border | #173B30 / #596C63 / #DFE7DF | Nội dung phụ/cấu trúc |
 | slot-free | #DCFCE7 / #15803D | Trống |
 | slot-booked | #FEE2E2 / #991B1B | Đã đặt |
 | slot-maint | #FEF3C7 / #92400E | Bảo trì (vàng); Open xanh, Closed đỏ |
@@ -66,3 +66,11 @@ Header ứng dụng có avatar với cursor pointer, dropdown tài khoản/đơn
 CURRENT: `redesign.css` thống nhất palette xanh đậm/lime, nền sáng, sidebar tối, mục đang chọn tương phản, header gọn, card/bảng/form và bottom navigation. Style landing nền đặt trong layer `home-base`; thiết kế chung có thể điều chỉnh riêng qua redesign. Giữ nhãn ngắn cạnh icon, focus ring, skip link, reduced motion và responsive 320–1440px. Logo trong sidebar đưa về /home.
 
 Home có form họ tên/SĐT bắt buộc, email/lời nhắn tùy chọn, đồng ý liên hệ; không cần đăng nhập. Không lưu PII trong localStorage. Chỉ báo thành công sau POST /api/v1/contacts thành công; lỗi mạng giữ nguyên form. Hộp thư /admin/contacts chỉ dành Admin, phân trang 20 yêu cầu, gọi điện/email và đánh dấu xử lý; Manager không có quyền đọc danh sách toàn hệ thống. Đây là yêu cầu tư vấn, không giữ chỗ hoặc xác nhận đặt sân.
+
+## 8. Bố cục toàn chiều rộng — 26/10/2026
+
+CURRENT: nội dung trong shell dùng toàn bộ chiều rộng còn lại sau sidebar; bỏ max-width và padding lặp ở từng feature. Lề PC 24px (tablet 20px), mobile 12px và safe-area, không ép chữ/nút sát mép màn hình. Landing/auth dùng viewport với lề nhỏ; cột nhập auth vẫn giới hạn để dễ đọc. `FeatureHeading` dùng chung tiêu đề/icon, toolbar quản trị giữ search/actions theo trang.
+
+Dashboard có 6 ô thao tác icon, thẻ cơ sở tự chia cột. Lịch sân tự chia số ô giờ; từ 1600px có hai cột sân, một sân duy nhất dùng trọn hàng. Giờ đã qua nền trung tính; đã đặt/bảo trì giữ màu, chữ và icon riêng. Ngày trước bị khóa ở hôm nay; đổi ngày/cơ sở đóng lựa chọn cũ. Lỗi tải lịch phân biệt lịch rỗng, có thử lại; báo giá lỗi hiện dấu “—”, giữ khóa xác nhận và cho thử lại giá, không tự tính thay server.
+
+Đơn/nhóm/reviews/hàng chờ dùng lưới tự co và empty state có icon/hướng đi tiếp. Tài khoản tách hồ sơ, điểm/voucher, ô tiện ích và bảo mật; chi tiết đơn và check-in có hai cột trên PC, một cột khi hẹp. Mobile menu dùng ô icon; header giữ tên màn, drawer nhận focus khi mở, Escape đóng và trả focus, vùng cuộn theo chiều cao. Số tiền/chính sách/quyền/HTTP contract giữ theo server. Bằng chứng browser và lỗi live được ghi riêng ở worklog; không coi ảnh dữ liệu mock là nghiệm thu vận hành.

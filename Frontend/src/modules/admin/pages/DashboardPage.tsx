@@ -1,3 +1,4 @@
+import FeatureHeading from "../../../components/FeatureHeading";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -57,12 +58,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Tổng quan</h1>
-        <p className="mt-1 text-sm text-muted">
-          Chỉ số vận hành hôm nay + xu hướng 7 ngày
-        </p>
-      </div>
+      <FeatureHeading icon={BarChart3} title="Tổng quan" subtitle="Hôm nay & 7 ngày qua" />
 
       {isError && (
         <div className="mt-4">

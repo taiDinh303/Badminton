@@ -147,7 +147,7 @@ export default function CourtsPage() {
 
   return (
     <div>
-      <Toolbar
+      <Toolbar icon={Dumbbell}
         title="Sân & giá"
         subtitle="Quản lý sân, giá giờ thường / cao điểm, phụ thu cuối tuần"
         actions={

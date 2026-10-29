@@ -154,7 +154,7 @@ export default function VouchersPage() {
 
   return (
     <div>
-      <Toolbar
+      <Toolbar icon={Ticket}
         title="Voucher"
         subtitle="Mã giảm giá cho khách hàng"
         actions={

@@ -9,7 +9,7 @@ const branch = { id: 1, name: "Cơ sở cầu lông Nguyễn Văn Linh", address
 const court = { id: 1, branchId: 1, name: "Sân cầu lông số 1", code: "S01", isActive: true, priceLowPeak: 100000, pricePeak: 150000, weekendSurcharge: 0, capacity: 10, surface: "Sindalo", ratingAvg: 5, ratingCount: 1 };
 const booking = { id: 1, userId: 1, bookingCode: "BK000001", courtId: 1, courtName: court.name, branchName: branch.name, date: "2026-10-24", slotLabel: "18:00–19:00", playerCount: 2, status: "Confirmed", payableAmount: 200000, basePrice: 200000, totalAmount: 200000, discountAmount: 0, pointsRedeemed: 0, pointsEarned: 2000, createdAt: "2026-10-22T08:00:00Z" };
 const paged = { items: [booking], currentPage: 1, totalPages: 2, totalItems: 2, hasNextPage: true, hasPreviousPage: false };
-const routes = ["/dashboard", "/book", "/bookings", "/bookings/1", "/account", "/groups", "/reviews", "/waitlist", "/checkin", "/admin", "/admin/bookings", "/admin/courts", "/admin/vouchers", "/admin/slots", "/admin/staff", "/admin/audit", "/admin/membership"];
+const routes = ["/dashboard", "/book", "/bookings", "/bookings/1", "/account", "/groups", "/reviews", "/waitlist", "/checkin", "/admin", "/admin/bookings", "/admin/courts", "/admin/vouchers", "/admin/slots", "/admin/staff", "/admin/audit", "/admin/membership", "/admin/branches", "/admin/contacts", "/admin/reconciliation"];
 
 async function setup(page: Page, populated = false) {
   await page.clock.setFixedTime(new Date("2026-10-22T08:00:00Z"));
@@ -35,6 +35,8 @@ async function setup(page: Page, populated = false) {
     { pattern: /\/groups\/mine$/, respond: () => ok(populated ? [{ id: 1, ownerId: 1, name: "Nhóm cầu lông cuối tuần Nguyễn Văn Linh", memberCount: 4, maxMembers: 10 }] : []) },
     { pattern: /\/reviews\/paged\?/, respond: () => pagedResponse(populated ? [{ id: 1, courtId: 1, courtName: court.name, userName: "Nguyễn Văn Khách Hàng", rating: 5, createdAt: "2026-10-22T08:00:00Z", comment: "Sân sạch sẽ, rộng rãi và thuận tiện cho nhóm bạn." }] : []) },
     { pattern: /\/waitlist\/mine\/paged\?/, respond: () => pagedResponse(populated ? [{ id: 1, courtName: court.name, slotLabel: "18:00–19:00", date: "2026-10-24", playerCount: 4, status: "Promoted", promotedBookingId: 1 }] : []) },
+    { pattern: /\/contacts(?:\?|$)/, respond: () => ok({ items: [], totalCount: 0 }) },
+    { pattern: /\/payments\/reconciliation/, respond: () => ok({ items: [], totalCount: 0 }) },
     { pattern: /./, respond: () => ok([]) },
   ]);
 }
@@ -84,7 +86,7 @@ test("mobile booking drawer and modal stay reachable on short landscape screens"
 });
 
 for (const width of [768, 1024, 1440]) {
-  test(`desktop appearance unchanged ${width}px`, async ({ page }) => {
+  test(`desktop pages remain usable ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     await setup(page);
     const dir = "../artifacts/responsive-desktop-baseline";
@@ -102,6 +104,7 @@ for (const width of [768, 1024, 1440]) {
       }
       await expect(page.getByRole("button", { name: "Mở menu" })).toBeHidden();
       await expect(page.locator("aside")).toBeVisible();
+      await fits(page);
     }
   });
 }
@@ -115,6 +118,32 @@ test("phone login fits small portrait and landscape screens", async ({ page }) =
     await fits(page);
   }
 });
+
+for (const width of [390, 1280, 1920]) {
+  test(`fluid workspace uses available width ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 960 });
+    await setup(page, true);
+    for (const path of ["/dashboard", "/book", "/bookings", "/groups", "/reviews", "/waitlist", "/account"]) {
+      await ready(page, path);
+      await fits(page);
+      const content = await page.locator("main").boundingBox();
+      const feature = await page.locator("main > .feature-page").boundingBox();
+      expect(feature).not.toBeNull();
+      const gutter = width < 768 ? 12 : 24;
+      expect(Math.abs(feature!.x - content!.x - gutter)).toBeLessThan(2);
+      expect(Math.abs(content!.width - feature!.width - gutter * 2)).toBeLessThan(2);
+      await page.screenshot({ path: `test-results/polish-${width}-${path.slice(1)}.png`, fullPage: true });
+    }
+    await ready(page, "/dashboard");
+    await expect(page.getByRole("navigation", { name: "Thao tác nhanh" }).getByRole("link")).toHaveCount(6);
+    await ready(page, "/book");
+    await expect(page.getByRole("button", { name: "Ngày trước" })).toBeDisabled();
+    await page.getByRole("button", { name: "Ngày sau" }).click();
+    await expect(page.getByRole("button", { name: "Ngày trước" })).toBeEnabled();
+    await page.getByRole("button", { name: "Ngày trước" }).click();
+    await expect(page.getByRole("button", { name: "Ngày trước" })).toBeDisabled();
+  });
+}
 
 test.describe("touch phone", () => {
   test.use({ isMobile: true, hasTouch: true, viewport: { width: 390, height: 844 } });

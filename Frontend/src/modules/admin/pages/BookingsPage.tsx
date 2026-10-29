@@ -95,7 +95,7 @@ export default function BookingsPage() {
 
   return (
     <div>
-      <Toolbar
+      <Toolbar icon={CalendarDays}
         title="Đặt chỗ"
         subtitle="Tất cả đơn của mọi khách (quản trị)"
         search={{

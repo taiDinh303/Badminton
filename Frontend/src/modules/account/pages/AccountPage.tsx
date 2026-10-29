@@ -1,3 +1,4 @@
+import FeatureHeading from "../../../components/FeatureHeading";
 import { Link, useNavigate } from "react-router-dom";
 import { ExperienceLinks } from "../../experience/components/ExperienceUi";
 import { mediaResourceUrl } from "../../../services/http";
@@ -14,6 +15,10 @@ import {
   Ticket,
   CheckCircle2,
   Coins,
+  UserRound,
+  KeyRound,
+  MonitorSmartphone,
+  Pencil,
 } from "lucide-react";
 import { useAuth } from "../../../store/auth";
 import { Card, Button, Callout, StatusBadge, Busy, Field } from "../../../components/ui";
@@ -60,10 +65,10 @@ export default function AccountPage() {
   const nextVoucher = summary?.nextVoucher ?? null;
 
   const quickLinks = [
-    { to: "/bookings", label: "Đơn của tôi", hint: "Mã QR, trạng thái, thanh toán & đánh giá", icon: ListChecks },
-    { to: "/waitlist", label: "Danh sách chờ", hint: "Slot full – bạn đang xếp hạng FIFO", icon: Hourglass },
-    { to: "/groups", label: "Nhóm chơi", hint: "Tạo / tham gia nhóm & đặt sân chung", icon: Users },
-    { to: "/reviews", label: "Đánh giá sân", hint: "Xem & để lại đánh giá sau buổi tập", icon: Star },
+    { to: "/bookings", label: "Đơn của tôi", hint: "Mã QR & thanh toán", icon: ListChecks },
+    { to: "/waitlist", label: "Danh sách chờ", hint: "Nhận lượt sân trống", icon: Hourglass },
+    { to: "/groups", label: "Nhóm chơi", hint: "Đặt sân cùng bạn bè", icon: Users },
+    { to: "/reviews", label: "Đánh giá sân", hint: "Trải nghiệm người chơi", icon: Star },
   ];
 
   function voucherValueLabel(v: NonNullable<typeof usedVoucher> | NonNullable<typeof nextVoucher>) {
@@ -71,12 +76,13 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-4 md:p-6">
-      <h1 className="text-2xl font-bold">Tài khoản</h1>
-        <ExperienceLinks />
+    <div className="feature-page account-page">
+      <FeatureHeading icon={UserRound} title="Tài khoản" subtitle="Hồ sơ, ưu đãi & bảo mật" />
+      <ExperienceLinks />
+      <div className="account-overview">
 
       {/* Profile hero */}
-      <Card className="mt-4 p-4 md:p-5">
+      <Card className="account-profile p-5">
         <div className="flex items-center gap-4">
           {profile.data?.avatarUrl ? <img src={mediaResourceUrl(profile.data.avatarUrl)} alt="Ảnh đại diện" referrerPolicy="no-referrer" className="h-14 w-14 rounded-2xl object-cover" /> : <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-white">
             {(profile.data?.fullName ?? user?.fullName ?? "?").charAt(0).toUpperCase()}
@@ -95,7 +101,7 @@ export default function AccountPage() {
         <p className="mt-3 text-sm text-muted">{profile.data?.email}</p>
         <Button variant="ghost" size="sm" className="mt-3" disabled={!profile.data} onClick={() => {
           const p = profile.data!; setForm({ fullName: p.fullName, email: p.email ?? "", avatarUrl: p.avatarUrl ?? "" }); setEditing(true); setSaved(false); update.reset();
-        }}>Chỉnh sửa tài khoản</Button>
+        }}><Pencil size={16} />Chỉnh sửa tài khoản</Button>
         {editing && <form className="mt-4 space-y-3" onSubmit={(e) => { e.preventDefault(); update.mutate(); }}>
           <Field label="Họ và tên" required maxLength={100} value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
           <Field label="Email" type="email" maxLength={150} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
@@ -111,6 +117,7 @@ export default function AccountPage() {
         </div>}
       </Card>
 
+      <div className="account-benefits">
       {summary?.legacyPointsConverted && <Callout tone="info" className="mt-4">Số dư điểm cũ đã được quy đổi về 1/1.000. Thông tin điểm của các đơn cũ được giữ theo thời điểm phát sinh.</Callout>}
       {/* Loyalty strip — real points balance + voucher usage (GET /account/summary) */}
       <div className="mt-4 grid grid-cols-2 gap-3">
@@ -187,7 +194,7 @@ export default function AccountPage() {
         <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
           Tiện ích
         </p>
-        <div className="space-y-2">
+        <div className="account-shortcuts">
           {quickLinks.map((l) => (
             <Link key={l.to} to={l.to} className="block">
               <Card className="flex items-center gap-3 p-3.5 transition-colors hover:border-primary">
@@ -205,8 +212,11 @@ export default function AccountPage() {
         </div>
       </div>
 
-      <Card className="mt-6 p-5">
-        <h2 className="font-semibold">Đổi mật khẩu</h2>
+      </div>
+      </div>
+      <div className="account-security">
+      <Card className="p-5">
+        <h2 className="flex items-center gap-2 font-semibold"><KeyRound size={18} />Đổi mật khẩu</h2>
         <p className="mt-1 text-sm text-muted">Đổi mật khẩu sẽ đăng xuất mọi phiên trên các thiết bị.</p>
         <form className="mt-3 space-y-3" onSubmit={e => { e.preventDefault(); passwordChange.mutate(); }}>
           <Field label="Mật khẩu hiện tại" type="password" autoComplete="current-password" required value={passwords.currentPassword} onChange={e => setPasswords({ ...passwords, currentPassword: e.target.value })} />
@@ -217,13 +227,14 @@ export default function AccountPage() {
           <Button type="submit" disabled={passwordChange.isPending || !passwords.currentPassword || passwords.newPassword.length < 8 || passwords.newPassword !== passwords.confirm}>Đổi mật khẩu và đăng xuất</Button>
         </form>
       </Card>
-      <Card className="mt-4 p-5">
-        <h2 className="font-semibold">Phiên đăng nhập</h2>
+      <Card className="p-5">
+        <h2 className="flex items-center gap-2 font-semibold"><MonitorSmartphone size={18} />Phiên đăng nhập</h2>
         <p className="my-2 text-sm text-muted">Thu hồi quyền truy cập của mọi thiết bị đang đăng nhập tài khoản này.</p>
         <Button variant="danger" disabled={revoke.isPending} onClick={() => revoke.mutate()}>Đăng xuất mọi thiết bị</Button>
         {revoke.isError && <Callout tone="error" className="mt-2">{revoke.error.message}</Callout>}
       </Card>
 
+      </div>
       <div className="mt-6">
         <Button
           variant="danger"

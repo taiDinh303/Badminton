@@ -93,7 +93,7 @@ export default function MembershipPage() {
   return (
     <div>
       {recovery && <IssueRecoveryCode userId={recovery.id} name={recovery.fullName} onClose={() => setRecovery(null)} />}
-      <Toolbar
+      <Toolbar icon={Crown}
         title="Membership"
         subtitle="Quản lý hạng thành viên, gia hạn và hệ số tích điểm"
         actions={

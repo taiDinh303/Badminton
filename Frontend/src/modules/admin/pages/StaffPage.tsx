@@ -170,7 +170,7 @@ export default function StaffPage() {
 
   return (
     <div>
-      <Toolbar
+      <Toolbar icon={Shield}
         title="Nhân viên"
         subtitle="Quản lý tài khoản Manager / Admin"
         actions={
