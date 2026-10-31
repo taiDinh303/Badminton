@@ -6,7 +6,7 @@ export const customerItems = [
   { to: "/bookings", label: "Đơn của tôi", icon: ListChecks },
   { to: "/waitlist", label: "Chờ", icon: Hourglass },
   { to: "/groups", label: "Nhóm", icon: Users },
-  { to: "/players", label: "Câu lạc bộ", icon: Users },
+  { to: "/club", label: "Câu lạc bộ", icon: Users },
   { to: "/reviews", label: "Đánh giá", icon: Star },
   { to: "/notifications", label: "Thông báo", icon: Inbox },
   { to: "/account", label: "Tài khoản", icon: User },

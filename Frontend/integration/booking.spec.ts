@@ -58,7 +58,7 @@ test("real club matching, equipment, coaching, tournament and revocable calendar
   expect((await page.request.post(`/api/v1/bookings/${booking.id}/cancel`, { headers })).status()).toBe(200);
   // Club requests reach the real API, JWT validation and migrated SQL database.
   await page.getByRole("link", { name: "Câu lạc bộ", exact: true }).filter({ visible: true }).first().click();
-  await page.getByRole("navigation", { name: "Câu lạc bộ", exact: true }).getByRole("link", { name: "Lịch tự đồng bộ", exact: true }).click();
+  await page.getByRole("navigation", { name: "Khám phá câu lạc bộ", exact: true }).locator('a[href="/calendar-sync"]').click();
   await page.getByRole("button", { name: "Bật lịch tự đồng bộ", exact: true }).click();
   const feedInput = page.getByLabel("Liên kết lịch", { exact: true });
   await expect(feedInput).toBeVisible();
