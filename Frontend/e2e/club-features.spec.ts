@@ -937,6 +937,36 @@ test("all club pages fit a mobile viewport with loading or empty data", async ({
   });
 });
 
+test("club overview opens all six features on desktop and mobile", async ({ page }) => {
+  await setup(page, []);
+  for (const width of [1440, 375]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/club");
+    const overview = page.getByRole("navigation", { name: "Khám phá câu lạc bộ" });
+    await expect(overview.getByRole("link")).toHaveCount(6);
+    await expect(page.getByRole("region", { name: "Quản lý câu lạc bộ" })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await page.screenshot({ path: `../artifacts/club-overview-20261031/overview-${width}.png`, fullPage: true });
+    for (const path of ["players", "group-expenses", "equipment", "coaches", "tournaments", "calendar-sync"]) {
+      await overview.locator(`a[href="/${path}"]`).click();
+      await expect(page).toHaveURL(new RegExp(`/${path}$`));
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await page.getByRole("link", { name: "Tất cả tiện ích CLB", exact: true }).click();
+      await expect(overview).toBeVisible();
+    }
+  }
+});
+
+test("club overview gives staff shortcuts to the three management pages", async ({ page }) => {
+  await setup(page, [], true);
+  await page.goto("/club");
+  const shortcuts = page.getByRole("region", { name: "Quản lý câu lạc bộ" });
+  await expect(shortcuts.getByRole("link")).toHaveCount(3);
+  await shortcuts.locator('a[href="/admin/club/equipment"]').click();
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/club\/equipment$/);
+});
+
 test("club navigation shows the current feature and links between all six desktop pages", async ({ page }) => {
   await setup(page, []);
   await page.setViewportSize({ width: 1440, height: 1000 });

@@ -58,7 +58,7 @@ export function useBranch() {
   );
   return { branchId, control, user };
 }
-const features = [
+export const features = [
   { path: "/players", label: "Tìm bạn chơi", icon: Users, hint: "Cùng trình độ, cùng giờ rảnh", steps: ["Chọn khu vực và giờ rảnh", "Gửi yêu cầu tham gia", "Chủ buổi duyệt và thống nhất sân"] },
   { path: "/group-expenses", label: "Chia chi phí", icon: Wallet, hint: "Rõ phần tiền của từng người", steps: ["Chọn đơn sân của nhóm", "Chia đều hoặc theo phút tham dự", "Ghi nhận từng khoản đã đóng"] },
   { path: "/equipment", label: "Dụng cụ", icon: Package, hint: "Vợt sẵn sàng, cầu đủ cho buổi chơi", steps: ["Chọn dụng cụ hoặc cầu", "Gửi yêu cầu và nhận tại cơ sở", "Trả vợt sau buổi chơi"] },
@@ -86,6 +86,7 @@ export function Shell({
   const feature = features.find((f) => pathname.endsWith(f.path)) ?? features[0];
   return (
     <div className="club-shell">
+      <NavLink to="/club" className="club-overview-link"><ArrowRight size={16} aria-hidden="true" />Tất cả tiện ích CLB</NavLink>
       <div className="club-hero">
         <span className="club-eyebrow">{staff ? "Vận hành câu lạc bộ" : "Kết nối · Luyện tập · Thi đấu"}</span>
         <FeatureHeading icon={feature.icon} title={title} subtitle={subtitle} />
