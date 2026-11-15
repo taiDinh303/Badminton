@@ -29,6 +29,7 @@
 | Tìm bạn, chia tiền, dụng cụ, HLV, giải nhỏ, lịch tự đồng bộ 27/10 | [18-club-features.md](18-club-features.md) |
 | Hoàn thiện CLB theo mốc chất lượng 8/10 | [19-club-hardening.md](19-club-hardening.md) |
 | Ma trận chức năng, bằng chứng, lịch sử | [worklog.md](worklog.md) |
+| API thanh toán MoMo/QR và bàn giao frontend | [21-payment-backend-handoff.md](21-payment-backend-handoff.md) |
 
 ## 2. Nguồn chuẩn và trạng thái
 

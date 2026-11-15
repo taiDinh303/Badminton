@@ -32,6 +32,8 @@ namespace Services.DI
             this IServiceCollection services, IConfiguration? configuration = null)
         {
             services.AddBookingExperience();
+            if (configuration is not null)
+                services.Configure<BankTransferSettings>(configuration.GetSection("Payment:BankTransfer"));
             services.AddScoped<Contract.Services.Contact.IContactService, ContactService>();
 
             // On-site gateways never move real money — always registered.

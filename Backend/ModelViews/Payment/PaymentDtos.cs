@@ -12,5 +12,12 @@ namespace ModelViews.Payment
     public record PaymentReconciliationView(PaymentView Payment, string? Reason, DateTime CreatedAt);
 
     public record PaymentInitResponse(string Method, string? GatewayUrl,
-        string? GatewayRef, string BookingCode);
+        string? GatewayRef, string BookingCode)
+    {
+        public BankTransferView? BankTransfer { get; init; }
+    }
+
+    public record BankTransferView(string BankBin, string AccountNumber, string AccountName,
+        int Amount, string Currency, string TransferContent, string QrImageUrl,
+        DateTime ExpiresAtUtc, bool RequiresStaffConfirmation);
 }

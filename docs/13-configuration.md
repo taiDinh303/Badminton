@@ -19,6 +19,10 @@ CURRENT source và fixture local được ghi tại [17](17-booking-experience.m
 
 ## 1. Nguồn cấu hình
 
+Bổ sung 14/11/2026: `Payment__BankTransfer__Branches__<BranchId>__BankBin/AccountNumber/AccountName` cấu hình tài khoản nhận riêng từng cơ sở, không fallback. Entry khai báo sai bị pure check-config chặn; thiếu entry giữ QR tại quầy cũ. API init trả `bankTransfer` khi có cấu hình; QR không tự xác nhận đã thu tiền. Định dạng, privacy ảnh VietQR và hướng dẫn frontend tại [21](21-payment-backend-handoff.md).
+
+Trạng thái 16/11/2026: owner cung cấp thông tin sau, chưa có tài khoản/QR/merchant được cấu hình thật trong nhiệm vụ này. Xem docs21 để lấy checklist; QR dùng onsite, MoMo sandbox dùng real và hiện vẫn cần đủ cấu hình ba gateway. Upload ảnh QR cố định và bật riêng MoMo chưa có implementation trong lượt này.
+
 Backend: appsettings.json → appsettings theo environment → User Secrets chỉ Development → env → command line. Không tự đọc .env. Production publish loại mọi appsettings theo environment (appsettings.*.json); base JSON không chứa connection/key local. Đặt secret qua User Secrets hoặc host env, không commit.
 
 Frontend: Vite load env ở dev/build; VITE_API_URL là public, không chứa DB/JWT/gateway key. API_PROXY_TARGET chỉ dev server, không dùng tiền tố VITE_. [deploy/project.json](../deploy/project.json) chỉ mô tả đường dẫn, chưa chọn host/domain.

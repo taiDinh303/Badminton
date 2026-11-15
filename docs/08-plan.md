@@ -1,5 +1,11 @@
 # 08 — Quyết định, hiện trạng và kế hoạch
 
+## Thanh toán — bổ sung 14/11/2026
+
+Bổ sung 16/11: owner sẽ cung cấp tài khoản/QR và thông tin môi trường sau; nhiệm vụ hiện tại là lưu hướng dẫn cho đồng đội và push source. Checklist thông tin cần nhận, UI có thể làm ngay và trình tự cấu hình/nghiệm thu ở [docs21](21-payment-backend-handoff.md). Chưa cấu hình tài khoản thật hoặc bật payment live; chỉ bật MoMo riêng còn cần thay đổi mode real đang yêu cầu cả ba gateway.
+
+Owner yêu cầu kiểm tra và làm backend MoMo/QR, bàn giao frontend. CURRENT: MoMo/VNPAY/ZaloPay và thu tại quầy đã có; bổ sung `bankTransfer` vào init QR với tài khoản riêng từng branch, số tiền server, mã BM<bookingId>, URL ảnh VietQR và hạn UTC. Không tự xác nhận chuyển khoản, không có webhook ngân hàng. [Contract frontend](21-payment-backend-handoff.md), bằng chứng ở worklog. TARGET merchant sandbox và nghiệm thu quét/chuyển tiền; NOT VERIFIED live, không deploy/migrate từ nhiệm vụ này.
+
 ## Nhiệm vụ bổ sung 27/10/2026 — CURRENT source / TARGET release
 
 ### Thứ tự ưu tiên owner chốt sau đợt hoàn thiện

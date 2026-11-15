@@ -42,6 +42,20 @@ public class ConfigurationAndArchitectureTests
     [Fact]
     public void Production_configuration_can_be_checked_without_a_database_or_external_service() => Assert.Empty(Check(Valid()));
 
+    [Fact]
+    public void Bank_transfer_configuration_checks_every_branch_without_exposing_account_values()
+    {
+        var values = Valid();
+        values["Payment:BankTransfer:Branches:7:BankBin"] = "970422";
+        values["Payment:BankTransfer:Branches:7:AccountNumber"] = "000123456789";
+        values["Payment:BankTransfer:Branches:7:AccountName"] = "SYNTHETIC ACCOUNT";
+        Assert.Empty(Check(values));
+        values["Payment:BankTransfer:Branches:8:BankBin"] = "invalid-private-value";
+        var errors = Check(values);
+        Assert.Contains(errors, e => e.StartsWith("Payment:BankTransfer:Branches"));
+        Assert.DoesNotContain(errors, e => e.Contains("000123456789") || e.Contains("invalid-private-value"));
+    }
+
     [Theory]
     [InlineData("Database:Provider", "Unknown")]
     [InlineData("JwtSettings:Key", "short")]

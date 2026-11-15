@@ -27,11 +27,13 @@ namespace Services
         private readonly IVoucherService _vouchersForRefund;
         private readonly IBookingTransitionGuard _transitions;
         private readonly IBookingCancellationAuthorization _cancellation;
+        private readonly Badminton.Core.Store.BankTransferSettings _bankTransfer;
 
         public PaymentService(IUnitOfWork uow, ICurrentUser currentUser,
             IPaymentGatewayFactory gateways, IPointService points,
             IAuditService audit, INotifyService notify, IVoucherService vouchersForRefund,
-            IBookingTransitionGuard transitions, IBookingCancellationAuthorization cancellation, OnlineRefundService? onlineRefunds = null)
+            IBookingTransitionGuard transitions, IBookingCancellationAuthorization cancellation, OnlineRefundService? onlineRefunds = null,
+            Microsoft.Extensions.Options.IOptions<Badminton.Core.Store.BankTransferSettings>? bankTransfer = null)
             : base(uow, currentUser)
         {
             _gateways = gateways;
@@ -42,6 +44,7 @@ namespace Services
             _vouchersForRefund = vouchersForRefund;
             _transitions = transitions;
             _cancellation = cancellation;
+            _bankTransfer = bankTransfer?.Value ?? new();
         }
 
         private IGenericRepository<Payment> Repo => Repository<Payment>();
@@ -92,7 +95,10 @@ namespace Services
                 created = true;
             });
             if (method is PaymentMethod.Cash or PaymentMethod.QR)
-                return new(method.ToString(), null, null, booking.BookingCode);
+                return new(method.ToString(), null, null, booking.BookingCode)
+                {
+                    BankTransfer = method == PaymentMethod.QR ? BankTransferInstructions.Create(_bankTransfer, booking) : null
+                };
             if (created)
             {
                 PaymentInitResult init;

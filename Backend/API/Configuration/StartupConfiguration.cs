@@ -72,6 +72,12 @@ public static class StartupConfiguration
             errors.Add("DatabaseInitialization and Seed:AllowInProduction must not enable migration/demo seeding outside Development/Testing.");
 
         var provider = (configuration["Payment:Provider"] ?? "mock").Trim().ToLowerInvariant();
+        foreach (var branch in configuration.GetSection("Payment:BankTransfer:Branches").GetChildren())
+        {
+            var account = branch.Get<Badminton.Core.Store.BankTransferAccount>();
+            if (!int.TryParse(branch.Key, out var id) || id <= 0 || account is null || !account.IsValid())
+                errors.Add("Payment:BankTransfer:Branches requires positive branch IDs and valid BankBin/AccountNumber/AccountName.");
+        }
         if (provider is not ("mock" or "real" or "onsite")) errors.Add("Payment:Provider must be mock, real or onsite.");
         if (production && provider == "mock") errors.Add("Payment:Provider must be real or onsite outside Development/Testing.");
         if (Enabled(configuration, "Payment:OnlineRefunds:Enabled"))
